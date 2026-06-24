@@ -57,7 +57,7 @@
       if (!player.active) return;
       const s = 0.0024;
       player.yaw -= e.movementX * s;
-      player.pitch = U.clamp(player.pitch - e.movementY * s, -1.45, 1.45);
+      player.pitch = U.clamp(player.pitch - e.movementY * s, -1.55, 1.55);
     });
   };
 
