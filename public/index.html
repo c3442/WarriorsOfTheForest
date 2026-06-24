@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Warriors of the Forest</title>
+<style>
+  :root{
+    --good:#5fd36a; --warn:#ffcf5c; --bad:#ff5b6b; --stam:#5cc8ff; --food:#ffa24c;
+    --ink:#e9e4d6; --panel:rgba(12,14,10,.55);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;background:#10130d;font-family:'Trebuchet MS',system-ui,sans-serif;color:var(--ink);}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;}
+
+  /* Crosshair */
+  #cross{position:fixed;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;
+    border-radius:50%;border:2px solid rgba(255,255,255,.85);pointer-events:none;
+    box-shadow:0 0 4px rgba(0,0,0,.6);}
+
+  /* Stat bars */
+  #stats{position:fixed;left:16px;bottom:16px;width:220px;display:flex;flex-direction:column;gap:7px;
+    padding:10px 12px;background:var(--panel);border-radius:10px;backdrop-filter:blur(2px);}
+  .bar{height:14px;background:rgba(0,0,0,.45);border-radius:7px;overflow:hidden;position:relative;}
+  .bar > i{display:block;height:100%;width:100%;transition:width .12s linear;border-radius:7px;}
+  .bar > span{position:absolute;left:8px;top:0;line-height:14px;font-size:10px;letter-spacing:.5px;
+    text-shadow:0 1px 2px #000;font-weight:bold;}
+  #hp > i{background:linear-gradient(90deg,#ff7b87,var(--bad));}
+  #st > i{background:linear-gradient(90deg,#9adcff,var(--stam));}
+  #fd > i{background:linear-gradient(90deg,#ffce9a,var(--food));}
+  #th > i{background:linear-gradient(90deg,#9be8ff,#2aa6e0);}
+
+  /* Top-right info */
+  #info{position:fixed;right:16px;top:14px;text-align:right;background:var(--panel);
+    padding:9px 13px;border-radius:10px;line-height:1.5;font-size:14px;}
+  #info b{color:#fff;}
+  #info .tod{font-size:18px;}
+
+  /* Hotbar / wood */
+  #res{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:14px;
+    padding:8px 16px;background:var(--panel);border-radius:10px;font-size:15px;}
+  #res .pill b{color:#fff;}
+
+  /* Center banners */
+  #banner{position:fixed;left:50%;top:26%;transform:translate(-50%,-50%);text-align:center;
+    pointer-events:none;opacity:0;transition:opacity .4s;text-shadow:0 2px 10px #000;}
+  #banner .big{font-size:30px;font-weight:bold;letter-spacing:1px;}
+  #banner .sub{font-size:15px;opacity:.85;}
+
+  /* Damage flash */
+  #flash{position:fixed;inset:0;background:radial-gradient(circle at center, transparent 40%, rgba(220,30,30,.55));
+    opacity:0;pointer-events:none;transition:opacity .08s;}
+
+  /* Overlays (start / pause / dead) */
+  .overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;background:radial-gradient(circle at 50% 35%,rgba(20,30,16,.78),rgba(6,9,5,.94));
+    gap:14px;z-index:10;}
+  .overlay h1{font-size:44px;letter-spacing:2px;color:#cfe8b6;text-shadow:0 3px 18px #000;}
+  .overlay h1 small{display:block;font-size:15px;letter-spacing:3px;color:#8fae74;margin-top:6px;font-weight:normal;}
+  .overlay p{max-width:440px;color:#cdc7b6;line-height:1.6;font-size:14px;}
+  .overlay .keys{font-size:13px;color:#9a9583;line-height:1.9;}
+  .overlay .keys kbd{background:#2a2f22;border:1px solid #444b35;border-bottom-width:2px;border-radius:5px;
+    padding:1px 7px;font-family:inherit;color:#e9e4d6;margin:0 1px;}
+  .btn{margin-top:6px;padding:12px 30px;font:inherit;font-size:16px;font-weight:bold;letter-spacing:1px;
+    color:#10130d;background:linear-gradient(180deg,#8fd36a,#5fae46);border:none;border-radius:9px;cursor:pointer;
+    box-shadow:0 4px 0 #3c7a2c, 0 8px 18px rgba(0,0,0,.5);}
+  .btn:active{transform:translateY(2px);box-shadow:0 2px 0 #3c7a2c;}
+  .btn2{background:linear-gradient(180deg,#7fb3e0,#4f86c0);box-shadow:0 4px 0 #2c5c8c,0 8px 18px rgba(0,0,0,.5);}
+  .btn2:active{box-shadow:0 2px 0 #2c5c8c;}
+  #menu{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:8px;}
+  .joinrow{display:flex;gap:8px;align-items:stretch;}
+  #codeInput{width:120px;text-align:center;text-transform:uppercase;letter-spacing:3px;font:bold 18px 'Trebuchet MS',sans-serif;
+    border:2px solid #444b35;border-radius:9px;background:#1b2016;color:#e9e4d6;padding:0 10px;}
+  #codeInput::placeholder{color:#6a6650;letter-spacing:2px;}
+  #nameInput{width:220px;text-align:center;letter-spacing:1px;font:bold 17px 'Trebuchet MS',sans-serif;height:42px;
+    border:2px solid #444b35;border-radius:9px;background:#1b2016;color:#e9e4d6;padding:0 12px;}
+  #nameInput::placeholder{color:#6a6650;}
+  #netStatus{margin-top:12px;min-height:22px;font-size:15px;color:#cfe8b6;letter-spacing:.5px;}
+  #netStatus b{color:#fff;font-size:26px;letter-spacing:4px;background:#23301a;padding:2px 12px;border-radius:8px;border:1px solid #3c5a2c;}
+  .hidden{display:none !important;}
+  #deadStats{font-size:15px;color:#e9e4d6;line-height:1.8;}
+  #deadStats b{color:#ffce9a;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- HUD -->
+<div id="cross"></div>
+<div id="flash"></div>
+
+<div id="stats">
+  <div class="bar" id="hp"><i></i><span>HEALTH</span></div>
+  <div class="bar" id="st"><i></i><span>STAMINA</span></div>
+  <div class="bar" id="fd"><i></i><span>HUNGER</span></div>
+  <div class="bar" id="th"><i></i><span>THIRST</span></div>
+</div>
+
+<div id="info">
+  <div class="tod"><span id="todIcon">☀️</span> <b id="todLabel">Day</b></div>
+  <div>Day <b id="dayNum">1</b></div>
+  <div>Foes <b id="foeNum">0</b></div>
+</div>
+
+<div id="res">
+  <div class="pill">🪵 Wood <b id="woodNum">0</b></div>
+  <div class="pill">💧 Bottle <b id="waterNum">5/5</b></div>
+  <div class="pill">🍖 Kills <b id="killNum">0</b></div>
+</div>
+
+<div id="banner"><div class="big"></div><div class="sub"></div></div>
+
+<!-- Start overlay -->
+<div class="overlay" id="startOverlay">
+  <h1>WARRIORS OF THE FOREST<small>FIRST-PERSON SURVIVAL</small></h1>
+  <p>Night is coming to the woods. Chop trees for wood, eat berries to stay fed, and
+     fight off the creatures that hunt you after dark. How many days can you last?</p>
+  <div class="keys">
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp;
+    <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> look around &nbsp;·&nbsp;
+    <kbd>Q</kbd> swing axe (chop / attack)<br>
+    <kbd>Shift</kbd> sprint &nbsp;·&nbsp; <kbd>Space</kbd> jump &nbsp;·&nbsp;
+    <kbd>E</kbd> eat berries &nbsp;·&nbsp; <kbd>F</kbd> drink (at water / from bottle) &nbsp;·&nbsp; <kbd>Esc</kbd> pause
+  </div>
+  <div id="menu">
+    <input id="nameInput" maxlength="12" placeholder="YOUR NAME" autocomplete="off" />
+    <button class="btn" id="soloBtn">PLAY SOLO</button>
+    <button class="btn btn2" id="hostBtn">HOST CO-OP</button>
+    <div class="joinrow">
+      <input id="codeInput" maxlength="5" placeholder="CODE" autocomplete="off" />
+      <button class="btn btn2" id="joinBtn">JOIN</button>
+    </div>
+  </div>
+  <div id="netStatus"></div>
+</div>
+
+<!-- Pause overlay -->
+<div class="overlay hidden" id="pauseOverlay">
+  <h1>PAUSED</h1>
+  <p class="keys">Press <kbd>Esc</kbd> or click Resume to return to the forest.</p>
+  <button class="btn" id="resumeBtn">RESUME</button>
+</div>
+
+<!-- Death overlay -->
+<div class="overlay hidden" id="deadOverlay">
+  <h1 id="deadTitle">YOU FELL IN THE WOODS</h1>
+  <div id="deadStats"></div>
+  <button class="btn" id="retryBtn">TRY AGAIN</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="src/utils.js"></script>
+<script src="src/world.js"></script>
+<script src="src/player.js"></script>
+<script src="src/enemies.js"></script>
+<script src="src/net.js"></script>
+<script src="src/hud.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
