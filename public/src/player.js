@@ -41,7 +41,7 @@
     // --- input: WASD move, trackpad/mouse look (pointer-lock), Q attack, etc. ---
     window.addEventListener('keydown', (e) => {
       player.keys[e.code] = true;
-      if (e.code === 'Space') e.preventDefault();
+      if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
       if (e.code === 'KeyQ') player.attack();
       if (e.code === 'KeyE') player.eat();
       if (e.code === 'KeyF') player.drink();
@@ -52,9 +52,9 @@
     });
     window.addEventListener('keyup', (e) => { player.keys[e.code] = false; });
 
-    // One-finger trackpad / mouse move = look around (no capture needed).
+    // Trackpad / mouse move = look around. Captured so you can turn freely (no edge-stop).
     document.addEventListener('mousemove', (e) => {
-      if (!player.active) return;
+      if (document.pointerLockElement == null) return;
       const s = 0.0024;
       player.yaw -= e.movementX * s;
       player.pitch = U.clamp(player.pitch - e.movementY * s, -1.55, 1.55);
@@ -363,6 +363,13 @@
     player._t += dt;
     if (!player.alive) return;
     const k = player.keys;
+
+    // --- look with arrow keys (works alongside trackpad/mouse) ---
+    const LOOK = 2.0; // radians/sec
+    if (k.ArrowLeft) player.yaw += LOOK * dt;
+    if (k.ArrowRight) player.yaw -= LOOK * dt;
+    if (k.ArrowUp) player.pitch = U.clamp(player.pitch + LOOK * dt, -1.55, 1.55);
+    if (k.ArrowDown) player.pitch = U.clamp(player.pitch - LOOK * dt, -1.55, 1.55);
 
     // --- movement direction relative to yaw ---
     let fwd = (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0);

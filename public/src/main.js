@@ -19,7 +19,12 @@
     app.appendChild(renderer.domElement);
     renderer.domElement.tabIndex = 0;
     renderer.domElement.style.outline = 'none';
-    renderer.domElement.addEventListener('mousedown', () => renderer.domElement.focus());
+    renderer.domElement.addEventListener('mousedown', () => {
+      renderer.domElement.focus();
+      if (started && !paused && W.player.alive && document.pointerLockElement == null) {
+        renderer.domElement.requestPointerLock();
+      }
+    });
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color('#0a1230');
@@ -31,11 +36,10 @@
     W.onDeath = onDeath;
     wireMenu();
 
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape' && started && W.player.alive) setPause(!paused);
-    });
-    window.addEventListener('blur', () => {
-      if (started && W.player.alive && !paused) setPause(true);
+    // Pointer-capture drives play/pause: captured = playing, released (Esc) = paused.
+    document.addEventListener('pointerlockchange', () => {
+      if (!started || !W.player.alive) return;
+      setPause(document.pointerLockElement !== renderer.domElement);
     });
     window.addEventListener('resize', onResize);
     clock = new THREE.Clock();
@@ -100,15 +104,17 @@
     W.player.active = true;
     document.getElementById('startOverlay').classList.add('hidden');
     renderer.domElement.focus();
+    renderer.domElement.requestPointerLock();
     W.hud.banner('SURVIVE', W.net.role ? 'Co-op — survive together' : 'Chop wood by day · fight beasts by night', '#cfe8b6');
   }
 
   // --- Pause / death ---------------------------------------------------------
 
   function setPause(p) { paused = p; W.player.active = !p; W.hud.showPause(p); }
-  function setResume() { setPause(false); renderer.domElement.focus(); }
+  function setResume() { setPause(false); renderer.domElement.focus(); renderer.domElement.requestPointerLock(); }
   function onDeath() {
     W.player.active = false;
+    if (document.pointerLockElement) document.exitPointerLock();
     W.hud.showDead({ day, kills: W.player.kills, wood: W.player.wood }, () => location.reload());
   }
   function onResize() {
