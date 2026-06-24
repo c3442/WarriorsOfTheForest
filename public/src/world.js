@@ -13,6 +13,8 @@
   const world = {
     colliders: [],   // {x,z,r} solid objects (trees, rocks, tent walls)
     tentWalls: [],   // {x,z,r} tent-wall beads only (used for line-of-sight)
+    hazards: [],     // {x,z,r,dps} barbed wire etc. that hurts enemies
+    plots: [],       // farm plots that grow crops
     trees: [],       // choppable groups
     bushes: [],      // {x,z,mesh,ready}
     daylight: 1,
@@ -560,6 +562,15 @@
       });
     }
 
+    // grow farm-plot crops (full + ripe after ~60s)
+    for (const p of world.plots) {
+      if (!p.ripe) {
+        p.t += dt;
+        p.crop.scale.setScalar(0.05 + Math.min(p.t / 60, 1) * 0.95);
+        if (p.t >= 60) p.ripe = true;
+      }
+    }
+
     // ripple the water surface
     if (world.water) {
       world._time += dt;
@@ -639,6 +650,61 @@
       world.tentWalls.push(bead);
     }
     return grp;
+  };
+
+  // Barbed wire: blocks movement and hurts enemies that touch it.
+  world.placeBarbedWire = function (x, z, yaw) {
+    const Wd = 1.8;
+    const grp = new THREE.Group();
+    const post = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
+    const wire = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.6, metalness: 0.4 });
+    for (const t of [-Wd / 2, 0, Wd / 2]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.7, 6), post); p.position.set(t, 0.35, 0); p.castShadow = true; grp.add(p); }
+    for (const hy of [0.28, 0.55]) { const w = new THREE.Mesh(new THREE.BoxGeometry(Wd, 0.03, 0.03), wire); w.position.set(0, hy, 0); grp.add(w); }
+    for (let i = -3; i <= 3; i++) { const b = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 4), wire); b.position.set(i * 0.28, 0.42, 0); b.rotation.z = Math.PI / 4; grp.add(b); }
+    grp.position.set(x, world.heightAt(x, z), z); grp.rotation.y = yaw;
+    world.scene.add(grp);
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    for (let t = -Wd / 2; t <= Wd / 2 + 0.01; t += 0.4) {
+      const bead = { x: x + cos * t, z: z - sin * t, r: 0.28 };
+      world.colliders.push(bead); world.tentWalls.push(bead);
+    }
+    world.hazards.push({ x, z, r: 1.3, dps: 6 });
+  };
+
+  // Stacked logs: a chunky obstacle that blocks movement.
+  world.placeLogs = function (x, z, yaw) {
+    const L = 1.7;
+    const grp = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+    let y = 0.18;
+    for (const row of [[-0.2, 0.2], [0]]) {
+      for (const off of row) { const log = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, L, 8), mat); log.rotation.z = Math.PI / 2; log.position.set(off, y, 0); log.castShadow = true; grp.add(log); }
+      y += 0.34;
+    }
+    grp.position.set(x, world.heightAt(x, z), z); grp.rotation.y = yaw;
+    world.scene.add(grp);
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    for (let t = -L / 2; t <= L / 2 + 0.01; t += 0.4) {
+      const bead = { x: x + cos * t, z: z - sin * t, r: 0.32 };
+      world.colliders.push(bead); world.tentWalls.push(bead);
+    }
+  };
+
+  // Farm plot: grows a crop over ~1 minute; harvest with E for food.
+  world.placeFarmPlot = function (x, z) {
+    const grp = new THREE.Group();
+    const soil = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.12, 1.4), new THREE.MeshStandardMaterial({ color: 0x5a3d28, roughness: 1 }));
+    soil.position.y = 0.06; soil.receiveShadow = true; grp.add(soil);
+    const furrow = new THREE.MeshStandardMaterial({ color: 0x432d1c, roughness: 1 });
+    for (const fx of [-0.35, 0, 0.35]) { const f = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.13, 1.3), furrow); f.position.set(fx, 0.08, 0); grp.add(f); }
+    const crop = new THREE.Group();
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.3, 5), new THREE.MeshStandardMaterial({ color: 0x3a7a35, roughness: 1 })); stem.position.y = 0.15; crop.add(stem);
+    const veg = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshStandardMaterial({ color: 0xe07a2a, roughness: 1, flatShading: true })); veg.position.y = 0.34; crop.add(veg);
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.2, 5), new THREE.MeshStandardMaterial({ color: 0x3a8a3a, roughness: 1 })); leaf.position.y = 0.52; crop.add(leaf);
+    crop.position.y = 0.12; crop.scale.setScalar(0.05); grp.add(crop);
+    grp.position.set(x, world.heightAt(x, z), z);
+    world.scene.add(grp);
+    world.plots.push({ group: grp, crop, x, z, t: 0, ripe: false });
   };
 
   world.treeIndex = function (tree) { return world.trees.indexOf(tree); };

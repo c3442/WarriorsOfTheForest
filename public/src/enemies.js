@@ -118,8 +118,8 @@
     }
     // limbs: [leftLeg, rightLeg, leftArm, rightArm] — arms held out front
     const legs = [];
-    const legGeo = new THREE.BoxGeometry(0.2, 0.9, 0.2);
-    for (const sx of [-0.16, 0.16]) { const leg = new THREE.Mesh(legGeo, cloth); leg.position.set(sx, 0.5, 0); leg.castShadow = true; g.add(leg); legs.push(leg); }
+    const legGeo = new THREE.BoxGeometry(0.22, 0.6, 0.22);   // shorter, stockier legs
+    for (const sx of [-0.16, 0.16]) { const leg = new THREE.Mesh(legGeo, cloth); leg.position.set(sx, 0.3, 0); leg.castShadow = true; g.add(leg); legs.push(leg); }
     const armGeo = new THREE.BoxGeometry(0.16, 0.72, 0.16);
     for (const sx of [-0.36, 0.36]) { const arm = new THREE.Mesh(armGeo, skin); arm.position.set(sx, 1.4, 0.34); arm.rotation.x = -1.45; arm.castShadow = true; g.add(arm); legs.push(arm); }
     g.userData = { type: 'enemy', kind: 'zombie', legs, mat: cloth, eyeMat };
@@ -263,7 +263,18 @@
         g.position.x -= (dx / d) * 0.3;
         g.position.z -= (dz / d) * 0.3;
       }
-      g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(e.t * 10)) * 0.05;
+      // barbed wire / hazards hurt enemies standing on them
+      for (const hz of W.world.hazards) {
+        if (Math.hypot(g.position.x - hz.x, g.position.z - hz.z) < hz.r) {
+          e.hp -= hz.dps * dt;
+          if (e.hp <= 0) { enemies.kill(e); break; }
+        }
+      }
+      if (!e.alive) continue;
+
+      const bob = Math.abs(Math.sin(e.t * (e.kind === 'zombie' ? 6 : 11))) * 0.06;
+      g.position.y = W.world.heightAt(g.position.x, g.position.z) + bob;
+      g.rotation.z = Math.sin(e.t * (e.kind === 'zombie' ? 3 : 8)) * 0.04; // slight sway
     }
     animateDying(dt);
   };

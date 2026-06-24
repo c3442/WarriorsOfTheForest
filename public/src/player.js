@@ -12,8 +12,8 @@
     bottle: 5, bottleMax: 5,
     wood: 0, kills: 0,
     attackDmg: 2, attackRange: 4.0, armor: 1.0,        // upgraded by crafting
-    axeLevel: 0, spearLevel: 0,
-    craftOpen: false, hasArmor: false,
+    axeLevel: 0,
+    craftOpen: false, hasArmor: false, hasSword: false, hasShield: false, currentWeapon: 'axe',
     yaw: 0, pitch: 0,
     vy: 0, grounded: true,
     lastHurt: -99, lastAttack: -99,
@@ -34,24 +34,37 @@
     player.pos = new THREE.Vector3(start.x, W.world.heightAt(start.x, start.z) + C.EYE_HEIGHT, start.z);
 
     buildAxe(camera);
+    buildSword(camera);
+    buildShield(camera);
     buildBottle(camera);
     buildHeldBerry(camera);
+    equipWeapon('axe');
     player.dropped = [];
 
-    // --- input: WASD move, trackpad/mouse look (pointer-lock), Q attack, etc. ---
+    // --- input: WASD move, trackpad/mouse look, click attack, etc. ---
     window.addEventListener('keydown', (e) => {
       player.keys[e.code] = true;
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
       if (e.code === 'KeyQ') player.attack();
+      if (e.code === 'KeyX') player.switchWeapon();
       if (e.code === 'KeyE') player.eat();
       if (e.code === 'KeyF') player.drink();
       if (e.code === 'KeyG') player.grab();
-      if (e.code === 'KeyK') player.dropBerry();
+      if (e.code === 'KeyH') player.dropBerry();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
+      if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
       if (e.code === 'KeyC') { player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft(); }
-      if (player.craftOpen && /^Digit[1-4]$/.test(e.code)) player.craft(e.code.slice(5));
+      if (player.craftOpen && /^Digit[1-8]$/.test(e.code)) player.craft(e.code.slice(5));
     });
-    window.addEventListener('keyup', (e) => { player.keys[e.code] = false; });
+    window.addEventListener('keyup', (e) => {
+      player.keys[e.code] = false;
+      if (e.code === 'KeyJ') W.hud.showKeyHelp(false);
+    });
+
+    // Trackpad / mouse click = swing your weapon (whenever you're playing).
+    document.addEventListener('mousedown', (e) => {
+      if (e.button === 0 && player.active) player.attack();
+    });
 
     // Trackpad / mouse move = look around. Captured so you can turn freely (no edge-stop).
     document.addEventListener('mousemove', (e) => {
@@ -99,9 +112,65 @@
     g.rotation.set(-0.15, -0.5, 0.2);
     g.scale.setScalar(0.46);
     camera.add(g);
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
     player.axe = g;
-    player.axeRest = g.rotation.clone();
   }
+
+  function buildSword(camera) {
+    const g = new THREE.Group();
+    const steel = new THREE.MeshStandardMaterial({ color: 0xd8dce4, roughness: 0.28, metalness: 0.55 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0x9a7634, roughness: 0.5, metalness: 0.4 });
+    const grip = new THREE.MeshStandardMaterial({ color: 0x4a3320, roughness: 1 });
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.0, 0.02), steel); blade.position.y = 0.72; g.add(blade);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 4), steel); tip.position.y = 1.31; g.add(tip);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.09), brass); guard.position.y = 0.2; g.add(guard);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.24, 8), grip); handle.position.y = 0.06; g.add(handle);
+    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), brass); pommel.position.y = -0.08; g.add(pommel);
+    g.position.set(0.34, -0.5, -0.7);
+    g.rotation.set(-0.2, -0.4, 0.15);
+    g.scale.setScalar(0.5);
+    g.visible = false;
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
+    camera.add(g);
+    player.sword = g;
+  }
+
+  function buildShield(camera) {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 1, flatShading: true });
+    const rim = new THREE.MeshStandardMaterial({ color: 0xb9c0c9, roughness: 0.5, metalness: 0.35 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.06, 10), wood);
+    body.rotation.x = Math.PI / 2; g.add(body);
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), rim); boss.position.z = 0.05; g.add(boss);
+    g.position.set(-0.52, -0.32, -0.62);
+    g.rotation.set(0, 0.3, 0);
+    g.visible = false;
+    camera.add(g);
+    player.shield3d = g;
+  }
+
+  function equipWeapon(which) {
+    const isSword = which === 'sword' && !!player.sword;
+    const w = isSword ? player.sword : player.axe;
+    player.axe.visible = !isSword;
+    if (player.sword) player.sword.visible = isSword;
+    player.weapon = w;
+    player.weaponRest = w.userData.rest;
+    player.weaponHome = w.userData.home;
+    player.currentWeapon = isSword ? 'sword' : 'axe';
+    player.swing = undefined;
+    w.rotation.copy(w.userData.rest);
+    w.position.copy(w.userData.home);
+  }
+
+  // X switches between the axe and the crafted sword.
+  player.switchWeapon = function () {
+    if (!player.hasSword) { W.hud.toast('Craft a Sword first (C)'); return; }
+    equipWeapon(player.currentWeapon === 'sword' ? 'axe' : 'sword');
+    W.hud.toast(player.currentWeapon === 'sword' ? '⚔️ Sword equipped' : '🪓 Axe equipped');
+  };
 
   const BOTTLE_HOME = new THREE.Vector3(-0.42, -0.4, -0.7);
   function buildBottle(camera) {
@@ -202,6 +271,17 @@
 
   player.eat = function () {
     if (!player.alive || !player.active) return;
+    // harvest a ripe crop from a nearby farm plot first
+    if (W.world.plots) {
+      for (const plot of W.world.plots) {
+        if (plot.ripe && U.dist2(player.pos.x, player.pos.z, plot.x, plot.z) < 2.6) {
+          plot.ripe = false; plot.t = 0;
+          player.hunger = U.clamp(player.hunger + 45, 0, 100);
+          W.hud.toast('Harvested a crop 🥕 +45 food');
+          return;
+        }
+      }
+    }
     let best = null, bestD = 3.0;
     for (const b of W.world.bushes) {
       if (!b.ready) continue;
@@ -288,16 +368,13 @@
   };
 
   // --- Crafting / upgrades ----------------------------------------------------
-  const BARRICADE_COST = 5, ARMOR_COST = 10;
   const axeCost = () => 8 + player.axeLevel * 4;     // each upgrade costs more
-  const spearCost = () => 6 + player.spearLevel * 3;
 
   function refreshCraft() {
     W.hud.updateCraft({
       wood: player.wood,
       axeLevel: player.axeLevel, axeCost: axeCost(),
-      spearLevel: player.spearLevel, spearCost: spearCost(),
-      armor: player.hasArmor,
+      armor: player.hasArmor, sword: player.hasSword, shield: player.hasShield,
     });
   }
 
@@ -307,25 +384,45 @@
       if (player.wood < c) { W.hud.toast('Need ' + c + ' wood (have ' + player.wood + ')'); return false; }
       player.wood -= c; return true;
     };
+    const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
+    const ahead = (dist) => ({ x: player.pos.x + (-sin) * dist, z: player.pos.z + (-cos) * dist });
 
-    if (id === '1') {                                   // Barricade (repeatable defence)
-      if (!pay(BARRICADE_COST)) return;
-      const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
-      W.world.placeBarricade(player.pos.x + (-sin) * 1.7, player.pos.z + (-cos) * 1.7, player.yaw);
+    if (id === '1') {                        // Barricade (repeatable defence)
+      if (!pay(5)) return;
+      const p = ahead(1.7); W.world.placeBarricade(p.x, p.z, player.yaw);
       W.hud.toast('Built a barricade 🪵');
-    } else if (id === '2') {                            // Upgrade Axe (repeatable weapon)
+    } else if (id === '2') {                 // Upgrade Axe (repeatable weapon)
       if (!pay(axeCost())) return;
       player.axeLevel += 1; player.attackDmg += 2;
       W.hud.toast('Axe upgraded! ⚔️ Lv ' + player.axeLevel + ' · dmg ' + player.attackDmg);
-    } else if (id === '3') {                            // Wooden Armor (one-time defence)
-      if (player.hasArmor) { W.hud.toast('Already wearing armor'); return; }
-      if (!pay(ARMOR_COST)) return;
-      player.hasArmor = true; player.armor = 0.55;
+    } else if (id === '3') {                 // Wooden Armor (one-time defence)
+      if (player.hasArmor) { W.hud.toast('Already have armor'); return; }
+      if (!pay(10)) return;
+      player.hasArmor = true; player.armor *= 0.6;
       W.hud.toast('Wooden armor on 🛡️ less damage');
-    } else if (id === '4') {                            // Upgrade Spear / reach (repeatable weapon)
-      if (!pay(spearCost())) return;
-      player.spearLevel += 1; player.attackRange += 0.6;
-      W.hud.toast('Spear upgraded! 🔱 Lv ' + player.spearLevel + ' · reach ' + player.attackRange.toFixed(1));
+    } else if (id === '4') {                 // Barbed Wire (placeable hazard)
+      if (!pay(8)) return;
+      const p = ahead(1.7); W.world.placeBarbedWire(p.x, p.z, player.yaw);
+      W.hud.toast('Barbed wire set — it hurts beasts');
+    } else if (id === '5') {                 // Logs (placeable obstacle)
+      if (!pay(4)) return;
+      const p = ahead(1.5); W.world.placeLogs(p.x, p.z, player.yaw);
+      W.hud.toast('Stacked some logs 🪵');
+    } else if (id === '6') {                 // Sword (one-time weapon)
+      if (player.hasSword) { W.hud.toast('Already have a sword'); return; }
+      if (!pay(12)) return;
+      player.hasSword = true; player.attackDmg += 3; equipWeapon('sword');
+      W.hud.toast('Sword forged! ⚔️ +damage · press X to switch');
+    } else if (id === '7') {                 // Shield (one-time defence)
+      if (player.hasShield) { W.hud.toast('Already have a shield'); return; }
+      if (!pay(10)) return;
+      player.hasShield = true; player.armor *= 0.65;
+      if (player.shield3d) player.shield3d.visible = true;
+      W.hud.toast('Shield ready 🛡️ blocks more');
+    } else if (id === '8') {                 // Farming Plot
+      if (!pay(12)) return;
+      const p = ahead(2.0); W.world.placeFarmPlot(p.x, p.z);
+      W.hud.toast('Farm plot tilled 🌱 grows food');
     } else { return; }
     refreshCraft();
   };
@@ -410,10 +507,10 @@
     if (player.grounded) player.pos.y = groundEye;
 
     // --- stats ---
-    if (wantSprint) player.stamina = U.clamp(player.stamina - 22 * dt, 0, 100);
-    else player.stamina = U.clamp(player.stamina + 13 * dt, 0, 100);
+    if (wantSprint) player.stamina = U.clamp(player.stamina - 12 * dt, 0, 100);   // lasts longer
+    else player.stamina = U.clamp(player.stamina + 15 * dt, 0, 100);
 
-    player.hunger = U.clamp(player.hunger - 0.9 * dt, 0, 100);
+    player.hunger = U.clamp(player.hunger - 0.45 * dt, 0, 100);                     // lasts longer
     player.thirst = U.clamp(player.thirst - 1.15 * dt, 0, 100);
     if (player.hunger <= 0) player.takeDamage(2.2 * dt);
     if (player.thirst <= 0) player.takeDamage(2.0 * dt);
@@ -457,20 +554,25 @@
   }
 
   function animateAxe(dt, moving) {
-    const axe = player.axe;
+    const w = player.weapon;
+    if (!w) return;
+    const rest = player.weaponRest, home = player.weaponHome;
     if (player.swing !== undefined) {
       player.swing += dt;
-      const k = player.swing / ATTACK_CD;
-      if (k >= 1) { player.swing = undefined; axe.rotation.copy(player.axeRest); }
-      else {
-        // quick chop: down then back
-        const s = Math.sin(Math.min(k, 1) * Math.PI);
-        axe.rotation.x = player.axeRest.x - s * 1.5;
-        axe.rotation.z = player.axeRest.z + s * 0.4;
-      }
+      const k = Math.min(player.swing / ATTACK_CD, 1);
+      if (k >= 1) { player.swing = undefined; w.rotation.copy(rest); w.position.copy(home); return; }
+      // wind back quickly, then chop down hard, with a small forward lunge
+      const wind = k < 0.28 ? (k / 0.28) : (1 - (k - 0.28) / 0.72);   // 0..1..0 peak at the chop
+      const chop = Math.sin(Math.min(k, 1) * Math.PI);
+      w.rotation.x = rest.x + wind * 0.5 - chop * 1.8;
+      w.rotation.z = rest.z + chop * 0.55;
+      w.position.z = home.z - chop * 0.14;
+      w.position.y = home.y - chop * 0.06;
     } else {
       const sway = moving ? Math.sin(player._t * 9) * 0.05 : Math.sin(player._t * 2) * 0.015;
-      axe.rotation.z = player.axeRest.z + sway;
+      w.rotation.x = rest.x;
+      w.rotation.z = rest.z + sway;
+      w.position.copy(home);
     }
   }
 
@@ -478,7 +580,7 @@
     Object.assign(player, {
       alive: true, health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
-      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, spearLevel: 0, hasArmor: false,
+      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasShield: false, currentWeapon: 'axe',
     });
   };
 

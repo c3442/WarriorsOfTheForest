@@ -9,7 +9,7 @@
   hud.init = function () {
     ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'killNum',
      'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
-     'craftPanel', 'craftWood', 'crow3', 'axeLv', 'axeCost', 'spearLv', 'spearCost',
+     'craftPanel', 'craftWood', 'crow3', 'crow6', 'crow7', 'axeLv', 'axeCost', 'keyHelp',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
     els.hpFill = els.hp.querySelector('i');
     els.stFill = els.st.querySelector('i');
@@ -65,10 +65,12 @@
     els.craftWood.textContent = s.wood;
     els.axeLv.textContent = 'Lv ' + s.axeLevel;
     els.axeCost.textContent = s.axeCost + ' wood';
-    els.spearLv.textContent = 'Lv ' + s.spearLevel;
-    els.spearCost.textContent = s.spearCost + ' wood';
     els.crow3.classList.toggle('owned', !!s.armor);
+    els.crow6.classList.toggle('owned', !!s.sword);
+    els.crow7.classList.toggle('owned', !!s.shield);
   };
+
+  hud.showKeyHelp = function (show) { if (els.keyHelp) els.keyHelp.classList.toggle('hidden', !show); };
 
   hud.flashDamage = function (intensity) {
     els.flash.style.opacity = intensity;
