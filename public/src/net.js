@@ -127,7 +127,7 @@
       ensureAvatar(conn.peer).pose = m;
       setRemoteName(conn.peer, m.name);
     } else if (m.t === 'hit') {
-      const killed = W.enemies.damageById(m.id, ATTACK_DMG, { x: m.x, z: m.z });
+      const killed = W.enemies.damageById(m.id, m.dmg || ATTACK_DMG, { x: m.x, z: m.z });
       if (killed) conn.send({ t: 'killcredit', kind: m.k });
     } else if (m.t === 'chop') {
       W.world.felByIndex(m.idx);
@@ -209,11 +209,11 @@
     }
   };
 
-  net.sendHit = function (id) {
+  net.sendHit = function (id, dmg) {
     const conn = net._conns[0];
     if (conn && conn.open) {
       const e = W.enemies.list.find((x) => x.id === id);
-      conn.send({ t: 'hit', id, x: W.player.pos.x, z: W.player.pos.z, k: e && e.kind === 'werewolf' ? 1 : 0 });
+      conn.send({ t: 'hit', id, dmg: dmg || ATTACK_DMG, x: W.player.pos.x, z: W.player.pos.z, k: e && e.kind === 'werewolf' ? 1 : 0 });
     }
   };
 

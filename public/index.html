@@ -12,7 +12,7 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;overflow:hidden;background:#10130d;font-family:'Trebuchet MS',system-ui,sans-serif;color:var(--ink);}
   #app{position:fixed;inset:0;}
-  canvas{display:block;}
+  canvas{display:block;cursor:none;}
 
   /* Crosshair */
   #cross{position:fixed;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;
@@ -47,6 +47,23 @@
     pointer-events:none;opacity:0;transition:opacity .4s;text-shadow:0 2px 10px #000;}
   #banner .big{font-size:30px;font-weight:bold;letter-spacing:1px;}
   #banner .sub{font-size:15px;opacity:.85;}
+
+  /* Crafting panel */
+  #craftPanel{position:fixed;right:16px;top:84px;width:280px;background:var(--panel);border-radius:10px;
+    padding:12px 14px;backdrop-filter:blur(2px);}
+  #craftPanel .ctitle{font-size:15px;color:#fff;margin-bottom:8px;letter-spacing:.5px;}
+  #craftPanel .ctitle b{color:#cfe8b6;}
+  #craftPanel .crow{padding:6px 8px;border-radius:7px;background:rgba(0,0,0,.28);margin-bottom:6px;font-size:13px;}
+  #craftPanel .crow > b{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;
+    background:#3a4a2a;border-radius:4px;margin-right:6px;color:#dfeec8;font-size:12px;}
+  #craftPanel .crow i{color:#ffce9a;font-style:normal;margin-left:4px;}
+  #craftPanel .crow em{font-style:normal;color:#9adcff;font-size:11px;background:rgba(90,170,230,.18);
+    border-radius:4px;padding:0 5px;margin-left:2px;}
+  #craftPanel .crow span{display:block;color:#9a9583;font-size:11px;margin:2px 0 0 24px;}
+  #craftPanel .crow.owned{opacity:.45;}
+  #craftPanel .crow.owned i::after{content:' ✓ owned';color:#8fd36a;}
+  #craftPanel .chint{color:#8fae74;font-size:11px;margin-top:4px;}
+  #craftPanel .chint b{background:#2a2f22;border:1px solid #444b35;border-radius:4px;padding:0 5px;}
 
   /* Damage flash */
   #flash{position:fixed;inset:0;background:radial-gradient(circle at center, transparent 40%, rgba(220,30,30,.55));
@@ -112,6 +129,16 @@
 
 <div id="banner"><div class="big"></div><div class="sub"></div></div>
 
+<!-- Crafting panel -->
+<div id="craftPanel" class="hidden">
+  <div class="ctitle">🪓 CRAFTING &nbsp;·&nbsp; Wood <b id="craftWood">0</b></div>
+  <div class="crow"><b>1</b> Barricade <i>5 wood</i><span>defence · blocks wolves</span></div>
+  <div class="crow"><b>2</b> Upgrade Axe <em id="axeLv">Lv 0</em> <i id="axeCost">8 wood</i><span>weapon · +damage</span></div>
+  <div class="crow" id="crow3"><b>3</b> Wooden Armor <i>10 wood</i><span>defence · take less damage</span></div>
+  <div class="crow"><b>4</b> Upgrade Spear <em id="spearLv">Lv 0</em> <i id="spearCost">6 wood</i><span>weapon · +reach</span></div>
+  <div class="chint">press a number to craft &nbsp;·&nbsp; <b>C</b> to close</div>
+</div>
+
 <!-- Start overlay -->
 <div class="overlay" id="startOverlay">
   <h1>WARRIORS OF THE FOREST<small>FIRST-PERSON SURVIVAL</small></h1>
@@ -119,10 +146,10 @@
      fight off the creatures that hunt you after dark. How many days can you last?</p>
   <div class="keys">
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp;
-    <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> look around &nbsp;·&nbsp;
+    <kbd>Trackpad</kbd> move to look &nbsp;·&nbsp;
     <kbd>Q</kbd> swing axe (chop / attack)<br>
     <kbd>Shift</kbd> sprint &nbsp;·&nbsp; <kbd>Space</kbd> jump &nbsp;·&nbsp;
-    <kbd>E</kbd> eat berries &nbsp;·&nbsp; <kbd>F</kbd> drink &nbsp;·&nbsp; <kbd>G</kbd> grab berry &nbsp;·&nbsp; <kbd>K</kbd> drop berry &nbsp;·&nbsp; <kbd>Esc</kbd> pause
+    <kbd>E</kbd> eat &nbsp;·&nbsp; <kbd>F</kbd> drink &nbsp;·&nbsp; <kbd>G</kbd>/<kbd>K</kbd> grab/drop berry &nbsp;·&nbsp; <kbd>C</kbd> craft (wood) &nbsp;·&nbsp; <kbd>Esc</kbd> pause
   </div>
   <div id="menu">
     <input id="nameInput" maxlength="12" placeholder="YOUR NAME" autocomplete="off" />

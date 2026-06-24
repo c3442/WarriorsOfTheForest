@@ -9,6 +9,7 @@
   hud.init = function () {
     ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'killNum',
      'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
+     'craftPanel', 'craftWood', 'crow3', 'axeLv', 'axeCost', 'spearLv', 'spearCost',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
     els.hpFill = els.hp.querySelector('i');
     els.stFill = els.st.querySelector('i');
@@ -23,6 +24,7 @@
     els.thFill.style.width = s.thirst + '%';
     els.waterNum.textContent = s.bottle + '/' + s.bottleMax;
     els.berryNum.textContent = s.berries + '/' + s.berryMax;
+    if (els.craftWood) els.craftWood.textContent = s.wood;   // keep craft panel wood live
     els.todIcon.textContent = s.night ? '🌙' : '☀️';
     els.todLabel.textContent = s.night ? 'Night' : 'Day';
     els.dayNum.textContent = s.day;
@@ -56,6 +58,16 @@
     toastEl.style.opacity = 1;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { toastEl.style.opacity = 0; }, 900);
+  };
+
+  hud.toggleCraft = function (open) { els.craftPanel.classList.toggle('hidden', !open); };
+  hud.updateCraft = function (s) {
+    els.craftWood.textContent = s.wood;
+    els.axeLv.textContent = 'Lv ' + s.axeLevel;
+    els.axeCost.textContent = s.axeCost + ' wood';
+    els.spearLv.textContent = 'Lv ' + s.spearLevel;
+    els.spearCost.textContent = s.spearCost + ' wood';
+    els.crow3.classList.toggle('owned', !!s.armor);
   };
 
   hud.flashDamage = function (intensity) {

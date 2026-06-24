@@ -11,6 +11,9 @@
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
     wood: 0, kills: 0,
+    attackDmg: 2, attackRange: 4.0, armor: 1.0,        // upgraded by crafting
+    axeLevel: 0, spearLevel: 0,
+    craftOpen: false, hasArmor: false,
     yaw: 0, pitch: 0,
     vy: 0, grounded: true,
     lastHurt: -99, lastAttack: -99,
@@ -19,7 +22,7 @@
   };
 
   const SPEED = 5.2, SPRINT = 1.7, GRAV = 20, JUMP = 7.2;
-  const ATTACK_CD = 0.45, ATTACK_RANGE = 4.0, ATTACK_DMG = 2;
+  const ATTACK_CD = 0.45;
 
   player.init = function (camera, dom, scene) {
     player.camera = camera;
@@ -35,18 +38,27 @@
     buildHeldBerry(camera);
     player.dropped = [];
 
-    // --- input (keyboard only): WASD move, arrows look, Q attack, E eat ---
-    const PREVENT = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, Space: 1 };
+    // --- input: WASD move, trackpad/mouse look (pointer-lock), Q attack, etc. ---
     window.addEventListener('keydown', (e) => {
       player.keys[e.code] = true;
-      if (PREVENT[e.code]) e.preventDefault();
+      if (e.code === 'Space') e.preventDefault();
       if (e.code === 'KeyQ') player.attack();
       if (e.code === 'KeyE') player.eat();
       if (e.code === 'KeyF') player.drink();
       if (e.code === 'KeyG') player.grab();
       if (e.code === 'KeyK') player.dropBerry();
+      if (e.code === 'KeyC') { player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft(); }
+      if (player.craftOpen && /^Digit[1-4]$/.test(e.code)) player.craft(e.code.slice(5));
     });
     window.addEventListener('keyup', (e) => { player.keys[e.code] = false; });
+
+    // One-finger trackpad / mouse move = look around (no capture needed).
+    document.addEventListener('mousemove', (e) => {
+      if (!player.active) return;
+      const s = 0.0024;
+      player.yaw -= e.movementX * s;
+      player.pitch = U.clamp(player.pitch - e.movementY * s, -1.45, 1.45);
+    });
   };
 
   function buildAxe(camera) {
@@ -138,7 +150,7 @@
 
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
-    ray.far = ATTACK_RANGE;
+    ray.far = player.attackRange;
 
     const targets = [];
     W.world.trees.forEach((t) => { if (t.userData.alive) targets.push(t); });
@@ -153,9 +165,9 @@
       // can't strike a wolf through a tent wall (same cover rule as their bite)
       if (W.world.wallBetween(player.pos.x, player.pos.z, root.position.x, root.position.z)) return;
       if (W.net && W.net.role === 'client') {
-        W.net.sendHit(root.userData.id);          // host resolves the damage
+        W.net.sendHit(root.userData.id, player.attackDmg);  // host resolves the damage
       } else {
-        const killed = W.enemies.damage(root, ATTACK_DMG, player.pos);
+        const killed = W.enemies.damage(root, player.attackDmg, player.pos);
         if (killed) player.creditKill(root.userData.kind);
       }
     } else if (root.userData.type === 'tree') {
@@ -274,6 +286,49 @@
     W.hud.toast('Dropped a berry 🍓 (' + player.berries + '/' + player.berryMax + ')');
   };
 
+  // --- Crafting / upgrades ----------------------------------------------------
+  const BARRICADE_COST = 5, ARMOR_COST = 10;
+  const axeCost = () => 8 + player.axeLevel * 4;     // each upgrade costs more
+  const spearCost = () => 6 + player.spearLevel * 3;
+
+  function refreshCraft() {
+    W.hud.updateCraft({
+      wood: player.wood,
+      axeLevel: player.axeLevel, axeCost: axeCost(),
+      spearLevel: player.spearLevel, spearCost: spearCost(),
+      armor: player.hasArmor,
+    });
+  }
+
+  player.craft = function (id) {
+    if (!player.alive || !player.active) return;
+    const pay = (c) => {
+      if (player.wood < c) { W.hud.toast('Need ' + c + ' wood (have ' + player.wood + ')'); return false; }
+      player.wood -= c; return true;
+    };
+
+    if (id === '1') {                                   // Barricade (repeatable defence)
+      if (!pay(BARRICADE_COST)) return;
+      const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
+      W.world.placeBarricade(player.pos.x + (-sin) * 1.7, player.pos.z + (-cos) * 1.7, player.yaw);
+      W.hud.toast('Built a barricade 🪵');
+    } else if (id === '2') {                            // Upgrade Axe (repeatable weapon)
+      if (!pay(axeCost())) return;
+      player.axeLevel += 1; player.attackDmg += 2;
+      W.hud.toast('Axe upgraded! ⚔️ Lv ' + player.axeLevel + ' · dmg ' + player.attackDmg);
+    } else if (id === '3') {                            // Wooden Armor (one-time defence)
+      if (player.hasArmor) { W.hud.toast('Already wearing armor'); return; }
+      if (!pay(ARMOR_COST)) return;
+      player.hasArmor = true; player.armor = 0.55;
+      W.hud.toast('Wooden armor on 🛡️ less damage');
+    } else if (id === '4') {                            // Upgrade Spear / reach (repeatable weapon)
+      if (!pay(spearCost())) return;
+      player.spearLevel += 1; player.attackRange += 0.6;
+      W.hud.toast('Spear upgraded! 🔱 Lv ' + player.spearLevel + ' · reach ' + player.attackRange.toFixed(1));
+    } else { return; }
+    refreshCraft();
+  };
+
   player.drink = function () {
     if (!player.alive || !player.active) return;
     if (W.world.isWater(player.pos.x, player.pos.z)) {
@@ -293,6 +348,7 @@
 
   player.takeDamage = function (amount) {
     if (!player.alive) return;
+    amount *= player.armor;          // wooden armor reduces incoming damage
     player.health -= amount;
     player.lastHurt = player._t;
     W.hud.flashDamage(U.clamp(amount / 14, 0.25, 0.9));
@@ -307,13 +363,6 @@
     player._t += dt;
     if (!player.alive) return;
     const k = player.keys;
-
-    // --- look with arrow keys ---
-    const LOOK = 2.0; // radians/sec
-    if (k.ArrowLeft) player.yaw += LOOK * dt;
-    if (k.ArrowRight) player.yaw -= LOOK * dt;
-    if (k.ArrowUp) player.pitch = U.clamp(player.pitch + LOOK * dt, -1.45, 1.45);
-    if (k.ArrowDown) player.pitch = U.clamp(player.pitch - LOOK * dt, -1.45, 1.45);
 
     // --- movement direction relative to yaw ---
     let fwd = (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0);
@@ -421,6 +470,7 @@
     Object.assign(player, {
       alive: true, health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
+      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, spearLevel: 0, hasArmor: false,
     });
   };
 

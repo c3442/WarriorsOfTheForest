@@ -155,7 +155,9 @@
     }
     // Rocks
     for (let i = 0; i < C.ROCK_COUNT; i++) {
-      const p = U.pointInDisc(C.WORLD_RADIUS);
+      let p = U.pointInDisc(C.WORLD_RADIUS);
+      let guard = 0;
+      while (U.dist2(p.x, p.z, 0, 0) < CAMP_CLEAR && guard++ < 16) p = U.pointInDisc(C.WORLD_RADIUS);
       const m = makeRock();
       m.position.set(p.x, world.heightAt(p.x, p.z), p.z);
       scene.add(m);
@@ -453,8 +455,20 @@
       const bed = makeBed(tentCols[i]);              // blanket matches the tent colour
       bed.position.set(-0.55, 0, -0.5);              // inside, toward the back; entrance stays clear
       const stuffie = makeStuffieFor(i);
-      stuffie.position.set(0, 0.38, -0.2);           // sitting on the mattress near the pillow
+      stuffie.position.set(0, 0.38, -0.2);           // themed one, near the pillow
       bed.add(stuffie);
+      // a couple more little plushies scattered on the bed
+      const extras = [
+        () => makeBear(0x8a5a3a), () => makeBear(0xd8c084), () => makeBunny(0xe6a6c8),
+        () => makeBunny(0x9ad0a0), () => makeDog(0x9a9a9a), () => makeCat(),
+      ];
+      for (let k = 0; k < 2; k++) {
+        const ex = extras[U.randInt(0, extras.length - 1)]();
+        ex.scale.setScalar(0.7);
+        ex.position.set(-0.28 + k * 0.56, 0.4, 0.18 - k * 0.06);
+        ex.rotation.y = U.rand(-0.6, 0.6);
+        bed.add(ex);
+      }
       tent.add(bed);
 
       tent.lookAt(cx, gy, cz); // open front faces the fire
@@ -597,6 +611,31 @@
       if (Math.hypot(w.x - px, w.z - pz) < w.r) return true;
     }
     return false;
+  };
+
+  // Place a crafted wooden barricade (a solid wall that blocks wolves).
+  world.placeBarricade = function (x, z, yaw) {
+    const Wd = 1.9, H = 1.5, T = 0.18;
+    const grp = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(Wd, H, T), mat);
+    wall.position.y = H / 2; wall.castShadow = true; grp.add(wall);
+    for (const sx of [-Wd / 2, Wd / 2]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, H + 0.25, 6), mat);
+      post.position.set(sx, (H + 0.25) / 2, 0); post.castShadow = true; grp.add(post);
+    }
+    grp.position.set(x, world.heightAt(x, z), z);
+    grp.rotation.y = yaw;
+    world.scene.add(grp);
+
+    // collider beads along the wall's width (so it stops movement + bites + your axe)
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    for (let t = -Wd / 2; t <= Wd / 2 + 0.01; t += 0.38) {
+      const bead = { x: x + cos * t, z: z - sin * t, r: 0.3 };
+      world.colliders.push(bead);
+      world.tentWalls.push(bead);
+    }
+    return grp;
   };
 
   world.treeIndex = function (tree) { return world.trees.indexOf(tree); };
