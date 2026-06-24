@@ -7,6 +7,7 @@
   const player = {
     active: false,
     alive: true,
+    berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
     wood: 0, kills: 0,
@@ -31,6 +32,8 @@
 
     buildAxe(camera);
     buildBottle(camera);
+    buildHeldBerry(camera);
+    player.dropped = [];
 
     // --- input (keyboard only): WASD move, arrows look, Q attack, E eat ---
     const PREVENT = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, Space: 1 };
@@ -40,6 +43,8 @@
       if (e.code === 'KeyQ') player.attack();
       if (e.code === 'KeyE') player.eat();
       if (e.code === 'KeyF') player.drink();
+      if (e.code === 'KeyG') player.grab();
+      if (e.code === 'KeyK') player.dropBerry();
     });
     window.addEventListener('keyup', (e) => { player.keys[e.code] = false; });
   };
@@ -58,13 +63,10 @@
     // Head assembly at the top of the handle.
     const head = new THREE.Group();
     head.position.y = 0.95;
-    head.rotation.y = Math.PI; // blade faces the other way
     const eye = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.2, 0.14), metal);   // socket around the handle
     head.add(eye);
-    const poll = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.12), metal); // blunt back
-    poll.position.x = -0.11; head.add(poll);
 
-    // Blade: a flat, curved bit that flares out to a cutting edge.
+    // Double-bit head: a curved cutting blade flaring out on BOTH sides.
     const shape = new THREE.Shape();
     shape.moveTo(0.05, -0.14);
     shape.lineTo(0.05, 0.16);
@@ -73,8 +75,11 @@
     shape.lineTo(0.05, -0.14);
     const bladeGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false });
     bladeGeo.translate(0, 0, -0.025);
-    const blade = new THREE.Mesh(bladeGeo, metal);
-    head.add(blade);
+    const blade1 = new THREE.Mesh(bladeGeo, metal);
+    head.add(blade1);
+    const blade2 = new THREE.Mesh(bladeGeo, metal);
+    blade2.rotation.y = Math.PI; // mirror to the other side
+    head.add(blade2);
     g.add(head);
 
     g.position.set(0.36, -0.52, -0.72);
@@ -145,6 +150,8 @@
     if (!root) return;
 
     if (root.userData.type === 'enemy') {
+      // can't strike a wolf through a tent wall (same cover rule as their bite)
+      if (W.world.wallBetween(player.pos.x, player.pos.z, root.position.x, root.position.z)) return;
       if (W.net && W.net.role === 'client') {
         W.net.sendHit(root.userData.id);          // host resolves the damage
       } else {
@@ -197,6 +204,74 @@
       best.ready = true;
       best.mesh.userData.berries.forEach((berry) => { berry.visible = true; });
     }, 25000);
+  };
+
+  function buildHeldBerry(camera) {
+    const g = new THREE.Group();
+    const berry = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0xd23a4a, roughness: 0.45, emissive: 0x320000 }));
+    g.add(berry);
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.05, 4),
+      new THREE.MeshStandardMaterial({ color: 0x3a7a35, roughness: 1 }));
+    leaf.position.y = 0.06; leaf.rotation.x = 0.4; g.add(leaf);
+    g.position.set(0.0, -0.26, -0.42);
+    g.visible = false;
+    camera.add(g);
+    player.heldBerry = g;
+  }
+
+  function makeGroundBerry() {
+    const g = new THREE.Group();
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10),
+      new THREE.MeshStandardMaterial({ color: 0xd23a4a, roughness: 0.45, emissive: 0x320000 }));
+    b.castShadow = true; g.add(b);
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.07, 4),
+      new THREE.MeshStandardMaterial({ color: 0x3a7a35, roughness: 1 }));
+    leaf.position.y = 0.09; leaf.rotation.x = 0.4; g.add(leaf);
+    return g;
+  }
+
+  // G: pick up a berry (carry up to 5) from a dropped berry or a nearby bush.
+  player.grab = function () {
+    if (!player.alive || !player.active) return;
+    if (player.berries >= player.berryMax) { W.hud.toast('Hands full (5/5)'); return; }
+    // nearest dropped berry first
+    let best = -1, bestD = 2.5;
+    for (let i = 0; i < player.dropped.length; i++) {
+      const g = player.dropped[i];
+      const d = U.dist2(player.pos.x, player.pos.z, g.position.x, g.position.z);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best >= 0) {
+      player.scene.remove(player.dropped[best]);
+      player.dropped.splice(best, 1);
+    } else {
+      // otherwise pick one off a nearby bush
+      let fromBush = false;
+      for (const bush of W.world.bushes) {
+        if (bush.ready && U.dist2(player.pos.x, player.pos.z, bush.x, bush.z) < 3.0) { fromBush = true; break; }
+      }
+      if (!fromBush) { W.hud.toast('No berries nearby'); return; }
+    }
+    player.berries += 1;
+    player.heldBerry.visible = true;
+    W.hud.toast('Picked a berry 🍓 (' + player.berries + '/' + player.berryMax + ')');
+  };
+
+  // K: drop one carried berry onto the ground in front of you.
+  player.dropBerry = function () {
+    if (!player.alive || !player.active) return;
+    if (player.berries <= 0) { W.hud.toast('No berries to drop'); return; }
+    const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
+    const fx = player.pos.x + (-sin) * 1.0;
+    const fz = player.pos.z + (-cos) * 1.0;
+    const g = makeGroundBerry();
+    g.position.set(fx, W.world.heightAt(fx, fz) + 0.09, fz);
+    player.scene.add(g);
+    player.dropped.push(g);
+    player.berries -= 1;
+    player.heldBerry.visible = player.berries > 0;
+    W.hud.toast('Dropped a berry 🍓 (' + player.berries + '/' + player.berryMax + ')');
   };
 
   player.drink = function () {
@@ -345,7 +420,7 @@
   player.reset = function () {
     Object.assign(player, {
       alive: true, health: 100, stamina: 100, hunger: 100, thirst: 100,
-      bottle: 5, bottleMax: 5, wood: 0, kills: 0, vy: 0,
+      bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
     });
   };
 

@@ -133,10 +133,11 @@
 
   function scatter(scene) {
     const placed = [];
+    const CAMP_CLEAR = 12;                        // no trees/bushes within this radius of camp
     const okSpot = (x, z, minGap) =>
       placed.every((p) => U.dist2(x, z, p.x, p.z) > minGap) &&
-      U.dist2(x, z, 0, 0) > 9 &&                  // keep the camp clearing open
-      world.heightAt(x, z) > C.WATER_LEVEL + 0.4; // stay out of the water
+      U.dist2(x, z, 0, 0) > CAMP_CLEAR &&          // keep the camp clearing open
+      world.heightAt(x, z) > C.WATER_LEVEL + 0.4;  // stay out of the water
 
     // Trees
     let tries = 0;
@@ -164,7 +165,9 @@
     for (let i = 0; i < C.BUSH_COUNT; i++) {
       let p = U.pointInDisc(C.WORLD_RADIUS);
       let guard = 0;
-      while (world.heightAt(p.x, p.z) <= C.WATER_LEVEL + 0.4 && guard++ < 8) p = U.pointInDisc(C.WORLD_RADIUS);
+      while ((world.heightAt(p.x, p.z) <= C.WATER_LEVEL + 0.4 || U.dist2(p.x, p.z, 0, 0) < CAMP_CLEAR) && guard++ < 16) {
+        p = U.pointInDisc(C.WORLD_RADIUS);
+      }
       const b = makeBush();
       b.position.set(p.x, world.heightAt(p.x, p.z) + 0.2, p.z);
       scene.add(b);
@@ -309,7 +312,7 @@
 
     // --- 4 roomy wall-tents (vertical walls + peaked roof), ringing the fire ---
     // Vertical walls keep your head well clear of the canvas, so no see-through.
-    const tentCols = [0xc09257, 0xa9763f, 0x8f9c5a, 0xb56b4a];
+    const tentCols = [0xe5352b, 0x25cdd6, 0xf266b0, 0xf2f2f2]; // fire red, aqua blue, pink, white
     const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x42301f, roughness: 1 });
     const R = 5.0, Wd = 3.6, Dp = 4.0, Hw = 2.4, Rh = 1.3;   // ring, width, depth, wall height, roof rise
     const wallT = 0.1;
@@ -321,6 +324,103 @@
     const gable = new THREE.Shape();
     gable.moveTo(-Wd / 2, 0); gable.lineTo(Wd / 2, 0); gable.lineTo(0, Rh); gable.lineTo(-Wd / 2, 0);
     const gableGeo = new THREE.ShapeGeometry(gable);
+
+    function makeBed(blanketColor) {
+      const bed = new THREE.Group();
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.2, 1.95),
+        new THREE.MeshStandardMaterial({ color: 0x5e3f23, roughness: 1 }));
+      frame.position.y = 0.13; frame.castShadow = true; bed.add(frame);
+      const mattress = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.16, 1.86),
+        new THREE.MeshStandardMaterial({ color: 0xdcd2bd, roughness: 1, flatShading: true }));
+      mattress.position.y = 0.3; mattress.castShadow = true; bed.add(mattress);
+      const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 1.05),
+        new THREE.MeshStandardMaterial({ color: blanketColor, roughness: 1, flatShading: true }));
+      blanket.position.set(0, 0.39, 0.36); bed.add(blanket);
+      const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.14, 0.34),
+        new THREE.MeshStandardMaterial({ color: 0xf3efe6, roughness: 1, flatShading: true }));
+      pillow.position.set(0, 0.37, -0.7); bed.add(pillow);
+      return bed;
+    }
+
+    // --- Plush stuffies (one kind per tent) ---
+    const EYE = () => new THREE.MeshStandardMaterial({ color: 0x1c1410, roughness: 0.5 });
+
+    function makeBear(color) {
+      const g = new THREE.Group();
+      const fur = new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), fur);
+      body.scale.set(1, 1.1, 0.9); body.position.y = 0.12; body.castShadow = true; g.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), fur);
+      head.position.set(0, 0.29, 0.02); head.castShadow = true; g.add(head);
+      for (const sx of [-0.06, 0.06]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), fur); ear.position.set(sx, 0.35, 0); g.add(ear); }
+      const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), new THREE.MeshStandardMaterial({ color: 0xf0e2cc, roughness: 1 }));
+      muzzle.position.set(0, 0.27, 0.085); g.add(muzzle);
+      for (const sx of [-0.035, 0.035]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.013, 6, 6), EYE()); e.position.set(sx, 0.31, 0.088); g.add(e); }
+      for (const sx of [-0.12, 0.12]) { const arm = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), fur); arm.scale.set(1, 1.4, 1); arm.position.set(sx, 0.15, 0.04); g.add(arm); }
+      for (const sx of [-0.06, 0.06]) { const leg = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), fur); leg.position.set(sx, 0.04, 0.07); g.add(leg); }
+      return g;
+    }
+
+    function makeBunny(color) {
+      const g = new THREE.Group();
+      const fur = new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), fur);
+      body.scale.set(1, 1.2, 0.9); body.position.y = 0.12; body.castShadow = true; g.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 8), fur);
+      head.position.set(0, 0.28, 0.02); head.castShadow = true; g.add(head);
+      for (const sx of [-0.04, 0.04]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), fur); ear.scale.set(1, 3.2, 0.7); ear.position.set(sx, 0.43, 0); ear.rotation.z = sx * 3; ear.castShadow = true; g.add(ear); }
+      for (const sx of [-0.035, 0.035]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.013, 6, 6), EYE()); e.position.set(sx, 0.3, 0.078); g.add(e); }
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.015, 6, 6), new THREE.MeshStandardMaterial({ color: 0xf07a90, roughness: 0.6 }));
+      nose.position.set(0, 0.27, 0.085); g.add(nose);
+      const tail = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }));
+      tail.position.set(0, 0.1, -0.1); g.add(tail);
+      for (const sx of [-0.06, 0.06]) { const foot = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), fur); foot.scale.set(1, 0.7, 1.5); foot.position.set(sx, 0.03, 0.08); g.add(foot); }
+      return g;
+    }
+
+    function makeCat() { // Hello Kitty: white cat, red bow, yellow nose, whiskers, no mouth
+      const g = new THREE.Group();
+      const white = new THREE.MeshStandardMaterial({ color: 0xfdfdfd, roughness: 1, flatShading: true });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), white);
+      body.scale.set(1, 1.1, 0.9); body.position.y = 0.11; body.castShadow = true; g.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 9, 9), white);
+      head.scale.set(1.2, 1, 0.9); head.position.set(0, 0.3, 0.02); head.castShadow = true; g.add(head);
+      for (const sx of [-0.09, 0.09]) { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.09, 4), white); ear.position.set(sx, 0.4, 0); ear.rotation.z = sx * 2; ear.castShadow = true; g.add(ear); }
+      const bowMat = new THREE.MeshStandardMaterial({ color: 0xe23a4a, roughness: 0.7 });
+      const bowC = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), bowMat); bowC.position.set(0.12, 0.41, 0.04); g.add(bowC);
+      for (const dx of [-0.032, 0.032]) { const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), bowMat); lobe.scale.set(1, 1.3, 0.6); lobe.position.set(0.12 + dx, 0.41, 0.04); g.add(lobe); }
+      for (const sx of [-0.05, 0.05]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), EYE()); e.scale.set(0.7, 1.2, 0.5); e.position.set(sx, 0.31, 0.1); g.add(e); }
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), new THREE.MeshStandardMaterial({ color: 0xf2c84a, roughness: 0.5 }));
+      nose.scale.set(1.4, 0.8, 0.6); nose.position.set(0, 0.28, 0.105); g.add(nose);
+      const wMat = new THREE.MeshStandardMaterial({ color: 0x9a9a9a });
+      for (const side of [-1, 1]) for (const wy of [0.275, 0.305]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.13, 4), wMat); wh.rotation.z = Math.PI / 2; wh.position.set(side * 0.14, wy, 0.07); g.add(wh); }
+      return g;
+    }
+
+    function makeDog(color) {
+      const g = new THREE.Group();
+      const fur = new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true });
+      const earMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), fur);
+      body.scale.set(1, 1, 1.2); body.position.y = 0.12; body.castShadow = true; g.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 8), fur);
+      head.position.set(0, 0.28, 0.05); head.castShadow = true; g.add(head);
+      for (const sx of [-0.09, 0.09]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), earMat); ear.scale.set(0.6, 1.7, 0.5); ear.position.set(sx, 0.26, 0.02); ear.castShadow = true; g.add(ear); }
+      const snout = new THREE.Mesh(new THREE.SphereGeometry(0.05, 7, 7), fur); snout.scale.set(0.9, 0.8, 1); snout.position.set(0, 0.25, 0.14); g.add(snout);
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), new THREE.MeshStandardMaterial({ color: 0x1a1410 })); nose.position.set(0, 0.26, 0.19); g.add(nose);
+      for (const sx of [-0.04, 0.04]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 6), EYE()); e.position.set(sx, 0.31, 0.11); g.add(e); }
+      const tail = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 6), fur); tail.scale.set(1, 1, 2); tail.position.set(0, 0.16, -0.13); tail.rotation.x = -0.6; g.add(tail);
+      for (const sx of [-0.07, 0.07]) for (const sz of [-0.05, 0.08]) { const leg = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), fur); leg.position.set(sx, 0.03, sz); g.add(leg); }
+      return g;
+    }
+
+    // tent index -> stuffie: 0 red=blue bunny, 1 aqua=bear, 2 pink=Hello Kitty, 3 white=dog
+    function makeStuffieFor(i) {
+      if (i === 0) return makeBunny(0x5f8fe0);
+      if (i === 1) return makeBear(0xc9874a);
+      if (i === 2) return makeCat();
+      return makeDog(0xc59a64);
+    }
 
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
@@ -349,6 +449,13 @@
 
       const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, Dp, 6), ridgeMat);
       ridge.rotation.x = Math.PI / 2; ridge.position.set(0, Hw + Rh, 0); tent.add(ridge);
+
+      const bed = makeBed(tentCols[i]);              // blanket matches the tent colour
+      bed.position.set(-0.55, 0, -0.5);              // inside, toward the back; entrance stays clear
+      const stuffie = makeStuffieFor(i);
+      stuffie.position.set(0, 0.38, -0.2);           // sitting on the mattress near the pillow
+      bed.add(stuffie);
+      tent.add(bed);
 
       tent.lookAt(cx, gy, cz); // open front faces the fire
       camp.add(tent);

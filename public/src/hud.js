@@ -7,7 +7,7 @@
   const hud = {};
 
   hud.init = function () {
-    ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'killNum',
+    ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'killNum',
      'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
     els.hpFill = els.hp.querySelector('i');
@@ -22,6 +22,7 @@
     els.fdFill.style.width = s.hunger + '%';
     els.thFill.style.width = s.thirst + '%';
     els.waterNum.textContent = s.bottle + '/' + s.bottleMax;
+    els.berryNum.textContent = s.berries + '/' + s.berryMax;
     els.todIcon.textContent = s.night ? '🌙' : '☀️';
     els.todLabel.textContent = s.night ? 'Night' : 'Day';
     els.dayNum.textContent = s.day;

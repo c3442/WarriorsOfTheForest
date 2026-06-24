@@ -159,6 +159,7 @@
         health: Math.round(W.player.health), stamina: Math.round(W.player.stamina),
         hunger: Math.round(W.player.hunger), thirst: Math.round(W.player.thirst),
         bottle: W.player.bottle, bottleMax: W.player.bottleMax,
+        berries: W.player.berries, berryMax: W.player.berryMax,
         night, day,
         foes: W.enemies.list.length, wood: W.player.wood, kills: W.player.kills,
       });
