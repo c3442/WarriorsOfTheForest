@@ -8,7 +8,7 @@
     ROCK_COUNT: 40,
     BUSH_COUNT: 45,
     EYE_HEIGHT: 1.7,
-    DAY_LENGTH: 550,       // seconds for a full day-night cycle (5x longer)
+    DAY_LENGTH: 420,       // full cycle: ~5 min day + ~2 min night
     PLAYER_RADIUS: 0.45,
     WATER_LEVEL: -2.0,     // terrain below this fills with water
   };

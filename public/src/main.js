@@ -94,6 +94,7 @@
     W.world.init(scene);
     W.player.init(camera, renderer.domElement, scene);
     W.enemies.init(scene);
+    W.critters.init(scene);
     W.net.attach(scene);
   }
 
@@ -147,6 +148,7 @@
           : [{ pos: W.player.pos, onBite: (dmg) => W.player.takeDamage(dmg) }];
         W.enemies.update(dt, night, day, targets);
       }
+      W.critters.update(dt, W.player.pos, night);
 
       if (role) {
         W.net.tick(dt, { x: W.player.pos.x, y: W.player.pos.y, z: W.player.pos.z, yaw: W.player.yaw }, timeOfDay, day);
@@ -154,9 +156,11 @@
       }
 
       if (night && !wasNight) {
+        W.critters.clearWild();                 // foxes hide away for the night
         W.hud.banner('NIGHT FALLS', 'The beasts are coming — stay alive', '#ff7b7b');
       } else if (!night && wasNight) {
         if (role !== 'client') day += 1;
+        W.critters.spawnMorning(6);             // fresh foxes each morning
         W.hud.banner('DAWN BREAKS', `You survived night ${(role === 'client' ? day : day - 1)}`, '#ffe08a');
       }
       wasNight = night;

@@ -509,11 +509,14 @@
     const ang = dayT * Math.PI * 2;            // sun travels a full circle
     const sunDir = new THREE.Vector3(Math.cos(ang) * 0.5, Math.sin(ang), Math.cos(ang) * 0.85).normalize();
     const elev = sunDir.y;                      // -1..1
-    const day = U.clamp(elev / 0.3 + 0.15, 0, 1);
+    // Night is the bottom slice of the cycle: with a 420s cycle this gives ~2 min
+    // of night and ~5 min of day, with dusk/dawn at the boundary.
+    const NIGHT = -0.63;
+    const day = U.clamp((elev - NIGHT) / 0.45, 0, 1);
     world.daylight = day;
-    world._isNight = elev < -0.02;
+    world._isNight = elev < NIGHT;
 
-    const dusk = U.clamp(1 - Math.abs(elev) / 0.28, 0, 1) * (elev > -0.3 ? 1 : 0);
+    const dusk = U.clamp(1 - Math.abs(elev - NIGHT) / 0.3, 0, 1);
     const sky = U.mixColor(SKY_NIGHT, SKY_DAY, U.smooth(day)).lerp(new THREE.Color(SKY_DUSK), dusk * 0.55);
 
     if (world.scene) world.scene.background = sky;

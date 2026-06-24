@@ -102,6 +102,37 @@
     return g;
   }
 
+  // Slow, shambling zombie (arms outstretched).
+  function makeZombie() {
+    const g = new THREE.Group();
+    const skin = new THREE.MeshStandardMaterial({ color: 0x6f8a55, roughness: 1, flatShading: true });
+    const cloth = new THREE.MeshStandardMaterial({ color: 0x39414a, roughness: 1, flatShading: true });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.0, 0.42), cloth);
+    torso.position.y = 1.1; torso.rotation.x = 0.14; torso.castShadow = true; g.add(torso);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), skin);
+    head.position.set(0, 1.7, 0.1); head.rotation.x = 0.15; head.castShadow = true; g.add(head);
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0e160e, emissive: 0x2a5a2a, emissiveIntensity: 0.9 });
+    for (const sx of [-0.1, 0.1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), eyeMat);
+      eye.position.set(sx, 1.74, 0.29); g.add(eye);
+    }
+    // limbs: [leftLeg, rightLeg, leftArm, rightArm] — arms held out front
+    const legs = [];
+    const legGeo = new THREE.BoxGeometry(0.2, 0.9, 0.2);
+    for (const sx of [-0.16, 0.16]) { const leg = new THREE.Mesh(legGeo, cloth); leg.position.set(sx, 0.5, 0); leg.castShadow = true; g.add(leg); legs.push(leg); }
+    const armGeo = new THREE.BoxGeometry(0.16, 0.72, 0.16);
+    for (const sx of [-0.36, 0.36]) { const arm = new THREE.Mesh(armGeo, skin); arm.position.set(sx, 1.4, 0.34); arm.rotation.x = -1.45; arm.castShadow = true; g.add(arm); legs.push(arm); }
+    g.userData = { type: 'enemy', kind: 'zombie', legs, mat: cloth, eyeMat };
+    return g;
+  }
+
+  // Build a foe of the given kind and cache each limb's base rotation for the gait.
+  function buildModel(kind) {
+    const g = kind === 'werewolf' ? makeWerewolf() : kind === 'zombie' ? makeZombie() : makeWolf();
+    g.userData.legBases = g.userData.legs.map((l) => l.rotation.x);
+    return g;
+  }
+
   // --- Lifecycle ------------------------------------------------------------
 
   let _nextId = 1;
@@ -114,19 +145,25 @@
     const x = centerPos.x + Math.cos(a) * ring;
     const z = centerPos.z + Math.sin(a) * ring;
 
-    const wereChance = U.clamp(0.08 + (dayNum - 1) * 0.07, 0, 0.45);
-    const isWere = U.chance(wereChance);
+    // Wolves are the staple; werewolves & zombies grow more common with depth.
+    const roll = U.random();
+    const zChance = U.clamp(0.18 + (dayNum - 1) * 0.05, 0, 0.5);
+    const wChance = U.clamp(0.08 + (dayNum - 1) * 0.05, 0, 0.35);
+    const kind = roll < zChance ? 'zombie' : roll < zChance + wChance ? 'werewolf' : 'wolf';
 
-    const g = isWere ? makeWerewolf() : makeWolf();
+    const g = buildModel(kind);
     g.position.set(x, W.world.heightAt(x, z), z);
     g.rotation.y = a;
     enemies.scene.add(g);
     const id = _nextId++;
     g.userData.id = id;
 
-    enemies.list.push(isWere
-      ? { id, group: g, kind: 'werewolf', alive: true, hp: 7 + dayNum, speed: U.rand(3.0, 3.7) + dayNum * 0.12, dmg: 10 + dayNum, lastAttack: -99, t: U.rand(0, 10) }
-      : { id, group: g, kind: 'wolf', alive: true, hp: 3, speed: U.rand(2.6, 3.4) + dayNum * 0.1, dmg: 5 + Math.floor(dayNum * 0.5), lastAttack: -99, t: U.rand(0, 10) });
+    const stats = {
+      wolf: { hp: 3, speed: U.rand(2.6, 3.4) + dayNum * 0.1, dmg: 5 + Math.floor(dayNum * 0.5) },
+      werewolf: { hp: 7 + dayNum, speed: U.rand(3.0, 3.7) + dayNum * 0.12, dmg: 10 + dayNum },
+      zombie: { hp: 5 + dayNum, speed: U.rand(1.6, 2.2) + dayNum * 0.06, dmg: 7 + Math.floor(dayNum * 0.5) },
+    }[kind];
+    enemies.list.push({ id, group: g, kind, alive: true, hp: stats.hp, speed: stats.speed, dmg: stats.dmg, lastAttack: -99, t: U.rand(0, 10) });
   };
 
   function applyHit(e, amount, fromPos) {
@@ -206,7 +243,7 @@
       const d = Math.hypot(dx, dz) || 1;
       g.rotation.y = Math.atan2(dx, dz);
 
-      const reach = e.kind === 'werewolf' ? 1.9 : 1.4;
+      const reach = e.kind === 'werewolf' ? 1.9 : (e.kind === 'zombie' ? 1.6 : 1.4);
       if (d > reach) {
         const nx = dx / d, nz = dz / d;
         g.position.x += nx * e.speed * dt;
@@ -214,10 +251,11 @@
         const tmp = { x: g.position.x, z: g.position.z };
         W.world.resolveCollision(tmp, 0.5);
         g.position.x = tmp.x; g.position.z = tmp.z;
-        const swing = Math.sin(e.t * (e.kind === 'werewolf' ? 9 : 12)) * 0.5;
-        const legs = g.userData.legs;
-        legs[0].rotation.x = swing; legs[3].rotation.x = swing;
-        legs[1].rotation.x = -swing; legs[2].rotation.x = -swing;
+        const rate = e.kind === 'wolf' ? 12 : (e.kind === 'zombie' ? 5 : 9);
+        const swing = Math.sin(e.t * rate) * (e.kind === 'zombie' ? 0.35 : 0.5);
+        const legs = g.userData.legs, bb = g.userData.legBases;
+        legs[0].rotation.x = bb[0] + swing; legs[3].rotation.x = bb[3] + swing;
+        legs[1].rotation.x = bb[1] - swing; legs[2].rotation.x = bb[2] - swing;
       } else if (e.t - e.lastAttack > 1.0 &&
                  !W.world.wallBetween(g.position.x, g.position.z, tgt.pos.x, tgt.pos.z)) {
         e.lastAttack = e.t;
@@ -234,7 +272,7 @@
 
   enemies.serialize = function () {
     return enemies.list.map((e) => ({
-      id: e.id, k: e.kind === 'werewolf' ? 1 : 0,
+      id: e.id, k: e.kind === 'werewolf' ? 1 : e.kind === 'zombie' ? 2 : 0,
       x: +e.group.position.x.toFixed(2), z: +e.group.position.z.toFixed(2),
       r: +e.group.rotation.y.toFixed(2),
     }));
@@ -248,10 +286,11 @@
       seen[s.id] = true;
       let e = enemies.list.find((x) => x.id === s.id);
       if (!e) {
-        const g = s.k ? makeWerewolf() : makeWolf();
+        const kind = s.k === 2 ? 'zombie' : s.k === 1 ? 'werewolf' : 'wolf';
+        const g = buildModel(kind);
         g.userData.id = s.id; g.position.set(s.x, 0, s.z);
         enemies.scene.add(g);
-        e = { id: s.id, group: g, kind: s.k ? 'werewolf' : 'wolf', alive: true };
+        e = { id: s.id, group: g, kind, alive: true };
         enemies.list.push(e);
       }
       const g = e.group;
@@ -260,10 +299,11 @@
       g.position.z += (s.z - g.position.z) * k;
       g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(enemies._gt * 10)) * 0.05;
       g.rotation.y = s.r;
-      const swing = Math.sin(enemies._gt * (e.kind === 'werewolf' ? 9 : 12)) * 0.5;
-      const legs = g.userData.legs;
-      legs[0].rotation.x = swing; legs[3].rotation.x = swing;
-      legs[1].rotation.x = -swing; legs[2].rotation.x = -swing;
+      const rate = e.kind === 'wolf' ? 12 : (e.kind === 'zombie' ? 5 : 9);
+      const swing = Math.sin(enemies._gt * rate) * (e.kind === 'zombie' ? 0.35 : 0.5);
+      const legs = g.userData.legs, bb = g.userData.legBases;
+      legs[0].rotation.x = bb[0] + swing; legs[3].rotation.x = bb[3] + swing;
+      legs[1].rotation.x = bb[1] - swing; legs[2].rotation.x = bb[2] - swing;
     }
     for (const e of enemies.list.slice()) {
       if (!seen[e.id]) {

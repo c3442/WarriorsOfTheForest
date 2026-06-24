@@ -47,6 +47,7 @@
       if (e.code === 'KeyF') player.drink();
       if (e.code === 'KeyG') player.grab();
       if (e.code === 'KeyK') player.dropBerry();
+      if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyC') { player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft(); }
       if (player.craftOpen && /^Digit[1-4]$/.test(e.code)) player.craft(e.code.slice(5));
     });
