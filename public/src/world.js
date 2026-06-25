@@ -15,6 +15,7 @@
     tentWalls: [],   // {x,z,r} tent-wall beads only (used for line-of-sight)
     hazards: [],     // {x,z,r,dps} barbed wire etc. that hurts enemies
     plots: [],       // farm plots that grow crops
+    craftTables: [], // {x,z} workbenches you must stand near to craft
     trees: [],       // choppable groups
     bushes: [],      // {x,z,mesh,ready}
     daylight: 1,
@@ -41,8 +42,8 @@
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = [];
-    const lo = new THREE.Color('#46732e');
-    const hi = new THREE.Color('#74a24a');
+    const lo = new THREE.Color('#33571f');
+    const hi = new THREE.Color('#52803a');
     const sand = new THREE.Color('#c8b27a');
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
@@ -248,17 +249,50 @@
 
   function buildWater(scene) {
     const size = C.WORLD_RADIUS * 2.6;
-    const geo = new THREE.PlaneGeometry(size, size, 48, 48);
+    const geo = new THREE.PlaneGeometry(size, size, 120, 120);
     geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x2f74b8, transparent: true, opacity: 0.8, roughness: 0.22, metalness: 0.2,
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, fog: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uDeep: { value: new THREE.Color('#13405e') },
+        uShallow: { value: new THREE.Color('#3a8fc0') },
+        uSky: { value: new THREE.Color('#bfe0ff') },
+        uSun: { value: new THREE.Vector3(0, 1, 0) },
+      },
+      vertexShader: `
+        uniform float uTime; varying vec3 vWorld; varying vec3 vN;
+        void main(){
+          vec3 p = position;
+          float w = sin(p.x*0.25 + uTime*1.2)*0.13 + cos(p.z*0.32 + uTime*0.9)*0.13 + sin((p.x+p.z)*0.18 + uTime*0.6)*0.07;
+          p.y += w;
+          float dx = cos(p.x*0.25 + uTime*1.2)*0.25*0.13 + cos((p.x+p.z)*0.18 + uTime*0.6)*0.18*0.07;
+          float dz = -sin(p.z*0.32 + uTime*0.9)*0.32*0.13 + cos((p.x+p.z)*0.18 + uTime*0.6)*0.18*0.07;
+          vN = normalize(vec3(-dx, 1.0, -dz));
+          vec4 wp = modelMatrix * vec4(p, 1.0);
+          vWorld = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }`,
+      fragmentShader: `
+        uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uSky; uniform vec3 uSun;
+        varying vec3 vWorld; varying vec3 vN;
+        void main(){
+          vec3 viewDir = normalize(cameraPosition - vWorld);
+          float fres = pow(1.0 - max(dot(viewDir, vN), 0.0), 3.0);
+          vec3 base = mix(uDeep, uShallow, 0.45);
+          vec3 col = mix(base, uSky, clamp(fres, 0.0, 1.0) * 0.65);
+          vec3 h = normalize(viewDir + uSun);
+          float spec = pow(max(dot(vN, h), 0.0), 90.0);
+          col += vec3(1.0, 0.96, 0.82) * spec * 0.7;
+          gl_FragColor = vec4(col, 0.88);
+        }`,
     });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.y = C.WATER_LEVEL;
     mesh.name = 'water';
     scene.add(mesh);
     world.water = mesh;
-    world._waterGeo = geo;
+    world._waterMat = mat;
     world._time = 0;
   }
 
@@ -489,6 +523,7 @@
 
     scene.add(camp);
     world.camp = camp;
+    world.placeCraftTable(cx + 1.7, cz + 1.4, -2.3);   // workbench right by the campfire
   }
 
   // Resting near the campfire heals you.
@@ -496,11 +531,100 @@
     return U.dist2(pos.x, pos.z, world.campPos.x, world.campPos.z) < 4;
   };
 
+  // --- Richer visuals --------------------------------------------------------
+
+  function buildSkyDome(scene) {
+    const mat = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: {
+        top: { value: new THREE.Color('#2e6fb0') },
+        bottom: { value: new THREE.Color('#bfe0ff') },
+        exponent: { value: 0.7 },
+      },
+      vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 bottom; uniform float exponent; varying vec3 vP; void main(){ float h = max(normalize(vP).y, 0.0); gl_FragColor = vec4(mix(bottom, top, pow(h, exponent)), 1.0); }',
+    });
+    world.skyDome = new THREE.Mesh(new THREE.SphereGeometry(600, 24, 16), mat);
+    world.skyDome.renderOrder = -1;
+    scene.add(world.skyDome);
+  }
+
+  function buildMountains(scene) {
+    const rock = new THREE.MeshStandardMaterial({ color: 0x8a8f99, roughness: 1, flatShading: true });
+    const snow = new THREE.MeshStandardMaterial({ color: 0xeef3fb, roughness: 1, flatShading: true });
+    const grp = new THREE.Group();
+    const count = 20;
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + U.rand(-0.12, 0.12);
+      const r = U.rand(150, 195);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const baseY = world.heightAt(x, z) - 5;
+      const radius = U.rand(30, 58), height = U.rand(48, 90);
+      const m = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 5, 1), rock);
+      m.position.set(x, baseY + height / 2, z); m.rotation.y = U.rand(0, 6.28); grp.add(m);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.46, height * 0.42, 5, 1), snow);
+      cap.position.set(x, baseY + height * 0.8, z); cap.rotation.y = m.rotation.y; grp.add(cap);
+    }
+    scene.add(grp);
+    world.mountains = grp;
+  }
+
+  function buildGrass(scene) {
+    const blade = new THREE.PlaneGeometry(0.04, 0.17, 1, 1);
+    blade.translate(0, 0.085, 0);
+    const base = new THREE.Color('#2c5520'), tip = new THREE.Color('#5fa03a'), cols = [];
+    const pos = blade.attributes.position;
+    for (let i = 0; i < pos.count; i++) { const t = U.clamp(pos.getY(i) / 0.17, 0, 1); const c = base.clone().lerp(tip, t); cols.push(c.r, c.g, c.b); }
+    blade.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide });
+    const N = 90000;                                 // small but very dense grass
+    const inst = new THREE.InstancedMesh(blade, mat, N);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
+    let n = 0;
+    for (let i = 0; i < N; i++) {
+      const pt = U.pointInDisc(40);
+      const h = world.heightAt(pt.x, pt.z);
+      if (h <= C.WATER_LEVEL + 0.5) continue;
+      e.set(U.rand(-0.08, 0.08), U.rand(0, Math.PI * 2), U.rand(-0.08, 0.08)); q.setFromEuler(e);
+      const sc = U.rand(0.7, 1.2); s.set(sc, sc * U.rand(0.9, 1.4), sc); p.set(pt.x, h, pt.z);
+      m.compose(p, q, s); inst.setMatrixAt(n, m);
+      col.setHSL(0.28, 0.25, 0.82 + U.rand(-0.16, 0.12)); inst.setColorAt(n, col);
+      n++;
+    }
+    inst.count = n; inst.instanceMatrix.needsUpdate = true; if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    scene.add(inst);
+    world.grass = inst;
+  }
+
+  function buildFlowers(scene) {
+    const geo = new THREE.IcosahedronGeometry(0.08, 0);
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.7, flatShading: true });
+    const palette = ['#e8702a', '#f2c33a', '#f25a7a', '#f6f1e7', '#c25ad8'];
+    const N = 1000;
+    const inst = new THREE.InstancedMesh(geo, mat, N);
+    const m = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion(), col = new THREE.Color();
+    let n = 0;
+    for (let i = 0; i < N; i++) {
+      const pt = U.pointInDisc(62);
+      const h = world.heightAt(pt.x, pt.z);
+      if (h <= C.WATER_LEVEL + 0.5) continue;
+      const sc = U.rand(0.7, 1.4); s.set(sc, sc, sc); p.set(pt.x, h + 0.18, pt.z);
+      m.compose(p, q, s); inst.setMatrixAt(n, m);
+      col.set(palette[U.randInt(0, palette.length - 1)]); inst.setColorAt(n, col);
+      n++;
+    }
+    inst.count = n; inst.instanceMatrix.needsUpdate = true; if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    scene.add(inst);
+    world.flowers = inst;
+  }
+
   // --- Public API ------------------------------------------------------------
 
   world.init = function (scene) {
     buildTerrain(scene);
     buildSky(scene);
+    buildSkyDome(scene);
+    buildMountains(scene);
     buildWater(scene);
     scatter(scene);
     buildCamp(scene);
@@ -524,15 +648,22 @@
     if (world.scene) world.scene.background = sky;
     if (world.scene.fog) {
       world.scene.fog.color.copy(sky);
-      world.scene.fog.density = U.lerp(0.02, 0.0055, day); // thicker, scarier nights
+      world.scene.fog.density = U.lerp(0.011, 0.0048, day); // a bit clearer at night
+    }
+    // gradient sky dome: horizon = sky colour, zenith = a deeper blue
+    if (world.skyDome) {
+      world.skyDome.position.copy(playerPos);
+      const u = world.skyDome.material.uniforms;
+      u.bottom.value.copy(sky);
+      u.top.value.copy(sky).lerp(new THREE.Color('#1c4f8c'), 0.6 * day);
     }
 
-    world.hemi.intensity = U.lerp(0.18, 0.95, day);
-    world.hemi.color.copy(U.mixColor('#24406a', '#bfe0ff', day));
+    world.hemi.intensity = U.lerp(0.42, 0.55, day);   // brighter moonlit nights
+    world.hemi.color.copy(U.mixColor('#24406a', '#cfe6ff', day));
     world.hemi.groundColor.copy(U.mixColor(GROUND_NIGHT, GROUND_DAY, day));
 
-    world.sun.intensity = U.lerp(0.12, 1.15, day);
-    world.sun.color.copy(U.mixColor('#6f86c8', '#fff1d0', day)); // moonlight -> sunlight
+    world.sun.intensity = U.lerp(0.32, 1.1, day);   // stronger moonlight
+    world.sun.color.copy(U.mixColor('#8ea2d8', '#fff0cf', day)); // moonlight -> warm sunlight
     world.sun.position.copy(playerPos).addScaledVector(sunDir, 90);
     world.sun.target.position.copy(playerPos);
     world.sun.target.updateMatrixWorld();
@@ -571,16 +702,13 @@
       }
     }
 
-    // ripple the water surface
-    if (world.water) {
+    // animate the water shader (waves + sun glint + sky reflection)
+    if (world._waterMat) {
       world._time += dt;
-      const t = world._time;
-      const wp = world._waterGeo.attributes.position;
-      for (let i = 0; i < wp.count; i++) {
-        const x = wp.getX(i), z = wp.getZ(i);
-        wp.setY(i, Math.sin(x * 0.25 + t * 1.4) * 0.12 + Math.cos(z * 0.3 + t * 1.1) * 0.12);
-      }
-      wp.needsUpdate = true;
+      const u = world._waterMat.uniforms;
+      u.uTime.value = world._time;
+      u.uSky.value.copy(sky);
+      u.uSun.value.copy(sunDir);
     }
 
     // advance tree-fall animations
@@ -705,6 +833,38 @@
     grp.position.set(x, world.heightAt(x, z), z);
     world.scene.add(grp);
     world.plots.push({ group: grp, crop, x, z, t: 0, ripe: false });
+  };
+
+  // A crafting table / workbench.
+  world.placeCraftTable = function (x, z, yaw) {
+    const grp = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x4a3320, roughness: 1 });
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.12, 0.9), wood);
+    top.position.y = 0.85; top.castShadow = true; grp.add(top);
+    for (const [lx, lz] of [[-0.6, -0.35], [0.6, -0.35], [-0.6, 0.35], [0.6, 0.35]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.85, 0.1), dark);
+      leg.position.set(lx, 0.42, lz); grp.add(leg);
+    }
+    const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.18, 0.22),
+      new THREE.MeshStandardMaterial({ color: 0x6a6f78, roughness: 0.5, metalness: 0.3 }));
+    anvil.position.set(-0.4, 1.0, 0); anvil.castShadow = true; grp.add(anvil);
+    const saw = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.02, 0.1),
+      new THREE.MeshStandardMaterial({ color: 0xb9c0c9, roughness: 0.4, metalness: 0.4 }));
+    saw.position.set(0.35, 0.93, -0.2); saw.rotation.y = -0.4; grp.add(saw);
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.16), dark);
+    plank.position.set(0.32, 0.95, 0.12); plank.rotation.y = 0.3; grp.add(plank);
+    grp.position.set(x, world.heightAt(x, z), z); grp.rotation.y = yaw;
+    world.scene.add(grp);
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    for (const lx of [-0.5, 0.5]) world.colliders.push({ x: x + cos * lx, z: z - sin * lx, r: 0.5 });
+    world.craftTables.push({ x, z });
+    return grp;
+  };
+
+  // Crafting only works near a workbench.
+  world.nearCraftTable = function (pos, range) {
+    return world.craftTables.some((t) => U.dist2(pos.x, pos.z, t.x, t.z) < (range || 3.5));
   };
 
   world.treeIndex = function (tree) { return world.trees.indexOf(tree); };

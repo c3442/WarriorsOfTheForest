@@ -7,7 +7,7 @@
   const hud = {};
 
   hud.init = function () {
-    ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'killNum',
+    ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'bandaidNum', 'killNum',
      'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
      'craftPanel', 'craftWood', 'crow3', 'crow6', 'crow7', 'axeLv', 'axeCost', 'keyHelp',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
@@ -24,6 +24,7 @@
     els.thFill.style.width = s.thirst + '%';
     els.waterNum.textContent = s.bottle + '/' + s.bottleMax;
     els.berryNum.textContent = s.berries + '/' + s.berryMax;
+    if (els.bandaidNum) els.bandaidNum.textContent = s.bandaids;
     if (els.craftWood) els.craftWood.textContent = s.wood;   // keep craft panel wood live
     els.todIcon.textContent = s.night ? '🌙' : '☀️';
     els.todLabel.textContent = s.night ? 'Night' : 'Day';

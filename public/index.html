@@ -56,6 +56,7 @@
   #craftPanel .crow{padding:6px 8px;border-radius:7px;background:rgba(0,0,0,.28);margin-bottom:6px;font-size:13px;}
   #craftPanel .crow > b{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;
     background:#3a4a2a;border-radius:4px;margin-right:6px;color:#dfeec8;font-size:12px;}
+  #craftPanel .crow u{text-decoration:none;margin:0 3px;}
   #craftPanel .crow i{color:#ffce9a;font-style:normal;margin-left:4px;}
   #craftPanel .crow em{font-style:normal;color:#9adcff;font-size:11px;background:rgba(90,170,230,.18);
     border-radius:4px;padding:0 5px;margin-left:2px;}
@@ -132,6 +133,7 @@
   <div class="pill">🪵 Wood <b id="woodNum">0</b></div>
   <div class="pill">💧 Bottle <b id="waterNum">5/5</b></div>
   <div class="pill">🍓 Berries <b id="berryNum">0/5</b></div>
+  <div class="pill">🩹 Bandaids <b id="bandaidNum">0</b></div>
   <div class="pill">🍖 Kills <b id="killNum">0</b></div>
 </div>
 
@@ -145,7 +147,7 @@
   <div><b>Click</b> or <b>Q</b> swing weapon (chop / attack) &nbsp;·&nbsp; <b>X</b> switch weapon</div>
   <div><b>E</b> eat berries &amp; crops &nbsp;·&nbsp; <b>F</b> drink</div>
   <div><b>G</b> grab berry &nbsp;·&nbsp; <b>H</b> drop berry</div>
-  <div><b>T</b> tame a fox (needs a berry)</div>
+  <div><b>T</b> tame a fox (needs a berry) &nbsp;·&nbsp; <b>B</b> bandaid (heal / revive)</div>
   <div><b>C</b> crafting &nbsp;·&nbsp; <b>Esc</b> pause</div>
   <div class="khHint">release <b>J</b> to close</div>
 </div>
@@ -153,14 +155,16 @@
 <!-- Crafting panel -->
 <div id="craftPanel" class="hidden">
   <div class="ctitle">🪓 CRAFTING &nbsp;·&nbsp; Wood <b id="craftWood">0</b></div>
-  <div class="crow"><b>1</b> Barricade <i>5 wood</i><span>defence · wall</span></div>
-  <div class="crow"><b>2</b> Upgrade Axe <em id="axeLv">Lv 0</em> <i id="axeCost">8 wood</i><span>weapon · +damage</span></div>
-  <div class="crow" id="crow3"><b>3</b> Wooden Armor <i>10 wood</i><span>defence · less damage</span></div>
-  <div class="crow"><b>4</b> Barbed Wire <i>8 wood</i><span>defence · hurts beasts</span></div>
-  <div class="crow"><b>5</b> Logs <i>4 wood</i><span>obstacle · blocks</span></div>
-  <div class="crow" id="crow6"><b>6</b> Sword <i>12 wood</i><span>weapon · +damage</span></div>
-  <div class="crow" id="crow7"><b>7</b> Shield <i>10 wood</i><span>defence · less damage</span></div>
-  <div class="crow"><b>8</b> Farm Plot <i>12 wood</i><span>grows food every minute</span></div>
+  <div class="crow"><b>1</b> <u>🧱</u> Barricade <i>5 wood</i><span>defence · wall</span></div>
+  <div class="crow"><b>2</b> <u>🪓</u> Upgrade Axe <em id="axeLv">Lv 0</em> <i id="axeCost">8 wood</i><span>weapon · +damage</span></div>
+  <div class="crow" id="crow3"><b>3</b> <u>🛡️</u> Wooden Armor <i>10 wood</i><span>defence · less damage</span></div>
+  <div class="crow"><b>4</b> <u>〰️</u> Barbed Wire <i>8 wood</i><span>defence · hurts beasts</span></div>
+  <div class="crow"><b>5</b> <u>🪵</u> Logs <i>4 wood</i><span>obstacle · blocks</span></div>
+  <div class="crow" id="crow6"><b>6</b> <u>⚔️</u> Sword <i>12 wood</i><span>weapon · +damage</span></div>
+  <div class="crow" id="crow7"><b>7</b> <u>🔰</u> Shield <i>10 wood</i><span>defence · less damage</span></div>
+  <div class="crow"><b>8</b> <u>🌱</u> Farm Plot <i>12 wood</i><span>grows food every minute</span></div>
+  <div class="crow"><b>9</b> <u>🛠️</u> Crafting Table <i>15 wood</i><span>a workbench</span></div>
+  <div class="crow"><b>0</b> <u>🩹</u> Bandaid <i>6 wood</i><span>heal / revive a teammate</span></div>
   <div class="chint">press a number to craft &nbsp;·&nbsp; <b>C</b> to close</div>
 </div>
 
@@ -202,6 +206,14 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/build/three.min.js"></script>
+<!-- post-processing (bloom) — EffectComposer defines THREE.Pass, so it loads first -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/MaskPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="src/utils.js"></script>
 <script src="src/world.js"></script>

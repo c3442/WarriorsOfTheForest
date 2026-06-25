@@ -131,6 +131,8 @@
       if (killed) conn.send({ t: 'killcredit', kind: m.k });
     } else if (m.t === 'chop') {
       W.world.felByIndex(m.idx);
+    } else if (m.t === 'revive') {
+      if (W.player.downed) W.player.revive();
     }
   }
 
@@ -164,8 +166,20 @@
       W.world.felByIndex(m.idx);
     } else if (m.t === 'killcredit') {
       W.player.creditKill(m.kind === 1 ? 'werewolf' : 'wolf');
+    } else if (m.t === 'revive') {
+      if (W.player.downed) W.player.revive();
     }
   }
+
+  // A downed teammate within reach (so a bandaid can revive them).
+  net.anyDownedNear = function (pos, range) {
+    for (const id in net.remote) {
+      const r = net.remote[id];
+      if (r.pose && r.pose.down && Math.hypot(r.pose.x - pos.x, r.pose.z - pos.z) < range) return true;
+    }
+    return false;
+  };
+  net.sendRevive = function () { for (const c of net._conns) { if (c.open) c.send({ t: 'revive' }); } };
 
   // --- Per-frame -------------------------------------------------------------
 
@@ -187,12 +201,12 @@
     net._acc = 0;
     if (net.role === 'host') {
       net.time = timeOfDay; net.day = day; // keep current so late joiners sync via init
-      const players = { host: Object.assign({ name: net.myName }, pose) };
+      const players = { host: Object.assign({ name: net.myName, down: !!W.player.downed }, pose) };
       const snap = { t: 'snap', time: timeOfDay, day, e: W.enemies.serialize(), p: players };
       for (const conn of net._conns) { if (conn.open) conn.send(snap); }
     } else if (net.role === 'client') {
       const conn = net._conns[0];
-      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName });
+      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, down: !!W.player.downed });
     }
   };
 

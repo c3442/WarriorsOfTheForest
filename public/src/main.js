@@ -3,7 +3,7 @@
   const W = window.WOTF;
   const C = W.CONFIG;
 
-  let renderer, scene, camera, clock;
+  let renderer, scene, camera, clock, composer;
   let started = false, paused = false, built = false;
   let timeOfDay = 0.18 * C.DAY_LENGTH; // start mid-morning
   let day = 1, wasNight = false;
@@ -16,6 +16,8 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;       // cinematic colour response
+    renderer.toneMappingExposure = 0.72;
     app.appendChild(renderer.domElement);
     renderer.domElement.tabIndex = 0;
     renderer.domElement.style.outline = 'none';
@@ -30,6 +32,14 @@
     scene.background = new THREE.Color('#0a1230');
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     scene.add(camera);
+
+    // post-processing: a soft bloom on bright areas
+    composer = new THREE.EffectComposer(renderer);
+    composer.addPass(new THREE.RenderPass(scene, camera));
+    const bloom = new THREE.UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.5, 0.9,
+    );
+    composer.addPass(bloom);
 
     W.hud.init();
     W.hud.onResume(setResume);
@@ -122,6 +132,7 @@
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (composer) composer.setSize(window.innerWidth, window.innerHeight);
   }
 
   // --- Loop ------------------------------------------------------------------
@@ -170,12 +181,13 @@
         hunger: Math.round(W.player.hunger), thirst: Math.round(W.player.thirst),
         bottle: W.player.bottle, bottleMax: W.player.bottleMax,
         berries: W.player.berries, berryMax: W.player.berryMax,
+        bandaids: W.player.bandaids,
         night, day,
         foes: W.enemies.list.length, wood: W.player.wood, kills: W.player.kills,
       });
     }
 
-    renderer.render(scene, camera);
+    composer.render();
   }
 
   if (document.readyState === 'loading') {

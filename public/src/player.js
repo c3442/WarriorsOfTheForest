@@ -7,6 +7,7 @@
   const player = {
     active: false,
     alive: true,
+    downed: false, bleedT: 0, bandaids: 0,
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
@@ -51,10 +52,11 @@
       if (e.code === 'KeyF') player.drink();
       if (e.code === 'KeyG') player.grab();
       if (e.code === 'KeyH') player.dropBerry();
+      if (e.code === 'KeyB') player.useBandaid();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
       if (e.code === 'KeyC') { player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft(); }
-      if (player.craftOpen && /^Digit[1-8]$/.test(e.code)) player.craft(e.code.slice(5));
+      if (player.craftOpen && /^Digit[0-9]$/.test(e.code)) player.craft(e.code.slice(5));
     });
     window.addEventListener('keyup', (e) => {
       player.keys[e.code] = false;
@@ -380,6 +382,11 @@
 
   player.craft = function (id) {
     if (!player.alive || !player.active) return;
+    // crafting needs a workbench nearby (id '9' = a new table, which you can build anywhere)
+    if (id !== '9' && !W.world.nearCraftTable(player.pos, 3.6)) {
+      W.hud.toast('Stand by a crafting table 🛠️');
+      return;
+    }
     const pay = (c) => {
       if (player.wood < c) { W.hud.toast('Need ' + c + ' wood (have ' + player.wood + ')'); return false; }
       player.wood -= c; return true;
@@ -423,6 +430,14 @@
       if (!pay(12)) return;
       const p = ahead(2.0); W.world.placeFarmPlot(p.x, p.z);
       W.hud.toast('Farm plot tilled 🌱 grows food');
+    } else if (id === '9') {                 // Crafting Table
+      if (!pay(15)) return;
+      const p = ahead(2.0); W.world.placeCraftTable(p.x, p.z, player.yaw);
+      W.hud.toast('Crafting table built 🛠️');
+    } else if (id === '0') {                 // Bandaid (revive / heal)
+      if (!pay(6)) return;
+      player.bandaids += 1;
+      W.hud.toast('Bandaid crafted 🩹 (' + player.bandaids + ')');
     } else { return; }
     refreshCraft();
   };
@@ -444,22 +459,58 @@
     }
   };
 
+  // B: revive a downed teammate (co-op) or patch yourself up with a bandaid.
+  player.useBandaid = function () {
+    if (!player.alive || player.downed) return;
+    if (player.bandaids <= 0) { W.hud.toast('No bandaids — craft one (C → 0)'); return; }
+    if (W.net && W.net.role && W.net.anyDownedNear && W.net.anyDownedNear(player.pos, 2.8)) {
+      player.bandaids -= 1; W.net.sendRevive();
+      W.hud.toast('Revived a teammate! 🩹');
+      return;
+    }
+    if (player.health < 100) {
+      player.bandaids -= 1;
+      player.health = U.clamp(player.health + 50, 0, 100);
+      W.hud.toast('Patched up 🩹 +50 health');
+    } else { W.hud.toast('Already full health'); }
+  };
+
+  player.revive = function () {
+    if (!player.downed) return;
+    player.downed = false; player.bleedT = 0;
+    player.health = 50; player.active = true;
+    W.hud.banner('REVIVED!', 'Back on your feet', '#8fd36a');
+  };
+
   player.takeDamage = function (amount) {
-    if (!player.alive) return;
+    if (!player.alive || player.downed) return;
     amount *= player.armor;          // wooden armor reduces incoming damage
     player.health -= amount;
     player.lastHurt = player._t;
     W.hud.flashDamage(U.clamp(amount / 14, 0.25, 0.9));
     if (player.health <= 0) {
       player.health = 0;
-      player.alive = false;
-      W.onDeath && W.onDeath();
+      if (W.net && W.net.role) {
+        // co-op: go DOWN instead of dying — a teammate can revive you
+        player.downed = true; player.bleedT = 0; player.active = false;
+        W.hud.banner('YOU ARE DOWN', 'Hold on — a teammate can revive you 🩹', '#ff7b7b');
+      } else {
+        player.alive = false;
+        W.onDeath && W.onDeath();
+      }
     }
   };
 
   player.update = function (dt) {
     player._t += dt;
     if (!player.alive) return;
+    if (player.downed) {
+      player.bleedT += dt;
+      player.camera.position.copy(player.pos); player.camera.position.y -= 0.95;
+      player.camera.rotation.set(-0.55, player.yaw, 0, 'YXZ');
+      if (player.bleedT > 60) { player.downed = false; player.alive = false; W.onDeath && W.onDeath(); }
+      return;
+    }
     const k = player.keys;
 
     // --- look with arrow keys (works alongside trackpad/mouse) ---
@@ -578,7 +629,8 @@
 
   player.reset = function () {
     Object.assign(player, {
-      alive: true, health: 100, stamina: 100, hunger: 100, thirst: 100,
+      alive: true, downed: false, bleedT: 0, bandaids: 0,
+      health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasShield: false, currentWeapon: 'axe',
     });
