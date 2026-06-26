@@ -780,12 +780,6 @@
     return world.campfires.some((c) => U.dist2(pos.x, pos.z, c.x, c.z) < 8);
   };
 
-  // The base haven: heal, infinite stamina, recover hunger/thirst near ANY campfire
-  // (the spawn camp plus any campfire you craft to set up a base elsewhere).
-  world.nearCamp = function (pos) {
-    return world.campfires.some((c) => U.dist2(pos.x, pos.z, c.x, c.z) < 8);
-  };
-
   // --- Tents: zip up the entrance so nothing can get in -----------------------
 
   const _tv = new THREE.Vector3(), _tq = new THREE.Quaternion();
@@ -1051,12 +1045,12 @@
       const r = world._treeRegrow[i];
       r.t += dt;
       if (r.t >= 75) {
-        const nt = makeTree();
+        const nt = makeTree(r.big);
         nt.position.set(r.x, world.heightAt(r.x, r.z) - 0.1, r.z);
         nt.rotation.y = U.rand(0, Math.PI * 2);
         world.scene.add(nt);
         world.trees[r.idx] = nt;
-        world.colliders.push({ x: r.x, z: r.z, r: 0.5, ref: nt });
+        world.colliders.push({ x: r.x, z: r.z, r: r.big ? 0.9 : 0.5, ref: nt });
         world._treeRegrow.splice(i, 1);
       }
     }
@@ -1087,9 +1081,10 @@
       const idx = world.colliders.findIndex((c) => c.ref === tree);
       if (idx >= 0) world.colliders.splice(idx, 1);
       world._falling.push({ group: tree, t: 0, dir: U.chance(0.5) ? 1 : -1, baseY: tree.position.y });
+      const big = tree.userData.big;
       const ti = world.trees.indexOf(tree);              // schedule a sapling to grow back here
-      if (ti >= 0) world._treeRegrow.push({ idx: ti, x: tree.position.x, z: tree.position.z, t: 0 });
-      return U.randInt(2, 4);
+      if (ti >= 0) world._treeRegrow.push({ idx: ti, x: tree.position.x, z: tree.position.z, t: 0, big });
+      return big ? U.randInt(9, 15) : U.randInt(2, 4);   // giant trees yield much more wood
     }
     return 0;
   };
