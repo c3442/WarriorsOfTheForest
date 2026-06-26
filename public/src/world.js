@@ -187,20 +187,44 @@
     return g;
   }
 
-  // A little primitive hut: mud/wood walls + a conical thatched roof.
+  // A primitive hut you can walk into: a ring of wall panels with a doorway gap
+  // (at local +Z), a dirt floor, and a conical thatched roof. Player-sized inside.
   function makeHut() {
     const g = new THREE.Group();
     const wallCols = ['#8a6a44', '#9a7a4e', '#7e623e'];
     const wall = new THREE.MeshStandardMaterial({ color: wallCols[U.randInt(0, wallCols.length - 1)], roughness: 1, flatShading: true });
     const thatch = new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0xb59a55 : 0x9c8038, roughness: 1, flatShading: true });
-    const R = U.rand(1.5, 2.1), H = U.rand(1.6, 2.1);
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 1.06, H, 8), wall);
-    body.position.y = H / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(R * 1.35, R * 1.1, 8), thatch);
-    roof.position.y = H + R * 0.5; roof.castShadow = true; g.add(roof);
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.3, 0.1), new THREE.MeshStandardMaterial({ color: 0x3a2a18, roughness: 1 }));
-    door.position.set(0, 0.65, R * 1.0); g.add(door);
-    g.userData = { type: 'hut', R };
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x5a4326, roughness: 1, flatShading: true });
+    const R = U.rand(3.0, 3.6), H = U.rand(2.6, 3.0), N = 14;
+    const seg = (2 * Math.PI * R) / N, half = seg * 0.5;
+
+    // wall ring — every panel except panel 0, which is the doorway opening
+    for (let i = 0; i < N; i++) {
+      if (i === 0) continue;
+      const ang = (i / N) * Math.PI * 2;
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(seg * 1.18, H, 0.14), wall);
+      panel.position.set(Math.sin(ang) * R, H / 2, Math.cos(ang) * R);
+      panel.rotation.y = ang; panel.castShadow = true; panel.receiveShadow = true; g.add(panel);
+    }
+    // doorway frame (posts + lintel) and a filled strip above the door
+    const DOOR_H = 2.2;
+    for (const sx of [-half, half]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, DOOR_H, 0.2), frameMat);
+      post.position.set(sx, DOOR_H / 2, R); g.add(post);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(seg * 1.1, 0.2, 0.2), frameMat);
+    lintel.position.set(0, DOOR_H, R); g.add(lintel);
+    if (H > DOOR_H + 0.1) {
+      const above = new THREE.Mesh(new THREE.BoxGeometry(seg * 1.18, H - DOOR_H, 0.14), wall);
+      above.position.set(0, DOOR_H + (H - DOOR_H) / 2, R); g.add(above);
+    }
+    // dirt floor + thatched cone roof
+    const floor = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.02, R * 1.02, 0.08, N), new THREE.MeshStandardMaterial({ color: 0x6b5436, roughness: 1 }));
+    floor.position.y = 0.04; floor.receiveShadow = true; g.add(floor);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(R * 1.3, R * 0.95, N), thatch);
+    roof.position.y = H + R * 0.42; roof.castShadow = true; g.add(roof);
+
+    g.userData = { type: 'hut', R, H, N };
     return g;
   }
 
@@ -303,7 +327,12 @@
       const hut = makeHut();
       hut.position.set(p.x, world.heightAt(p.x, p.z) - 0.05, p.z); hut.rotation.y = U.rand(0, 6.28);
       scene.add(hut);
-      world.colliders.push({ x: p.x, z: p.z, r: hut.userData.R * 0.95, ref: hut });
+      // wall colliders ring the hut but leave the doorway (panel 0) open so you can walk in
+      const R = hut.userData.R, N = hut.userData.N, ry = hut.rotation.y;
+      for (let s = 1; s < N; s++) {
+        const ang = (s / N) * Math.PI * 2 + ry;
+        world.colliders.push({ x: p.x + Math.sin(ang) * R, z: p.z + Math.cos(ang) * R, r: 0.7, ref: hut });
+      }
     }
     // Leafy ferns carpet the rainforest floor
     let ferns = 0, ftries = 0;

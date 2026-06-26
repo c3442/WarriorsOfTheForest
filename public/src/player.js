@@ -68,7 +68,7 @@
       if (e.code === 'KeyZ') player.zipTent();
       if (e.code === 'KeyK') player.sleep();
       if (e.code === 'KeyR') player.sit();
-      if (e.code === 'KeyP') player.plant();
+      if (e.code === 'KeyU') player.plant();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
       if (e.code === 'KeyI') player.toggleInventory();
