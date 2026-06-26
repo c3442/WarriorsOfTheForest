@@ -12,14 +12,14 @@
     building: null, invOpen: false,
     sitting: false, _seat: null, _seatHint: false,
     hasShotgun: false, shells: 0,
-    hasBow: true, bowColor: '#7a4a24', arrowColor: '#e6c54a',   // start with a bow
+    hasBow: true, bowColor: 0x7a4a24, arrowColor: 0xe6c54a,   // start with a bow (colours from the menu)
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
     wood: 0, kills: 0,
     attackDmg: 2, attackRange: 4.0, armor: 1.0,        // upgraded by crafting
     axeLevel: 0,
-    craftOpen: false, hasArmor: false, hasSword: false, hasShield: false, currentWeapon: 'axe',
+    craftOpen: false, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'axe',
     yaw: 0, pitch: 0,
     vy: 0, grounded: true,
     lastHurt: -99, lastAttack: -99,
@@ -39,19 +39,17 @@
     const start = { x: 0, z: 4 };
     player.pos = new THREE.Vector3(start.x, W.world.heightAt(start.x, start.z) + C.EYE_HEIGHT, start.z);
 
-    // pick up the player's chosen weapon/arrow colours from the start screen
-    const bc = document.getElementById('bowColor'); if (bc) player.bowColor = bc.value;
-    const ac = document.getElementById('arrowColor'); if (ac) player.arrowColor = ac.value;
-    player.arrows = [];                 // arrows currently in flight
+    player.arrows = [];                 // arrows currently in flight (colours chosen in the menu)
 
     buildAxe(camera);
     buildSword(camera);
+    buildKatana(camera);
     buildShotgun(camera);
     buildBow(camera);
     buildShield(camera);
     buildBottle(camera);
     buildHeldBerry(camera);
-    equipWeapon('bow');                 // you start with the bow drawn
+    equipWeapon('axe');                 // you start with the axe in hand
     player.dropped = [];
 
     // --- input: WASD move, trackpad/mouse look, click attack, etc. ---
@@ -79,6 +77,7 @@
         if (/^Digit[0-9]$/.test(e.code)) player.craft(e.code.slice(5));
         else if (e.code === 'Minus') player.craft('tent');
         else if (e.code === 'Equal') player.craft('fire');
+        else if (e.code === 'BracketLeft') player.craft('katana');
       }
     });
     window.addEventListener('keyup', (e) => {
@@ -169,6 +168,27 @@
     player.sword = g;
   }
 
+  function buildKatana(camera) {
+    const g = new THREE.Group();
+    const steel = new THREE.MeshStandardMaterial({ color: 0xe6ebf2, roughness: 0.18, metalness: 0.7 });
+    const black = new THREE.MeshStandardMaterial({ color: 0x1c1c20, roughness: 0.8 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a23a, roughness: 0.5, metalness: 0.5 });
+    // long slim blade, slightly curved by stacking a couple of segments
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.045, 1.3, 0.02), steel); blade.position.y = 0.92; blade.rotation.z = 0.05; g.add(blade);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.22, 4), steel); tip.position.set(0.05, 1.66, 0); tip.rotation.z = 0.05; g.add(tip);
+    // circular tsuba (guard) + wrapped handle
+    const tsuba = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 12), gold); tsuba.rotation.x = Math.PI / 2; tsuba.position.y = 0.24; g.add(tsuba);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.34, 8), black); handle.position.y = 0.06; g.add(handle);
+    g.position.set(0.34, -0.5, -0.7);
+    g.rotation.set(-0.2, -0.4, 0.12);
+    g.scale.setScalar(0.5);
+    g.visible = false;
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
+    camera.add(g);
+    player.katana = g;
+  }
+
   function buildShotgun(camera) {
     const g = new THREE.Group();
     const metal = new THREE.MeshStandardMaterial({ color: 0x55585e, roughness: 0.4, metalness: 0.55 });
@@ -186,6 +206,54 @@
     player.shotgun = g;
   }
 
+  function buildBow(camera) {
+    const g = new THREE.Group();
+    const limbMat = new THREE.MeshStandardMaterial({ color: (player.bowColor != null ? player.bowColor : 0x7a4a24), roughness: 0.8, flatShading: true });
+    player.bowLimbMat = limbMat;
+    // curved bow limb (a C arc) standing vertically
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.018, 8, 24, Math.PI * 1.15), limbMat);
+    arc.rotation.z = Math.PI * 0.575; arc.position.x = 0.04; g.add(arc);
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.16, 8), limbMat);
+    grip.position.set(0.04, 0, 0); g.add(grip);
+    // bowstring (straight chord on the near side)
+    const strMat = new THREE.MeshStandardMaterial({ color: 0xeaeaea, roughness: 0.6 });
+    const str = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.64, 4), strMat);
+    str.position.set(0.32, 0, 0); g.add(str);
+    // a nocked arrow ready to loose (coloured)
+    const aMat = new THREE.MeshStandardMaterial({ color: (player.arrowColor != null ? player.arrowColor : 0xe6c54a), roughness: 0.7, flatShading: true });
+    player.bowArrowMat = aMat;
+    const nock = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.66, 6), aMat); shaft.rotation.x = Math.PI / 2; nock.add(shaft);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.09, 6), new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.4, metalness: 0.4 }));
+    tip.rotation.x = -Math.PI / 2; tip.position.z = -0.37; nock.add(tip);
+    nock.position.set(0.3, 0, 0); g.add(nock);
+    player.bowNock = nock;
+    g.position.set(0.26, -0.26, -0.62);
+    g.rotation.set(0, 0.12, 0);
+    g.scale.setScalar(1.0);
+    g.visible = false;
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
+    camera.add(g);
+    player.bow = g;
+  }
+
+  // A coloured arrow that flies through the world (points along its local -Z).
+  function buildFlyingArrow() {
+    const g = new THREE.Group();
+    const acol = (player.arrowColor != null ? player.arrowColor : 0xe6c54a);
+    const aMat = new THREE.MeshStandardMaterial({ color: acol, roughness: 0.7, flatShading: true });
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.72, 6), aMat); shaft.rotation.x = Math.PI / 2; g.add(shaft);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.11, 6), new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.4, metalness: 0.4 }));
+    tip.rotation.x = -Math.PI / 2; tip.position.z = -0.41; g.add(tip);
+    const fMat = new THREE.MeshStandardMaterial({ color: acol, roughness: 1, side: THREE.DoubleSide });
+    for (const r of [0, Math.PI * 2 / 3, Math.PI * 4 / 3]) {
+      const fin = new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.13), fMat);
+      fin.position.z = 0.32; fin.rotation.z = r; fin.rotation.y = Math.PI / 2; g.add(fin);
+    }
+    return g;
+  }
+
   function buildShield(camera) {
     const g = new THREE.Group();
     const wood = new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 1, flatShading: true });
@@ -200,14 +268,16 @@
     player.shield3d = g;
   }
 
-  const WEAPON_OBJ = () => ({ axe: player.axe, sword: player.sword, shotgun: player.shotgun });
+  const WEAPON_OBJ = () => ({ axe: player.axe, sword: player.sword, katana: player.katana, shotgun: player.shotgun, bow: player.bow });
   function equipWeapon(which) {
-    const have = { axe: true, sword: !!player.hasSword, shotgun: !!player.hasShotgun };
+    const have = { axe: true, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, shotgun: !!player.hasShotgun };
     if (!have[which]) which = 'axe';
     const objs = WEAPON_OBJ();
+    if (player.katana) player.katana.visible = which === 'katana';
     player.axe.visible = which === 'axe';
     if (player.sword) player.sword.visible = which === 'sword';
     if (player.shotgun) player.shotgun.visible = which === 'shotgun';
+    if (player.bow) player.bow.visible = which === 'bow';
     const w = objs[which];
     player.weapon = w;
     player.weaponRest = w.userData.rest;
@@ -218,15 +288,18 @@
     w.position.copy(w.userData.home);
   }
 
-  // X cycles through the weapons you own (axe → sword → shotgun).
+  // X cycles through the weapons you own (bow → axe → sword → shotgun).
   player.switchWeapon = function () {
-    const order = ['axe'];
+    const order = [];
+    if (player.hasBow) order.push('bow');
+    order.push('axe');
     if (player.hasSword) order.push('sword');
+    if (player.hasKatana) order.push('katana');
     if (player.hasShotgun) order.push('shotgun');
     if (order.length === 1) { W.hud.toast('Craft a Sword or find the bandit’s shotgun'); return; }
     const i = order.indexOf(player.currentWeapon);
     equipWeapon(order[(i + 1) % order.length]);
-    W.hud.toast({ axe: '🪓 Axe', sword: '⚔️ Sword', shotgun: '🔫 Sawed-off shotgun' }[player.currentWeapon] + ' equipped');
+    W.hud.toast({ bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', shotgun: '🔫 Sawed-off shotgun' }[player.currentWeapon] + ' equipped');
   };
 
   const BOTTLE_HOME = new THREE.Vector3(-0.42, -0.4, -0.7);
@@ -276,6 +349,7 @@
     player.swing = 0; // drives the swing / recoil animation
 
     if (player.currentWeapon === 'shotgun') { fireShotgun(); return; }
+    if (player.currentWeapon === 'bow') { fireArrow(); return; }
 
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
@@ -333,6 +407,44 @@
       }
     }
     W.hud.toast('💥 BOOM — ' + player.shells + ' shells left');
+  }
+
+  // The bow: looses a coloured arrow that flies and hits a foe.
+  const ARROW_FWD = new THREE.Vector3(0, 0, -1);
+  function fireArrow() {
+    const dir = player.camera.getWorldDirection(new THREE.Vector3());
+    const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.5);
+    const arrow = buildFlyingArrow();
+    arrow.position.copy(start);
+    arrow.quaternion.setFromUnitVectors(ARROW_FWD, dir.clone().normalize());
+    player.scene.add(arrow);
+    player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(62), life: 0 });
+  }
+  function applyArrow(root) {
+    const dmg = 6;
+    if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
+    else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
+  }
+  // advance arrows in flight; hit foes or expire
+  function updateArrows(dt) {
+    for (let i = player.arrows.length - 1; i >= 0; i--) {
+      const a = player.arrows[i];
+      a.life += dt;
+      a.vel.y -= 9.8 * dt * 0.45;                       // gentle gravity drop
+      a.mesh.position.addScaledVector(a.vel, dt);
+      a.mesh.quaternion.setFromUnitVectors(ARROW_FWD, a.vel.clone().normalize());
+      let done = false;
+      for (const e of W.enemies.list) {
+        if (!e.alive) continue;
+        const ep = e.group.position;
+        const hd = Math.hypot(a.mesh.position.x - ep.x, a.mesh.position.z - ep.z);
+        if (hd < 1.0 && a.mesh.position.y > ep.y - 0.2 && a.mesh.position.y < ep.y + 2.3) { applyArrow(e.group); done = true; break; }
+      }
+      const groundY = W.world.heightAt(a.mesh.position.x, a.mesh.position.z);
+      if (done || a.life > 3.5 || a.mesh.position.y < groundY - 0.1) {
+        player.scene.remove(a.mesh); player.arrows.splice(i, 1);
+      }
+    }
   }
 
   // Reward for a kill (used locally, and by net for remote-credited kills).
@@ -515,6 +627,11 @@
       if (!pay(12)) return;
       player.hasSword = true; player.attackDmg += 3; equipWeapon('sword');
       W.hud.toast('Sword forged! ⚔️ +damage · press X to switch');
+    } else if (id === 'katana') {            // Katana (one-time, stronger blade)
+      if (player.hasKatana) { W.hud.toast('Already have a katana'); return; }
+      if (!pay(20)) return;
+      player.hasKatana = true; player.attackDmg += 6; player.attackRange += 0.6; equipWeapon('katana');
+      W.hud.toast('Katana forged! 🗡️ sharp & long · press X to switch');
     } else if (id === '7') {                 // Shield (one-time defence)
       if (player.hasShield) { W.hud.toast('Already have a shield'); return; }
       if (!pay(10)) return;
@@ -699,6 +816,7 @@
 
   player.update = function (dt) {
     player._t += dt;
+    if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
     if (!player.alive) return;
     if (player.downed) {
       player.bleedT += dt;
@@ -875,10 +993,10 @@
       alive: true, downed: false, bleedT: 0, bandaids: 0,
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
       sitting: false, _seat: null, _seatHint: false,
-      hasShotgun: false, shells: 0,
+      hasShotgun: false, shells: 0, hasBow: true,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
-      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasShield: false, currentWeapon: 'axe',
+      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'bow',
     });
   };
 

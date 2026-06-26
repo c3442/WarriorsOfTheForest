@@ -47,6 +47,14 @@
   world.desertAt = function (x, z) {
     return U.clamp((x - 330) / 450, 0, 1);     // the far east third is desert
   };
+  // Snowy tundra: fades in toward the far north (-Z), but not into the desert.
+  world.snowAt = function (x, z) {
+    return U.clamp((-z - 330) / 450, 0, 1) * (1 - world.desertAt(x, z));
+  };
+  // Murky swamp: fades in toward the far south (+Z), away from the desert.
+  world.swampAt = function (x, z) {
+    return U.clamp((z - 360) / 460, 0, 1) * (1 - world.desertAt(x, z));
+  };
 
   function buildTerrain(scene) {
     const size = C.WORLD_RADIUS * 2.6;
@@ -59,6 +67,8 @@
     const hi = new THREE.Color('#52803a');
     const sand = new THREE.Color('#c8b27a');
     const desert = new THREE.Color('#d9c188');
+    const snow = new THREE.Color('#e6edf2');
+    const swamp = new THREE.Color('#3c4a2c');
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
@@ -68,6 +78,8 @@
       const col = lo.clone().lerp(hi, t);
       if (h < -2.2) col.lerp(sand, U.clamp((-2.2 - h) * 0.5, 0, 0.7)); // low = dirt/sand
       col.lerp(desert, world.desertAt(x, z) * 0.85);                   // east becomes desert
+      col.lerp(snow, world.snowAt(x, z) * 0.92);                       // north becomes snowy tundra
+      col.lerp(swamp, world.swampAt(x, z) * 0.8);                      // south becomes murky swamp
       colors.push(col.r, col.g, col.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -181,6 +193,7 @@
       const p = U.pointInDisc(C.WORLD_RADIUS);
       if (!okSpot(p.x, p.z, 3.2)) continue;
       if (world.desertAt(p.x, p.z) > 0.45 && U.chance(0.9)) continue;
+      if (world.snowAt(p.x, p.z) > 0.5 && U.chance(0.7)) continue;   // sparse trees in the tundra
       const big = U.chance(0.16);                 // ~1 in 6 is a giant tree (lots of wood)
       const tree = makeTree(big);
       tree.position.set(p.x, world.heightAt(p.x, p.z) - 0.1, p.z);

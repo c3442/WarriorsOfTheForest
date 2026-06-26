@@ -91,6 +91,25 @@
       });
     }
 
+    // --- bow + arrow colour picks ---
+    if (W.player.bowColor == null) W.player.bowColor = 0x7a4a24;
+    if (W.player.arrowColor == null) W.player.arrowColor = 0xe6c54a;
+    const mkPick = (id, palette, defHex, set) => {
+      const el = document.getElementById(id);
+      if (!el || el.childElementCount) return;
+      palette.forEach(([css, hex]) => {
+        const sw = document.createElement('button');
+        sw.className = 'swatch' + (hex === defHex ? ' sel' : '');
+        sw.style.background = css;
+        sw.onclick = () => { set(hex); el.querySelectorAll('.swatch').forEach((s) => s.classList.toggle('sel', s === sw)); };
+        el.appendChild(sw);
+      });
+    };
+    const WOODS = [['#7a4a24', 0x7a4a24], ['#5a3a22', 0x5a3a22], ['#b5853f', 0xb5853f], ['#e5352b', 0xe5352b], ['#3a6fd0', 0x3a6fd0], ['#4e9c3a', 0x4e9c3a], ['#9b4dca', 0x9b4dca], ['#202428', 0x202428], ['#f2f2f2', 0xf2f2f2]];
+    const SHAFTS = [['#e6c54a', 0xe6c54a], ['#f2f2f2', 0xf2f2f2], ['#e5352b', 0xe5352b], ['#25cdd6', 0x25cdd6], ['#9b4dca', 0x9b4dca], ['#4e9c3a', 0x4e9c3a], ['#3a6fd0', 0x3a6fd0], ['#ff8c1a', 0xff8c1a], ['#202428', 0x202428]];
+    mkPick('bowPick', WOODS, W.player.bowColor, (h) => { W.player.bowColor = h; });
+    mkPick('arrowPick', SHAFTS, W.player.arrowColor, (h) => { W.player.arrowColor = h; });
+
     soloBtn.onclick = () => beginGame((Math.random() * 1e9) | 0);
 
     hostBtn.onclick = () => {

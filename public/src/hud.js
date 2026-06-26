@@ -42,7 +42,7 @@
     els.woodNum.textContent = s.wood;
     els.killNum.textContent = s.kills;
     // hotbar weapon + shells
-    if (els.weaponIc) els.weaponIc.textContent = { axe: '🪓', sword: '⚔️', shotgun: '🔫' }[W.player.currentWeapon] || '🪓';
+    if (els.weaponIc) els.weaponIc.textContent = { axe: '🪓', sword: '⚔️', katana: '🗡️', shotgun: '🔫', bow: '🏹' }[W.player.currentWeapon] || '🪓';
     if (els.slotShell) els.slotShell.classList.toggle('hidden', !W.player.hasShotgun);
     if (els.shellNum) els.shellNum.textContent = W.player.shells || 0;
     if (hud._inv) hud.refreshInv();          // keep the inventory live while open
@@ -76,8 +76,13 @@
         if (h < -2.0) col = '#2f6fb0';                                  // water (blue)
         else {
           const d = W.world.desertAt ? W.world.desertAt(wx, wz) : 0;
-          const g = [78, 124, 60], t = [206, 184, 126];                 // forest -> desert
-          col = 'rgb(' + Math.round(g[0] + (t[0] - g[0]) * d) + ',' + Math.round(g[1] + (t[1] - g[1]) * d) + ',' + Math.round(g[2] + (t[2] - g[2]) * d) + ')';
+          const sn = W.world.snowAt ? W.world.snowAt(wx, wz) : 0;
+          const sw = W.world.swampAt ? W.world.swampAt(wx, wz) : 0;
+          let r = 78, gg = 124, b = 60;                                 // forest base
+          r += (206 - r) * d; gg += (184 - gg) * d; b += (126 - b) * d; // -> desert
+          r += (228 - r) * sn; gg += (236 - gg) * sn; b += (242 - b) * sn; // -> snow
+          r += (60 - r) * sw; gg += (74 - gg) * sw; b += (44 - b) * sw;  // -> swamp
+          col = 'rgb(' + Math.round(r) + ',' + Math.round(gg) + ',' + Math.round(b) + ')';
         }
         ctx.fillStyle = col;
         ctx.fillRect(c + (wx - p.pos.x) * sc - cellPx / 2 - 0.5, c + (wz - p.pos.z) * sc - cellPx / 2 - 0.5, cellPx + 1, cellPx + 1);
