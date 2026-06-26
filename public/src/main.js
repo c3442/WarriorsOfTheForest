@@ -145,6 +145,15 @@
     if (started && !paused && W.player.alive) {
       if (role === 'client') { timeOfDay = W.net.time; day = W.net.day; }
       else { timeOfDay += dt; }
+
+      // sleeping in a tent skips the night to dawn (host/solo own the clock;
+      // in co-op every connected player must be asleep too)
+      if (role !== 'client' && W.player.sleeping && W.world.isNight()) {
+        if (!role || W.net.allRemoteSleeping()) {
+          const base = Math.floor(timeOfDay / C.DAY_LENGTH);
+          timeOfDay = (base + 0.92) * C.DAY_LENGTH;     // jump just past night's end
+        }
+      }
       const dayT = (timeOfDay / C.DAY_LENGTH) % 1;
 
       W.world.update(dt, dayT, W.player.pos);
@@ -171,6 +180,7 @@
         W.hud.banner('NIGHT FALLS', 'The beasts are coming — stay alive', '#ff7b7b');
       } else if (!night && wasNight) {
         if (role !== 'client') day += 1;
+        W.player.sleeping = false;              // everyone wakes at dawn
         W.critters.spawnMorning(6);             // fresh foxes each morning
         W.hud.banner('DAWN BREAKS', `You survived night ${(role === 'client' ? day : day - 1)}`, '#ffe08a');
       }

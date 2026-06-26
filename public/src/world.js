@@ -16,6 +16,7 @@
     hazards: [],     // {x,z,r,dps} barbed wire etc. that hurts enemies
     plots: [],       // farm plots that grow crops
     craftTables: [], // {x,z} workbenches you must stand near to craft
+    tents: [],       // {group,x,z,quat,Wd,Dp,Hw,color,zipped,...} zip-up shelters
     trees: [],       // choppable groups
     bushes: [],      // {x,z,mesh,ready}
     daylight: 1,
@@ -519,6 +520,12 @@
       };
       for (let s = -Dp / 2; s <= Dp / 2 + 0.01; s += 0.42) { addBead(-Wd / 2, s); addBead(Wd / 2, s); }
       for (let s = -Wd / 2 + 0.42; s <= Wd / 2 - 0.42 + 0.01; s += 0.42) addBead(s, -Dp / 2);
+
+      // remember this tent so the player can zip it shut later
+      world.tents.push({
+        group: tent, x: tx, z: tz, quat: tent.quaternion.clone(),
+        Wd, Dp, Hw, color: tentCols[i], zipped: false, flap: null, seam: null, beads: [],
+      });
     }
 
     scene.add(camp);
@@ -529,6 +536,58 @@
   // Resting near the campfire heals you.
   world.nearCamp = function (pos) {
     return U.dist2(pos.x, pos.z, world.campPos.x, world.campPos.z) < 4;
+  };
+
+  // --- Tents: zip up the entrance so nothing can get in -----------------------
+
+  const _tv = new THREE.Vector3(), _tq = new THREE.Quaternion();
+
+  // Which tent (if any) the player is standing inside.
+  world.insideTent = function (pos) {
+    for (const t of world.tents) {
+      _tv.set(pos.x - t.x, 0, pos.z - t.z).applyQuaternion(_tq.copy(t.quat).invert());
+      if (Math.abs(_tv.x) < t.Wd / 2 + 0.25 && Math.abs(_tv.z) < t.Dp / 2 + 0.25) return t;
+    }
+    return null;
+  };
+
+  // Seal (or re-open) a tent's open front. Synced across the network by index.
+  world.applyTentZip = function (idx, zipped) {
+    const t = world.tents[idx];
+    if (!t || t.zipped === zipped) return;
+    t.zipped = zipped;
+    if (zipped) {
+      const mat = new THREE.MeshStandardMaterial({ color: t.color, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(t.Wd, t.Hw, 0.1), mat);
+      flap.position.set(0, t.Hw / 2, t.Dp / 2); flap.castShadow = true;
+      const seam = new THREE.Mesh(new THREE.BoxGeometry(0.06, t.Hw, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.5, metalness: 0.3 }));
+      seam.position.set(0, t.Hw / 2, t.Dp / 2 + 0.02);
+      t.group.add(flap); t.group.add(seam); t.flap = flap; t.seam = seam;
+      // collider beads across the entrance: stop movement, bites and line of sight
+      for (let lx = -t.Wd / 2; lx <= t.Wd / 2 + 0.01; lx += 0.42) {
+        const p = new THREE.Vector3(lx, 0, t.Dp / 2).applyQuaternion(t.quat).add(new THREE.Vector3(t.x, 0, t.z));
+        const bead = { x: p.x, z: p.z, r: 0.3 };
+        world.colliders.push(bead); world.tentWalls.push(bead); t.beads.push(bead);
+      }
+    } else {
+      if (t.flap) { t.group.remove(t.flap); t.flap = null; }
+      if (t.seam) { t.group.remove(t.seam); t.seam = null; }
+      for (const b of t.beads) {
+        let i = world.colliders.indexOf(b); if (i >= 0) world.colliders.splice(i, 1);
+        i = world.tentWalls.indexOf(b); if (i >= 0) world.tentWalls.splice(i, 1);
+      }
+      t.beads = [];
+    }
+  };
+
+  // Toggle the tent the player is standing in. Returns {idx, zipped} or null.
+  world.toggleTentZip = function (pos) {
+    const t = world.insideTent(pos);
+    if (!t) return null;
+    const idx = world.tents.indexOf(t);
+    world.applyTentZip(idx, !t.zipped);
+    return { idx, zipped: t.zipped };
   };
 
   // --- Richer visuals --------------------------------------------------------

@@ -7,7 +7,7 @@
   const player = {
     active: false,
     alive: true,
-    downed: false, bleedT: 0, bandaids: 0,
+    downed: false, bleedT: 0, bandaids: 0, sleeping: false,
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
@@ -53,6 +53,8 @@
       if (e.code === 'KeyG') player.grab();
       if (e.code === 'KeyH') player.dropBerry();
       if (e.code === 'KeyB') player.useBandaid();
+      if (e.code === 'KeyZ') player.zipTent();
+      if (e.code === 'KeyK') player.sleep();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
       if (e.code === 'KeyC') { player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft(); }
@@ -475,6 +477,28 @@
     } else { W.hud.toast('Already full health'); }
   };
 
+  // Z: zip your tent shut (or re-open it). Nothing can get in while it's sealed.
+  player.zipTent = function () {
+    if (!player.alive || !player.active) return;
+    const res = W.world.toggleTentZip(player.pos);
+    if (!res) { W.hud.toast('Stand inside a tent to zip it 🏕️'); return; }
+    if (res.zipped) {
+      W.hud.toast(W.world.isNight() ? 'Zipped shut 🤐 — press K to sleep 💤' : 'Tent zipped shut 🤐 — nothing gets in');
+    } else { W.hud.toast('Tent opened'); }
+    if (W.net && W.net.role && W.net.sendZip) W.net.sendZip(res.idx, res.zipped);
+  };
+
+  // K: sleep in a tent to skip the night (in co-op everyone must be asleep).
+  player.sleep = function () {
+    if (!player.alive || player.downed || !player.active) return;
+    if (!W.world.insideTent(player.pos)) { W.hud.toast('Get in a tent to sleep 🛏️'); return; }
+    if (!W.world.isNight()) { W.hud.toast('You can only sleep at night 🌙'); return; }
+    player.sleeping = !player.sleeping;
+    if (player.sleeping) {
+      W.hud.banner('SLEEPING 💤', (W.net && W.net.role) ? 'Waiting for everyone to sleep…' : 'Skipping the night…', '#bcd4ff');
+    } else { W.hud.toast('You got up'); }
+  };
+
   player.revive = function () {
     if (!player.downed) return;
     player.downed = false; player.bleedT = 0;
@@ -629,7 +653,7 @@
 
   player.reset = function () {
     Object.assign(player, {
-      alive: true, downed: false, bleedT: 0, bandaids: 0,
+      alive: true, downed: false, bleedT: 0, bandaids: 0, sleeping: false,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasShield: false, currentWeapon: 'axe',

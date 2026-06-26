@@ -133,6 +133,9 @@
       W.world.felByIndex(m.idx);
     } else if (m.t === 'revive') {
       if (W.player.downed) W.player.revive();
+    } else if (m.t === 'zip') {
+      W.world.applyTentZip(m.idx, m.zipped);
+      for (const c of net._conns) { if (c !== conn && c.open) c.send({ t: 'zip', idx: m.idx, zipped: m.zipped }); }
     }
   }
 
@@ -168,6 +171,8 @@
       W.player.creditKill(m.kind === 1 ? 'werewolf' : 'wolf');
     } else if (m.t === 'revive') {
       if (W.player.downed) W.player.revive();
+    } else if (m.t === 'zip') {
+      W.world.applyTentZip(m.idx, m.zipped);
     }
   }
 
@@ -180,6 +185,16 @@
     return false;
   };
   net.sendRevive = function () { for (const c of net._conns) { if (c.open) c.send({ t: 'revive' }); } };
+
+  // True when every connected teammate is asleep (so the host can skip the night).
+  net.allRemoteSleeping = function () {
+    for (const c of net._conns) {
+      const r = net.remote[c.peer];
+      if (!r || !r.pose || !r.pose.asleep) return false;
+    }
+    return true;
+  };
+  net.sendZip = function (idx, zipped) { for (const c of net._conns) { if (c.open) c.send({ t: 'zip', idx, zipped }); } };
 
   // --- Per-frame -------------------------------------------------------------
 
@@ -201,12 +216,12 @@
     net._acc = 0;
     if (net.role === 'host') {
       net.time = timeOfDay; net.day = day; // keep current so late joiners sync via init
-      const players = { host: Object.assign({ name: net.myName, down: !!W.player.downed }, pose) };
+      const players = { host: Object.assign({ name: net.myName, down: !!W.player.downed, asleep: !!W.player.sleeping }, pose) };
       const snap = { t: 'snap', time: timeOfDay, day, e: W.enemies.serialize(), p: players };
       for (const conn of net._conns) { if (conn.open) conn.send(snap); }
     } else if (net.role === 'client') {
       const conn = net._conns[0];
-      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, down: !!W.player.downed });
+      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, down: !!W.player.downed, asleep: !!W.player.sleeping });
     }
   };
 
