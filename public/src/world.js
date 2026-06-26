@@ -1041,7 +1041,7 @@
     if (!t || t.zipped === zipped) return;
     t.zipped = zipped;
     if (zipped) {
-      t.flapHp = 30;                 // fresh flap; beasts can claw it open
+      t.flapHp = 100;                // fresh flap; beasts can claw it open
       const mat = new THREE.MeshStandardMaterial({ color: t.color, roughness: 1, flatShading: true, side: THREE.DoubleSide });
       const flap = new THREE.Mesh(new THREE.BoxGeometry(t.Wd, t.Hw, 0.1), mat);
       flap.position.set(0, t.Hw / 2, t.Dp / 2); flap.castShadow = true;
@@ -1244,9 +1244,9 @@
           if (Math.hypot(e.group.position.x - _ev.x, e.group.position.z - _ev.z) < 2.4) { clawing = true; break; }
         }
         if (clawing) {
-          const before = t.flapHp != null ? t.flapHp : 30;
-          t.flapHp = before - dt * 6;                  // ~5s to tear open with one attacker
-          if (before > 15 && t.flapHp <= 15 && W.hud) W.hud.toast('🪓 Something is tearing at your tent!');
+          const before = t.flapHp != null ? t.flapHp : 100;
+          t.flapHp = before - dt * 6;                  // ~17s to tear open with one attacker
+          if (before > 40 && t.flapHp <= 40 && W.hud) W.hud.toast('🪓 Something is tearing at your tent!');
           if (t.flapHp <= 0) {
             world.applyTentZip(ti, false);
             if (W.hud) W.hud.banner('TENT BREACHED', 'The beasts tore your tent open! 🐺', '#ff7b7b');
