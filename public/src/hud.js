@@ -69,6 +69,7 @@
     };
     dot(0, 0, '#ffb13a', 3.4);                                    // home camp (orange)
     if (W.world && W.world.villagePos) dot(W.world.villagePos.x, W.world.villagePos.z, '#7fe07f', 3.4); // village (green)
+    if (W.world && W.world.banditCampPos) dot(W.world.banditCampPos.x, W.world.banditCampPos.z, '#ff5a4a', 3.8); // bandit hideout (red)
     if (W.net && W.net.remote) {
       for (const id in W.net.remote) {                            // teammates (cyan)
         const r = W.net.remote[id];
