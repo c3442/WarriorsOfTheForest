@@ -13,6 +13,7 @@
     sitting: false, _seat: null, _seatHint: false,
     hasShotgun: false, shells: 0,
     hasBow: true, bowColor: 0x7a4a24, arrowColor: 0xe6c54a,   // start with a bow (colours from the menu)
+    saplings: 0,
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
@@ -67,6 +68,7 @@
       if (e.code === 'KeyZ') player.zipTent();
       if (e.code === 'KeyK') player.sleep();
       if (e.code === 'KeyR') player.sit();
+      if (e.code === 'KeyP') player.plant();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
       if (e.code === 'KeyI') player.toggleInventory();
@@ -395,13 +397,73 @@
       }
       player.popDamage(root.position, player.attackDmg);
     } else if (root.userData.type === 'tree') {
-      const wood = W.world.chopTree(root);
+      const dmg = 10 + player.axeLevel * 5;                 // sharper axe = bigger chips
+      const wood = W.world.chopTree(root, dmg);
+      showTreeHealth(root, dmg);                            // floating damage + a health bar
       if (wood) {
         player.wood += wood; W.hud.toast('+' + wood + ' wood');
         if (W.net && W.net.role) W.net.sendChop(W.world.treeIndex(root));
+        const sap = rollSaplings();                         // each felled tree may drop saplings
+        if (sap > 0) { player.saplings += sap; W.hud.toast('🌱 +' + sap + ' sapling' + (sap === 1 ? '' : 's') + (sap >= 100 ? ' JACKPOT!! 🎉' : '')); }
       }
     }
   };
+
+  // Sapling drop roll per felled tree: 25% for 1, 10% for 2, 5% for 3, 1% for 4,
+  // 0.5% for 5, and 0.00000000000000001% for a jackpot of 100.
+  function rollSaplings() {
+    const r = Math.random();
+    if (r < 1e-19) return 100;
+    if (r < 0.005) return 5;
+    if (r < 0.015) return 4;
+    if (r < 0.065) return 3;
+    if (r < 0.165) return 2;
+    if (r < 0.415) return 1;
+    return 0;
+  }
+
+  // Show the damage dealt and the tree's remaining health when you chop it.
+  function showTreeHealth(tree, dmg) {
+    player.popDamage(tree.position, dmg);                  // floating damage number
+    if (!player._treeBars) player._treeBars = [];
+    let s = tree.userData._hpBar;
+    if (!s) {
+      const cv = document.createElement('canvas'); cv.width = 140; cv.height = 36;
+      s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+      s.userData.cv = cv; s.scale.set(2.4, 0.62, 1); s.renderOrder = 997;
+      tree.userData._hpBar = s; player.scene.add(s);
+      player._treeBars.push(tree);
+    }
+    const hp = Math.max(0, tree.userData.hp), max = tree.userData.maxHp, frac = hp / max;
+    const cv = s.userData.cv, ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, 140, 36);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(8, 8, 124, 18);
+    ctx.fillStyle = frac > 0.5 ? '#6fdc54' : (frac > 0.25 ? '#f2c33a' : '#e5483a');
+    ctx.fillRect(10, 10, 120 * frac, 14);
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.strokeRect(8, 8, 124, 18);
+    ctx.font = "bold 14px 'Trebuchet MS', sans-serif"; ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(Math.ceil(hp) + ' / ' + max, 70, 17);
+    s.material.map.needsUpdate = true;
+    s.position.set(tree.position.x, tree.position.y + (tree.userData.big ? 9.5 : 6.2), tree.position.z);
+    s.material.opacity = 1;
+    tree.userData._hpBarT = player._t;
+  }
+  function updateTreeBars() {
+    if (!player._treeBars) return;
+    for (let i = player._treeBars.length - 1; i >= 0; i--) {
+      const tree = player._treeBars[i], s = tree.userData._hpBar;
+      if (!s) { player._treeBars.splice(i, 1); continue; }
+      const age = player._t - tree.userData._hpBarT;
+      if (!tree.userData.alive || age > 2.5) s.material.opacity = Math.max(0, 1 - (age - 2.5) / 0.6);
+      if (!tree.userData.alive || age > 3.1) {
+        player.scene.remove(s);
+        if (s.material.map) s.material.map.dispose();
+        s.material.dispose();
+        tree.userData._hpBar = null; player._treeBars.splice(i, 1);
+      }
+    }
+  }
 
   // The sawed-off shotgun: a hard-hitting short-range blast with buckshot splash.
   function applyShot(root, dmg) {
@@ -772,6 +834,18 @@
     W.hud.toast('Stood up');
   };
 
+  // P: plant a sapling on the ground ahead of you; it grows into a tree.
+  player.plant = function () {
+    if (!player.alive || !player.active) return;
+    if (player.saplings <= 0) { W.hud.toast('No saplings — chop trees to find some 🌱'); return; }
+    const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
+    const x = player.pos.x + (-sin) * 2.2, z = player.pos.z + (-cos) * 2.2;
+    if (W.world.isWater(x, z)) { W.hud.toast("Can't plant in water 💧"); return; }
+    player.saplings -= 1;
+    W.world.plantSapling(x, z);
+    W.hud.toast('🌱 Planted a sapling (' + player.saplings + ' left)');
+  };
+
   player.drink = function () {
     if (!player.alive || !player.active) return;
     if (W.world.isWater(player.pos.x, player.pos.z)) {
@@ -889,6 +963,7 @@
     player._t += dt;
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
     if (player._dmgNums && player._dmgNums.length) updateDamageNums(dt);
+    if (player._treeBars && player._treeBars.length) updateTreeBars();
     if (!player.alive) return;
     if (player.downed) {
       player.bleedT += dt;
@@ -1105,7 +1180,7 @@
       alive: true, downed: false, bleedT: 0, bandaids: 0,
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
       sitting: false, _seat: null, _seatHint: false,
-      hasShotgun: false, shells: 0, hasBow: true,
+      hasShotgun: false, shells: 0, hasBow: true, saplings: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'bow',

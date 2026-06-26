@@ -31,6 +31,7 @@
     _falling: [],
     _treeRegrow: [], // {idx,x,z,t} felled trees waiting to grow back
     _extraFires: [], // crafted campfires to flicker
+    _growing: [],    // {group,x,z,t,grow} planted saplings growing into trees
     isNight() { return this._isNight; },
   };
 
@@ -131,7 +132,7 @@
       g.add(cone);
     }
     // big trees are tougher but drop a lot more wood
-    g.userData = { type: 'tree', hp: big ? 8 : 4, scale, alive: true, big: !!big };
+    g.userData = { type: 'tree', hp: big ? 80 : 40, maxHp: big ? 80 : 40, scale, alive: true, big: !!big };
     return g;
   }
 
@@ -183,6 +184,39 @@
       up.position.set(sx * 0.5, 1.32, 0); up.castShadow = true; g.add(up);
     }
     g.userData = { type: 'cactus' };
+    return g;
+  }
+
+  // A little primitive hut: mud/wood walls + a conical thatched roof.
+  function makeHut() {
+    const g = new THREE.Group();
+    const wallCols = ['#8a6a44', '#9a7a4e', '#7e623e'];
+    const wall = new THREE.MeshStandardMaterial({ color: wallCols[U.randInt(0, wallCols.length - 1)], roughness: 1, flatShading: true });
+    const thatch = new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0xb59a55 : 0x9c8038, roughness: 1, flatShading: true });
+    const R = U.rand(1.5, 2.1), H = U.rand(1.6, 2.1);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 1.06, H, 8), wall);
+    body.position.y = H / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(R * 1.35, R * 1.1, 8), thatch);
+    roof.position.y = H + R * 0.5; roof.castShadow = true; g.add(roof);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.3, 0.1), new THREE.MeshStandardMaterial({ color: 0x3a2a18, roughness: 1 }));
+    door.position.set(0, 0.65, R * 1.0); g.add(door);
+    g.userData = { type: 'hut', R };
+    return g;
+  }
+
+  // A low leafy fern/shrub for the rainforest floor (decor, no collider).
+  function makeFern() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0x2f6b2a : 0x357a30, roughness: 1, flatShading: true });
+    const blades = U.randInt(5, 8);
+    for (let i = 0; i < blades; i++) {
+      const a = (i / blades) * Math.PI * 2 + U.rand(-0.3, 0.3);
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.12, U.rand(0.5, 0.9), 4), mat);
+      leaf.position.set(Math.cos(a) * 0.12, 0.3, Math.sin(a) * 0.12);
+      leaf.rotation.z = Math.cos(a) * 0.9; leaf.rotation.x = Math.sin(a) * 0.9;
+      g.add(leaf);
+    }
+    g.userData = { type: 'fern' };
     return g;
   }
 
@@ -259,6 +293,29 @@
       c.position.set(p.x, world.heightAt(p.x, p.z), p.z); c.rotation.y = U.rand(0, 6.28);
       scene.add(c);
       world.colliders.push({ x: p.x, z: p.z, r: 0.4, ref: c });
+    }
+    // Primitive huts dotted around the grasslands & jungle (not desert/tundra, not at camp)
+    for (let i = 0; i < 26; i++) {
+      const p = U.pointInDisc(C.WORLD_RADIUS);
+      if (world.heightAt(p.x, p.z) <= C.WATER_LEVEL + 0.6) continue;
+      if (U.dist2(p.x, p.z, 0, 0) < 26) continue;
+      if (world.desertAt(p.x, p.z) > 0.4 || world.snowAt(p.x, p.z) > 0.5) continue;
+      const hut = makeHut();
+      hut.position.set(p.x, world.heightAt(p.x, p.z) - 0.05, p.z); hut.rotation.y = U.rand(0, 6.28);
+      scene.add(hut);
+      world.colliders.push({ x: p.x, z: p.z, r: hut.userData.R * 0.95, ref: hut });
+    }
+    // Leafy ferns carpet the rainforest floor
+    let ferns = 0, ftries = 0;
+    while (ferns < 500 && ftries < 4000) {
+      ftries++;
+      const x = -U.rand(345, 985), z = U.rand(-560, 560);
+      if (Math.hypot(x, z) > C.WORLD_RADIUS) continue;
+      if (world.rainforestAt(x, z) < 0.4 || world.heightAt(x, z) <= C.WATER_LEVEL + 0.4) continue;
+      const f = makeFern();
+      f.position.set(x, world.heightAt(x, z), z); f.rotation.y = U.rand(0, 6.28);
+      scene.add(f);
+      ferns++;
     }
   }
 
@@ -1264,6 +1321,38 @@
     world.clouds = grp;
   }
 
+  // Flocks of birds gliding & flapping overhead (follow the player → always alive).
+  function buildBirds(scene) {
+    const grp = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+    for (let i = 0; i < 26; i++) {
+      const bird = new THREE.Group();
+      const lw = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.8, 3), mat); lw.rotation.z = Math.PI / 2; lw.position.x = -0.4; bird.add(lw);
+      const rw = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.8, 3), mat); rw.rotation.z = -Math.PI / 2; rw.position.x = 0.4; bird.add(rw);
+      bird.userData = { wings: [lw, rw], r: U.rand(20, 90), h: U.rand(28, 60), a: U.rand(0, Math.PI * 2), sp: U.rand(0.1, 0.25), flap: U.rand(6, 10), ph: U.rand(0, 6) };
+      grp.add(bird);
+    }
+    scene.add(grp);
+    world.birds = grp;
+  }
+
+  // Butterflies fluttering around the meadow near camp.
+  function buildButterflies(scene) {
+    const grp = new THREE.Group();
+    const cols = [0xf2c33a, 0xf25a7a, 0xe8702a, 0xa56be0, 0xf6f1e7];
+    for (let i = 0; i < 40; i++) {
+      const b = new THREE.Group();
+      const mat = new THREE.MeshStandardMaterial({ color: cols[U.randInt(0, cols.length - 1)], roughness: 0.7, flatShading: true, side: THREE.DoubleSide });
+      const lw = new THREE.Mesh(new THREE.CircleGeometry(0.07, 6), mat); lw.position.x = -0.05; b.add(lw);
+      const rw = new THREE.Mesh(new THREE.CircleGeometry(0.07, 6), mat); rw.position.x = 0.05; b.add(rw);
+      const a = U.rand(0, Math.PI * 2), rad = U.rand(4, 34);
+      b.userData = { wings: [lw, rw], bx: Math.cos(a) * rad, bz: Math.sin(a) * rad, ph: U.rand(0, 6), sp: U.rand(0.4, 1.0) };
+      grp.add(b);
+    }
+    scene.add(grp);
+    world.butterflies = grp;
+  }
+
   // --- Public API ------------------------------------------------------------
 
   world.init = function (scene) {
@@ -1279,6 +1368,8 @@
     buildBanditOutposts(scene);
     // buildGrass(scene);              // tall grass removed (user request)
     buildFlowers(scene);
+    buildBirds(scene);                 // ambient life: birds overhead + butterflies
+    buildButterflies(scene);
   };
 
   // dayT in [0,1): 0 = dawn, 0.25 = noon, 0.5 = dusk, 0.75 = midnight
@@ -1427,6 +1518,32 @@
       world.clouds.children.forEach((c) => c.children.forEach((p) => p.material.color.copy(cloudCol)));
     }
 
+    // birds circle overhead and flap (kept near the player so the sky is alive)
+    if (world.birds) {
+      const tt = world._time;
+      for (const b of world.birds.children) {
+        const u = b.userData;
+        u.a += u.sp * dt;
+        b.position.set(playerPos.x + Math.cos(u.a) * u.r, u.h + Math.sin(u.a * 1.7) * 3, playerPos.z + Math.sin(u.a) * u.r);
+        b.rotation.y = -u.a + Math.PI / 2;
+        const flap = Math.sin(tt * u.flap + u.ph) * 0.6;
+        u.wings[0].rotation.x = flap; u.wings[1].rotation.x = flap;
+      }
+    }
+    // butterflies flutter around the meadow near camp
+    if (world.butterflies) {
+      const tt = world._time;
+      for (const b of world.butterflies.children) {
+        const u = b.userData;
+        const x = u.bx + Math.sin(tt * u.sp + u.ph) * 2.2;
+        const z = u.bz + Math.cos(tt * u.sp * 0.8 + u.ph) * 2.2;
+        b.position.set(x, world.heightAt(x, z) + 0.7 + Math.sin(tt * 2 + u.ph) * 0.3, z);
+        b.rotation.y = tt * u.sp + u.ph;
+        const flap = Math.sin(tt * 14 + u.ph) * 1.1;
+        u.wings[0].rotation.y = flap; u.wings[1].rotation.y = -flap;
+      }
+    }
+
     // advance tree-fall animations
     for (let i = world._falling.length - 1; i >= 0; i--) {
       const f = world._falling[i];
@@ -1456,6 +1573,19 @@
       }
     }
 
+    // grow planted saplings into full, choppable trees
+    for (let i = world._growing.length - 1; i >= 0; i--) {
+      const s = world._growing[i];
+      s.t += dt;
+      const k = Math.min(s.t / s.grow, 1);
+      s.group.scale.setScalar(0.08 + k * 0.92);
+      if (k >= 1) {
+        world.trees.push(s.group);
+        world.colliders.push({ x: s.x, z: s.z, r: 0.5, ref: s.group });
+        world._growing.splice(i, 1);
+      }
+    }
+
     // flicker crafted campfires
     for (const cf of world._extraFires) {
       cf.t += dt;
@@ -1472,9 +1602,9 @@
   };
 
   // Damage a tree; returns wood gained when it falls (0 otherwise).
-  world.chopTree = function (tree) {
+  world.chopTree = function (tree, dmg) {
     if (!tree.userData.alive) return 0;
-    tree.userData.hp -= 1;
+    tree.userData.hp -= (dmg || 10);
     // little shake
     tree.position.x += U.rand(-0.04, 0.04);
     if (tree.userData.hp <= 0) {
@@ -1787,6 +1917,17 @@
   // Crafting only works near a workbench.
   world.nearCraftTable = function (pos, range) {
     return world.craftTables.some((t) => U.dist2(pos.x, pos.z, t.x, t.z) < (range || 3.5));
+  };
+
+  // Plant a sapling that grows into a choppable tree over ~22s.
+  world.plantSapling = function (x, z) {
+    const tree = makeTree(false);
+    tree.position.set(x, world.heightAt(x, z) - 0.1, z);
+    tree.rotation.y = U.rand(0, Math.PI * 2);
+    tree.scale.setScalar(0.08);
+    world.scene.add(tree);
+    world._growing.push({ group: tree, x, z, t: 0, grow: 22 });
+    return tree;
   };
 
   world.treeIndex = function (tree) { return world.trees.indexOf(tree); };
