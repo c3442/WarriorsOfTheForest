@@ -22,6 +22,8 @@
     pickups: [],     // {x,z,mesh,kind} items dropped in the world (e.g. shotgun)
     outposts: [],    // {x,z,found} bandit outposts (guarded camps; found once discovered)
     discovered: { village: false, bandit: false },  // minimap fog-of-war
+    stuffies: [],    // {mesh,tentIdx,alive} plushies enemies can smash
+    stuffiesBroken: false, _stuffieBreakDay: -1, _dayCount: 0,
     trees: [],       // choppable groups
     bushes: [],      // {x,z,mesh,ready}
     daylight: 1,
@@ -732,6 +734,7 @@
       const stuffie = makeStuffieFor(i);
       stuffie.position.set(0, 0.5, -0.3);            // themed one, near the pillow
       bed.add(stuffie);
+      world.stuffies.push({ mesh: stuffie, tentIdx: i, alive: true });
       // a couple more little plushies scattered on the bed
       const extras = [
         () => makeBear(0x8a5a3a), () => makeBear(0xd8c084), () => makeBunny(0xe6a6c8),
@@ -743,6 +746,7 @@
         ex.position.set(-0.36 + k * 0.72, 0.52, 0.28 - k * 0.06);
         ex.rotation.y = U.rand(-0.6, 0.6);
         bed.add(ex);
+        world.stuffies.push({ mesh: ex, tentIdx: i, alive: true });
       }
       tent.add(bed);
 
@@ -992,6 +996,32 @@
     return null;
   };
 
+  // --- Stuffies: enemies that get inside a tent smash them ---------------------
+  world.intactStuffies = function () { return world.stuffies.reduce((n, s) => n + (s.alive ? 1 : 0), 0); };
+
+  // A hostile creature at `pos` wrecks one stuffie in the tent it's standing in.
+  world.damageStuffieAt = function (pos) {
+    const t = world.insideTent(pos);
+    if (!t) return false;
+    const idx = world.tents.indexOf(t);
+    const s = world.stuffies.find((x) => x.alive && x.tentIdx === idx);
+    if (!s) return false;
+    s.alive = false; s.mesh.visible = false;
+    if (W.hud) W.hud.toast('🧸💥 A beast wrecked a stuffie!');
+    if (world.stuffies.length && world.stuffies.every((x) => !x.alive)) {
+      world.stuffiesBroken = true; world._stuffieBreakDay = world._dayCount;
+      if (W.hud) W.hud.banner('STUFFIES DESTROYED', 'No sleeping until they mend — 5 days', '#ff7b7b');
+    }
+    return true;
+  };
+
+  // Bring every stuffie back (after the 5-day mend).
+  world.reviveStuffies = function () {
+    for (const s of world.stuffies) { s.alive = true; s.mesh.visible = true; }
+    world.stuffiesBroken = false; world._stuffieBreakDay = -1;
+    if (W.hud) W.hud.banner('STUFFIES MENDED', 'Your plushies are back — you can sleep again 🧸', '#8fd36a');
+  };
+
   // Nearest tent you can reach the zipper of — inside OR within ~1.4m outside.
   world.tentForZip = function (pos) {
     let best = null, bestD = 1e9;
@@ -1090,6 +1120,19 @@
     for (let i = 0; i < pos.count; i++) { const t = U.clamp(pos.getY(i) / 0.17, 0, 1); const c = base.clone().lerp(tip, t); cols.push(c.r, c.g, c.b); }
     blade.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide });
+    // gentle wind: sway the blade tips (scaled by local height) using a time uniform
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = { value: 0 };
+      world._grassUniform = shader.uniforms.uTime;
+      shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+         float ph = instanceMatrix[3].x * 0.6 + instanceMatrix[3].z * 0.5;
+         float h = position.y * 6.0;
+         transformed.x += sin(uTime * 1.6 + ph) * 0.05 * h;
+         transformed.z += cos(uTime * 1.2 + ph) * 0.04 * h;`,
+      );
+    };
     const N = 90000;                                 // small but very dense grass
     const inst = new THREE.InstancedMesh(blade, mat, N);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3(), col = new THREE.Color();
@@ -1131,6 +1174,30 @@
     world.flowers = inst;
   }
 
+  // Soft drifting clouds high overhead — they follow the player so the sky is
+  // always full, and slowly drift on the wind.
+  function buildClouds(scene) {
+    const grp = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.85, fog: false, flatShading: true });
+    for (let i = 0; i < 16; i++) {
+      const cloud = new THREE.Group();
+      const puffs = U.randInt(4, 7);
+      for (let j = 0; j < puffs; j++) {
+        const r = U.rand(7, 14);
+        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), mat);
+        puff.position.set(U.rand(-16, 16), U.rand(-2, 2), U.rand(-10, 10));
+        puff.scale.y = 0.5;
+        cloud.add(puff);
+      }
+      const a = U.rand(0, Math.PI * 2), rad = U.rand(40, 260);
+      cloud.position.set(Math.cos(a) * rad, U.rand(120, 200), Math.sin(a) * rad);
+      cloud.userData.drift = U.rand(0.4, 1.1);
+      grp.add(cloud);
+    }
+    scene.add(grp);
+    world.clouds = grp;
+  }
+
   // --- Public API ------------------------------------------------------------
 
   world.init = function (scene) {
@@ -1139,10 +1206,13 @@
     buildSkyDome(scene);
     buildMountains(scene);
     buildWater(scene);
+    buildClouds(scene);
     scatter(scene);
     buildCamp(scene);
     buildVillage(scene);
     buildBanditOutposts(scene);
+    buildGrass(scene);                 // lush wind-blown grass + wildflowers around camp
+    buildFlowers(scene);
   };
 
   // dayT in [0,1): 0 = dawn, 0.25 = noon, 0.5 = dusk, 0.75 = midnight
@@ -1155,7 +1225,21 @@
     const NIGHT = -0.63;
     const day = U.clamp((elev - NIGHT) / 0.45, 0, 1);
     world.daylight = day;
+    const wasNight = world._isNight;
     world._isNight = elev < NIGHT;
+
+    // --- stuffies: count days, let enemies smash them, mend after 5 days ---
+    if (wasNight && !world._isNight) world._dayCount += 1;        // a new dawn
+    if (world.stuffiesBroken && world._dayCount - world._stuffieBreakDay >= 5) world.reviveStuffies();
+    if (W.enemies && W.enemies.list && world.intactStuffies() > 0) {
+      world._stuffieT = (world._stuffieT || 0) - dt;
+      if (world._stuffieT <= 0) {
+        for (const e of W.enemies.list) {
+          if (!e.alive) continue;
+          if (world.damageStuffieAt(e.group.position)) { world._stuffieT = 1.4; break; }
+        }
+      }
+    }
 
     // --- landmark discovery: reveal on the minimap once you (or a teammate) get close ---
     const finders = [playerPos];
@@ -1238,6 +1322,21 @@
       u.uTime.value = world._time;
       u.uSky.value.copy(sky);
       u.uSun.value.copy(sunDir);
+    }
+
+    // sway the grass on the wind
+    if (world._grassUniform) world._grassUniform.value = world._time;
+
+    // drift the clouds and keep them centred over the player; tint them with the sky
+    if (world.clouds) {
+      world.clouds.position.x = playerPos.x;
+      world.clouds.position.z = playerPos.z;
+      for (const c of world.clouds.children) {
+        c.position.x += c.userData.drift * dt;
+        if (c.position.x > 280) c.position.x = -280;
+      }
+      const cloudCol = U.mixColor('#3a4660', '#ffffff', world.daylight);
+      world.clouds.children.forEach((c) => c.children.forEach((p) => p.material.color.copy(cloudCol)));
     }
 
     // advance tree-fall animations

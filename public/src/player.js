@@ -759,6 +759,11 @@
     if (!player.alive || player.downed || !player.active) return;
     if (player.sleeping) { player.wake(true); return; }   // press again to get up early
     if (!W.world.insideTent(player.pos)) { W.hud.toast('Get in a tent to sleep 🛏️'); return; }
+    if (W.world.stuffiesBroken) {
+      const left = 5 - (W.world._dayCount - W.world._stuffieBreakDay);
+      W.hud.toast('🧸 Your stuffies are wrecked — no sleep for ' + left + ' more day' + (left === 1 ? '' : 's'));
+      return;
+    }
     if (!W.world.isNight()) { W.hud.toast('You can only sleep at night 🌙'); return; }
     if (W.enemies.anyHostileNear && W.enemies.anyHostileNear(player.pos, 5)) {
       W.hud.toast('Too dangerous to sleep — a hostile is within 5m!'); return;
