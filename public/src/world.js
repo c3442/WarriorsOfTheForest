@@ -224,8 +224,53 @@
     const roof = new THREE.Mesh(new THREE.ConeGeometry(R * 1.3, R * 0.95, N), thatch);
     roof.position.y = H + R * 0.42; roof.castShadow = true; g.add(roof);
 
+    furnishHut(g, R);
     g.userData = { type: 'hut', R, H, N };
     return g;
+  }
+
+  // Furnish a hut's interior: a rug, a bed, a table with crockery, stools & a chest.
+  function furnishHut(g, R) {
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5e3f23, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x4a3320, roughness: 1, flatShading: true });
+    const cloth = new THREE.MeshStandardMaterial({ color: 0xcfc3a6, roughness: 1, flatShading: true });
+    const y0 = 0.085;                                   // sit on the dirt floor
+
+    // woven rug in the middle
+    const rug = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.5, R * 0.5, 0.02, 18),
+      new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0x8a3b3b : 0x355a7a, roughness: 1 }));
+    rug.position.y = y0 + 0.01; g.add(rug);
+
+    // bed against the back-left wall
+    const bed = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.22, 1.9), wood); frame.position.y = 0.18; frame.castShadow = true; bed.add(frame);
+    const matt = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.18, 1.8), cloth); matt.position.y = 0.34; bed.add(matt);
+    const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.12, 1.0), new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0x9a5a3a : 0x3a6a5a, roughness: 1, flatShading: true }));
+    blanket.position.set(0, 0.42, 0.34); bed.add(blanket);
+    const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.14, 0.34), new THREE.MeshStandardMaterial({ color: 0xe8ddc8, roughness: 1 })); pillow.position.set(0, 0.42, -0.72); bed.add(pillow);
+    bed.position.set(-R * 0.46, y0, -R * 0.44); bed.rotation.y = 0.4; g.add(bed);
+
+    // round table with a bowl + jug, flanked by two stools
+    const table = new THREE.Group();
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.08, 12), wood); top.position.y = 0.62; top.castShadow = true; table.add(top);
+    const tleg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.6, 8), dark); tleg.position.y = 0.31; table.add(tleg);
+    const tbase = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.05, 8), dark); tbase.position.y = 0.03; table.add(tbase);
+    const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), new THREE.MeshStandardMaterial({ color: 0x7a5a3a, roughness: 1 }));
+    bowl.rotation.x = Math.PI; bowl.position.set(0.16, 0.72, 0.04); table.add(bowl);
+    const jug = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.2, 8), new THREE.MeshStandardMaterial({ color: 0x9a6a4a, roughness: 1 })); jug.position.set(-0.18, 0.74, 0.04); table.add(jug);
+    table.position.set(R * 0.4, y0, R * 0.12); g.add(table);
+    for (const sa of [0.7, -0.8]) {
+      const stool = new THREE.Group();
+      const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.07, 8), wood); seat.position.y = 0.4; stool.add(seat);
+      const sleg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.4, 6), dark); sleg.position.y = 0.2; stool.add(sleg);
+      stool.position.set(R * 0.4 + Math.cos(sa) * 0.9, y0, R * 0.12 + Math.sin(sa) * 0.9); g.add(stool);
+    }
+
+    // a storage chest by the wall
+    const chest = new THREE.Group();
+    const cbody = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.45), wood); cbody.position.y = 0.2; cbody.castShadow = true; chest.add(cbody);
+    const clid = new THREE.Mesh(new THREE.BoxGeometry(0.73, 0.16, 0.48), dark); clid.position.y = 0.46; chest.add(clid);
+    chest.position.set(R * 0.42, y0, -R * 0.5); chest.rotation.y = -0.5; g.add(chest);
   }
 
   // A low leafy fern/shrub for the rainforest floor (decor, no collider).
@@ -1382,6 +1427,116 @@
     world.butterflies = grp;
   }
 
+  // A glowing gold "★ HOTEL ★" sign (always-bright sprite).
+  function makeHotelSign() {
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+    const ctx = cv.getContext('2d');
+    ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(40,28,0,0.85)';
+    ctx.strokeText('★ HOTEL ★', 128, 34);
+    ctx.fillStyle = '#ffd76a'; ctx.fillText('★ HOTEL ★', 128, 34);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: true, transparent: true }));
+    spr.scale.set(3.4, 0.85, 1);
+    return spr;
+  }
+
+  // A tiny luxury resort hotel (cream walls, gold trim, glass, entrance canopy,
+  // infinity pool + sun loungers facing the lake).
+  function makeLuxuryHotel() {
+    const g = new THREE.Group();
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xf4ece0, roughness: 0.6 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.32, metalness: 0.75 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0x244a66, roughness: 0.08, metalness: 0.35, emissive: 0x0c2236, emissiveIntensity: 0.45 });
+    const water = new THREE.MeshStandardMaterial({ color: 0x36bcd8, roughness: 0.12, metalness: 0.2, emissive: 0x0a3a4a, emissiveIntensity: 0.35 });
+    const W = 5.5, D = 4.5, FLOOR = 2.3, FLOORS = 3, H = FLOOR * FLOORS;
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), wallMat);
+    body.position.y = H / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
+    for (let f = 1; f < FLOORS; f++) {                          // gold bands between floors
+      const band = new THREE.Mesh(new THREE.BoxGeometry(W + 0.12, 0.12, D + 0.12), gold);
+      band.position.y = f * FLOOR; g.add(band);
+    }
+    const cornice = new THREE.Mesh(new THREE.BoxGeometry(W + 0.34, 0.26, D + 0.34), gold);
+    cornice.position.y = H; g.add(cornice);
+    // window grids (front/back)
+    for (const zf of [D / 2 + 0.03, -D / 2 - 0.03]) {
+      for (let f = 0; f < FLOORS; f++) for (let c = -1; c <= 1; c++) {
+        const win = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.3, 0.06), glass);
+        win.position.set(c * 1.6, FLOOR * f + FLOOR * 0.55, zf); g.add(win);
+      }
+    }
+    for (const xf of [W / 2 + 0.03, -W / 2 - 0.03]) {          // side windows
+      for (let f = 0; f < FLOORS; f++) {
+        const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.3, 1.3), glass);
+        win.position.set(xf, FLOOR * f + FLOOR * 0.55, 0); g.add(win);
+      }
+    }
+    // grand entrance (front = +Z): canopy, gold columns, glass door, red carpet
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.16, 1.5), gold);
+    canopy.position.set(0, 2.4, D / 2 + 0.75); g.add(canopy);
+    for (const sx of [-1.05, 1.05]) {
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.4, 10), gold);
+      col.position.set(sx, 1.2, D / 2 + 1.3); g.add(col);
+    }
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.0, 0.08), glass);
+    door.position.set(0, 1.0, D / 2 + 0.05); g.add(door);
+    const carpet = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.04, 2.6), new THREE.MeshStandardMaterial({ color: 0x9a1f2a, roughness: 0.95 }));
+    carpet.position.set(0, 0.03, D / 2 + 1.4); g.add(carpet);
+    // infinity pool + rim + loungers facing the lake
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 2.4), wallMat);
+    rim.position.set(0, 0.09, D / 2 + 3.6); g.add(rim);
+    const pool = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.26, 2.0), water);
+    pool.position.set(0, 0.18, D / 2 + 3.6); g.add(pool);
+    for (const sx of [-2.4, 2.4]) {
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 1.1), wallMat);
+      seat.position.set(sx, 0.22, D / 2 + 3.4); g.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.1), wallMat);
+      back.position.set(sx, 0.4, D / 2 + 2.95); back.rotation.x = -0.5; g.add(back);
+    }
+    // rooftop railing + glowing sign
+    for (const [w, d, x, z] of [[W, 0.08, 0, D / 2], [W, 0.08, 0, -D / 2], [0.08, D, W / 2, 0], [0.08, D, -W / 2, 0]]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(w, 0.4, d), gold);
+      rail.position.set(x, H + 0.45, z); g.add(rail);
+    }
+    const sign = makeHotelSign(); sign.position.set(0, H + 1.4, 0); g.add(sign);
+
+    g.userData = { type: 'hotel', R: Math.max(W, D) * 0.6 + 0.3 };
+    return g;
+  }
+
+  // Drop a few tiny luxury hotels on lake shores, facing the water.
+  function buildLakeHotels(scene) {
+    let placed = 0, tries = 0;
+    while (placed < 6 && tries++ < 800) {
+      const p = U.pointInDisc(C.WORLD_RADIUS * 0.92);
+      if (U.dist2(p.x, p.z, 0, 0) < 60) continue;                 // not on top of camp
+      const h = world.heightAt(p.x, p.z);
+      if (h <= C.WATER_LEVEL + 0.4 || h > C.WATER_LEVEL + 2.0) continue;  // low shore land only
+      // find the nearest water and its direction
+      let wx = 0, wz = 0, found = false, near = 1e9;
+      for (let a = 0; a < 16; a++) {
+        const ang = (a / 16) * Math.PI * 2, cx = Math.cos(ang), cz = Math.sin(ang);
+        for (let d = 3; d <= 14; d += 2.5) {
+          if (world.heightAt(p.x + cx * d, p.z + cz * d) <= C.WATER_LEVEL + 0.1) {
+            if (d < near) { near = d; wx = cx; wz = cz; found = true; }
+            break;
+          }
+        }
+      }
+      if (!found) continue;
+      const hx = p.x - wx * 2.5, hz = p.z - wz * 2.5;             // sit back from the shore
+      if (world.heightAt(hx, hz) <= C.WATER_LEVEL + 0.4) continue;
+      const hotel = makeLuxuryHotel();
+      hotel.position.set(hx, world.heightAt(hx, hz) - 0.05, hz);
+      hotel.rotation.y = Math.atan2(wx, wz);                      // front (+Z) faces the lake
+      scene.add(hotel);
+      world.colliders.push({ x: hx, z: hz, r: hotel.userData.R, ref: hotel });
+      placed++;
+    }
+    world._hotelCount = placed;
+  }
+
   // --- Public API ------------------------------------------------------------
 
   world.init = function (scene) {
@@ -1395,6 +1550,7 @@
     buildCamp(scene);
     buildVillage(scene);
     buildBanditOutposts(scene);
+    buildLakeHotels(scene);            // tiny luxury hotels on the lake shores
     // buildGrass(scene);              // tall grass removed (user request)
     buildFlowers(scene);
     buildBirds(scene);                 // ambient life: birds overhead + butterflies

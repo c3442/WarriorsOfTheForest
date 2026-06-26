@@ -29,11 +29,16 @@
     #mAtk{right:24px;bottom:104px;width:94px;height:94px;font-size:36px;}
     #mJmp{right:130px;bottom:126px;width:66px;height:66px;font-size:26px;}
     #mSpr{left:62px;bottom:34px;width:62px;height:62px;font-size:15px;font-weight:bold;}
-    #mActs{position:fixed;right:12px;top:48%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;z-index:7;pointer-events:auto;}
-    #mMoreRow{position:fixed;right:66px;bottom:26px;display:none;flex-wrap:wrap-reverse;width:120px;justify-content:flex-end;gap:8px;z-index:7;pointer-events:auto;}
+    #mActs{position:fixed;right:10px;top:46%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:flex-end;gap:7px;z-index:7;pointer-events:auto;}
+    #mMoreRow{position:fixed;right:10px;bottom:84px;display:none;flex-direction:column;align-items:flex-end;gap:7px;z-index:7;pointer-events:auto;}
     #mMoreRow.open{display:flex;}
-    #mActs .mbtn,#mMoreRow .mbtn{position:relative;right:auto;bottom:auto;width:50px;height:50px;font-size:22px;}
-    #mMore{right:12px;bottom:26px;width:50px;height:50px;}
+    .mpill{display:flex;align-items:center;gap:6px;padding:0 13px;height:46px;border-radius:23px;
+      background:rgba(18,22,14,.62);border:2px solid rgba(255,255,255,.42);color:#fff;
+      font:bold 15px 'Trebuchet MS',system-ui,sans-serif;text-shadow:0 1px 2px #000;pointer-events:auto;
+      white-space:nowrap;backdrop-filter:blur(1px);letter-spacing:.5px;}
+    .mpill:active{background:rgba(120,160,90,.85);transform:scale(.96);}
+    .mpill .e{font-size:20px;line-height:1;}
+    #mMore{position:fixed;right:10px;bottom:26px;z-index:7;}
   `;
   document.head.appendChild(style);
 
@@ -51,20 +56,29 @@
   const look = mk('mLook');
   const joy = mk('mJoy'); const knob = mk('mKnob'); joy.appendChild(knob);
   const atk = mk('mAtk', 'mbtn', '⚔️');
-  const jmp = mk('mJmp', 'mbtn', '⤴︎');
+  const jmp = mk('mJmp', 'mbtn', '⬆️');
   const spr = mk('mSpr', 'mbtn', 'RUN');
   const acts = mk('mActs');
-  const more = mk('mMore', 'mbtn', '⋯');
+  const more = mk('mMore', 'mpill', '⋯ More');
   const moreRow = mk('mMoreRow');
 
   const onTap = (el, fn) => el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(e); }, { passive: false });
 
-  // primary action buttons (right column)
-  [['KeyX', '🔁'], ['KeyE', '🍖'], ['KeyF', '💧'], ['KeyG', '✊'], ['KeyU', '🌱'], ['KeyC', '🛠️'], ['KeyI', '🎒'], ['KeyB', '🩹']]
-    .forEach(([code, label]) => { const b = mk(null, 'mbtn', label); onTap(b, () => tapKey(code)); acts.appendChild(b); });
-  // secondary actions behind the "⋯" button
-  [['KeyZ', '🤐'], ['KeyK', '💤'], ['KeyR', '🪑'], ['KeyT', '🦊'], ['KeyH', '🤚']]
-    .forEach(([code, label]) => { const b = mk(null, 'mbtn', label); onTap(b, () => tapKey(code)); moreRow.appendChild(b); });
+  // a Roblox-style labelled button: emoji + the action's name
+  function pill(emoji, text) {
+    const b = document.createElement('div'); b.className = 'mpill';
+    const e = document.createElement('span'); e.className = 'e'; e.textContent = emoji;
+    const t = document.createElement('span'); t.textContent = text;
+    b.appendChild(e); b.appendChild(t); return b;
+  }
+
+  // primary action buttons (right column) — labelled
+  [['KeyE', '🍖', 'Eat'], ['KeyF', '💧', 'Drink'], ['KeyG', '✊', 'Grab'], ['KeyU', '🌱', 'Plant'],
+   ['KeyC', '🛠️', 'Craft'], ['KeyI', '🎒', 'Bag'], ['KeyX', '🔁', 'Swap'], ['KeyB', '🩹', 'Heal']]
+    .forEach(([code, emoji, text]) => { const b = pill(emoji, text); onTap(b, () => tapKey(code)); acts.appendChild(b); });
+  // secondary actions behind the "⋯ More" button — labelled
+  [['KeyZ', '🤐', 'Zip'], ['KeyK', '💤', 'Sleep'], ['KeyR', '🪑', 'Sit'], ['KeyT', '🦊', 'Tame'], ['KeyH', '🤚', 'Drop']]
+    .forEach(([code, emoji, text]) => { const b = pill(emoji, text); onTap(b, () => tapKey(code)); moreRow.appendChild(b); });
   onTap(more, () => moreRow.classList.toggle('open'));
 
   onTap(atk, doAttack);
