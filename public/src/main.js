@@ -73,6 +73,24 @@
     const nameInput = document.getElementById('nameInput');
     const myName = () => (nameInput.value.trim() || 'Player').slice(0, 12);
 
+    // --- skin (boy/girl) + axe-colour picks ---
+    W.player.skin = W.player.skin || 'boy';
+    if (W.player.axeColor == null) W.player.axeColor = 0x8a8f96;
+    document.querySelectorAll('#skinPick [data-skin]').forEach((b) => {
+      b.onclick = () => { W.player.skin = b.dataset.skin; document.querySelectorAll('#skinPick [data-skin]').forEach((x) => x.classList.toggle('sel', x === b)); };
+    });
+    const axePick = document.getElementById('axePick');
+    if (axePick && !axePick.childElementCount) {
+      const COLORS = [['#8a8f96', 0x8a8f96], ['#202428', 0x202428], ['#d23a3a', 0xd23a3a], ['#e5352b', 0xe5352b], ['#f266b0', 0xf266b0], ['#9b4dca', 0x9b4dca], ['#25cdd6', 0x25cdd6], ['#3a6fd0', 0x3a6fd0], ['#7fc8ff', 0x7fc8ff], ['#1f3a8a', 0x1f3a8a], ['#4e9c3a', 0x4e9c3a], ['#f2f2f2', 0xf2f2f2], ['#6b4a2b', 0x6b4a2b]];
+      COLORS.forEach(([css, hex], i) => {
+        const sw = document.createElement('button');
+        sw.className = 'swatch' + (i === 0 ? ' sel' : '');
+        sw.style.background = css;
+        sw.onclick = () => { W.player.axeColor = hex; axePick.querySelectorAll('.swatch').forEach((s) => s.classList.toggle('sel', s === sw)); };
+        axePick.appendChild(sw);
+      });
+    }
+
     soloBtn.onclick = () => beginGame((Math.random() * 1e9) | 0);
 
     hostBtn.onclick = () => {

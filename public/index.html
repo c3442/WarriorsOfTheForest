@@ -154,6 +154,14 @@
   #nameInput{width:220px;text-align:center;letter-spacing:1px;font:bold 17px 'Trebuchet MS',sans-serif;height:42px;
     border:2px solid #444b35;border-radius:9px;background:#1b2016;color:#e9e4d6;padding:0 12px;}
   #nameInput::placeholder{color:#6a6650;}
+  .pickrow{display:flex;gap:8px;margin-top:2px;justify-content:center;}
+  .optBtn{font:bold 14px 'Trebuchet MS',sans-serif;color:#e9e4d6;background:#23301a;border:2px solid #3c5a2c;
+    border-radius:9px;padding:7px 16px;cursor:pointer;}
+  .optBtn.sel{background:#3c7a2c;border-color:#8fd36a;color:#fff;}
+  .axeLabel{font-size:12px;color:#8fae74;margin-top:8px;letter-spacing:1px;}
+  .axePick{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:260px;margin:2px auto 0;}
+  .axePick .swatch{width:24px;height:24px;border-radius:6px;border:2px solid rgba(255,255,255,.25);cursor:pointer;padding:0;}
+  .axePick .swatch.sel{border-color:#fff;box-shadow:0 0 8px rgba(255,255,255,.6);transform:scale(1.12);}
   #netStatus{margin-top:12px;min-height:22px;font-size:15px;color:#cfe8b6;letter-spacing:.5px;}
   #netStatus b{color:#fff;font-size:26px;letter-spacing:4px;background:#23301a;padding:2px 12px;border-radius:8px;border:1px solid #3c5a2c;}
   .hidden{display:none !important;}
@@ -277,6 +285,12 @@
   </div>
   <div id="menu">
     <input id="nameInput" maxlength="12" placeholder="YOUR NAME" autocomplete="off" />
+    <div class="pickrow" id="skinPick">
+      <button class="optBtn sel" data-skin="boy">👦 Boy</button>
+      <button class="optBtn" data-skin="girl">👧 Girl</button>
+    </div>
+    <div class="axeLabel">Axe colour</div>
+    <div class="axePick" id="axePick"></div>
     <button class="btn" id="soloBtn">PLAY SOLO</button>
     <button class="btn btn2" id="hostBtn">HOST CO-OP</button>
     <div class="joinrow">
@@ -311,13 +325,13 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="src/utils.js?v=16"></script>
-<script src="src/world.js?v=16"></script>
-<script src="src/player.js?v=16"></script>
-<script src="src/enemies.js?v=16"></script>
-<script src="src/critters.js?v=16"></script>
-<script src="src/net.js?v=16"></script>
-<script src="src/hud.js?v=16"></script>
-<script src="src/main.js?v=16"></script>
+<script src="src/utils.js?v=18"></script>
+<script src="src/world.js?v=18"></script>
+<script src="src/player.js?v=18"></script>
+<script src="src/enemies.js?v=18"></script>
+<script src="src/critters.js?v=18"></script>
+<script src="src/net.js?v=18"></script>
+<script src="src/hud.js?v=18"></script>
+<script src="src/main.js?v=18"></script>
 </body>
 </html>

@@ -145,6 +145,7 @@
   function onHostData(conn, m) {
     if (m.t === 'pose') {
       ensureAvatar(conn.peer).pose = m;
+      setRemoteSkin(conn.peer, m.skin);
       setRemoteName(conn.peer, m.name);
     } else if (m.t === 'hit') {
       const killed = W.enemies.damageById(m.id, m.dmg || ATTACK_DMG, { x: m.x, z: m.z });
@@ -185,7 +186,7 @@
       opts.onInit && opts.onInit(m.seed);
     } else if (m.t === 'snap') {
       net.time = m.time; net.day = m.day; net.enemySnap = m.e;
-      for (const id in m.p) { const p = m.p[id]; ensureAvatar(id).pose = p; setRemoteName(id, p.name); }
+      for (const id in m.p) { const p = m.p[id]; ensureAvatar(id).pose = p; setRemoteName(id, p.name); setRemoteSkin(id, p.skin); }
     } else if (m.t === 'bite') {
       W.player.takeDamage(m.dmg);
     } else if (m.t === 'chop') {
@@ -242,12 +243,12 @@
     net._acc = 0;
     if (net.role === 'host') {
       net.time = timeOfDay; net.day = day; // keep current so late joiners sync via init
-      const players = { host: Object.assign({ name: net.myName, down: !!W.player.downed, asleep: W.player.sleepReady() }, pose) };
+      const players = { host: Object.assign({ name: net.myName, skin: W.player.skin, down: !!W.player.downed, asleep: W.player.sleepReady() }, pose) };
       const snap = { t: 'snap', time: timeOfDay, day, e: W.enemies.serialize(), p: players };
       for (const conn of net._conns) { if (conn.open) conn.send(snap); }
     } else if (net.role === 'client') {
       const conn = net._conns[0];
-      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, down: !!W.player.downed, asleep: W.player.sleepReady() });
+      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, skin: W.player.skin, down: !!W.player.downed, asleep: W.player.sleepReady() });
     }
   };
 

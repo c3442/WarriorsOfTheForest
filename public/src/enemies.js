@@ -314,10 +314,17 @@
     enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.3, dmg: rifle ? 9 : 13, lastAttack: -99, t: U.rand(0, 5), guard: boss, rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
   };
 
+  // Keep tougher foes (bears & bandits) at least 200m from the home camp.
+  function farFromCamp(x, z) {
+    const cp = W.world.campPos || { x: 0, z: 0 };
+    return Math.hypot(x - cp.x, z - cp.z) >= 200;
+  }
+
   // A bear that prowls the woods and hunts day & night.
   enemies.spawnBear = function (center, dayNum) {
     const ring = U.rand(28, 48), a = U.rand(0, Math.PI * 2);
     const x = center.x + Math.cos(a) * ring, z = center.z + Math.sin(a) * ring;
+    if (!farFromCamp(x, z)) return;              // no bears near camp
     const g = buildModel('bear');
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
     enemies.scene.add(g);
@@ -329,6 +336,7 @@
   enemies.spawnDesertBandit = function (center) {
     const ring = U.rand(22, 40), a = U.rand(0, Math.PI * 2);
     const x = center.x + Math.cos(a) * ring, z = center.z + Math.sin(a) * ring;
+    if (!farFromCamp(x, z)) return;              // no bandits near camp
     const g = buildModel('outlaw');
     const rifle = U.chance(0.5);                 // desert snipers: half carry rifles
     if (rifle) giveRifle(g); else giveSword(g);

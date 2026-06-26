@@ -67,11 +67,16 @@
       ctx.fillStyle = color; ctx.fill();
       ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.stroke();
     };
-    dot(0, 0, '#ffb13a', 3.4);                                    // home camp (orange)
-    if (W.world && W.world.villagePos) dot(W.world.villagePos.x, W.world.villagePos.z, '#7fe07f', 3.4); // village (green)
-    if (W.world && W.world.banditCampPos) dot(W.world.banditCampPos.x, W.world.banditCampPos.z, '#ff5a4a', 3.8); // bandit hideout (red)
+    dot(0, 0, '#ffb13a', 3.4);                                    // home camp (always known)
+    const disc = (W.world && W.world.discovered) || {};
+    // landmarks only appear once you (or a teammate) have discovered them
+    if (W.world && W.world.villagePos && disc.village) dot(W.world.villagePos.x, W.world.villagePos.z, '#7fe07f', 3.4); // village (green)
+    if (W.world && W.world.banditCampPos && disc.bandit) dot(W.world.banditCampPos.x, W.world.banditCampPos.z, '#ff5a4a', 3.8); // bandit hideout (red)
+    if (W.world && W.world.outposts) {                            // bandit outposts (amber-red)
+      for (const o of W.world.outposts) { if (o.found) dot(o.x, o.z, '#ff8c3a', 3.4); }
+    }
     if (W.net && W.net.remote) {
-      for (const id in W.net.remote) {                            // teammates (cyan)
+      for (const id in W.net.remote) {                            // teammates (cyan) — always shown
         const r = W.net.remote[id];
         if (r && r.pose) dot(r.pose.x, r.pose.z, '#56d3ff', 4.2);
       }
