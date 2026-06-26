@@ -136,6 +136,9 @@
     } else if (m.t === 'zip') {
       W.world.applyTentZip(m.idx, m.zipped);
       for (const c of net._conns) { if (c !== conn && c.open) c.send({ t: 'zip', idx: m.idx, zipped: m.zipped }); }
+    } else if (m.t === 'build') {
+      W.world.buildById(m.id, m.x, m.z, m.yaw);
+      for (const c of net._conns) { if (c !== conn && c.open) c.send(m); }   // relay to other clients
     }
   }
 
@@ -173,6 +176,8 @@
       if (W.player.downed) W.player.revive();
     } else if (m.t === 'zip') {
       W.world.applyTentZip(m.idx, m.zipped);
+    } else if (m.t === 'build') {
+      W.world.buildById(m.id, m.x, m.z, m.yaw);
     }
   }
 
@@ -195,6 +200,7 @@
     return true;
   };
   net.sendZip = function (idx, zipped) { for (const c of net._conns) { if (c.open) c.send({ t: 'zip', idx, zipped }); } };
+  net.sendBuild = function (id, x, z, yaw) { for (const c of net._conns) { if (c.open) c.send({ t: 'build', id, x, z, yaw }); } };
 
   // --- Per-frame -------------------------------------------------------------
 
@@ -216,12 +222,12 @@
     net._acc = 0;
     if (net.role === 'host') {
       net.time = timeOfDay; net.day = day; // keep current so late joiners sync via init
-      const players = { host: Object.assign({ name: net.myName, down: !!W.player.downed, asleep: !!W.player.sleeping }, pose) };
+      const players = { host: Object.assign({ name: net.myName, down: !!W.player.downed, asleep: W.player.sleepReady() }, pose) };
       const snap = { t: 'snap', time: timeOfDay, day, e: W.enemies.serialize(), p: players };
       for (const conn of net._conns) { if (conn.open) conn.send(snap); }
     } else if (net.role === 'client') {
       const conn = net._conns[0];
-      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, down: !!W.player.downed, asleep: !!W.player.sleeping });
+      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, down: !!W.player.downed, asleep: W.player.sleepReady() });
     }
   };
 

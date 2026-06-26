@@ -74,6 +74,36 @@
   #keyHelp b{color:#fff;background:#2a3320;border:1px solid #46562f;border-radius:5px;padding:0 6px;font-size:13px;}
   #keyHelp .khHint{margin-top:8px;font-size:12px;color:#8fae74;}
 
+  /* Inventory panel (toggle I) */
+  #invPanel{position:fixed;left:16px;top:160px;width:210px;background:var(--panel);border-radius:10px;
+    padding:12px 14px;backdrop-filter:blur(2px);}
+  #invPanel .ititle{font-size:15px;color:#cfe8b6;margin-bottom:8px;letter-spacing:.5px;}
+  #invPanel .irow{display:flex;justify-content:space-between;padding:5px 7px;border-radius:6px;
+    background:rgba(0,0,0,.26);margin-bottom:5px;font-size:13px;color:#e7e0cf;}
+  #invPanel .irow b{color:#fff;}
+  #invPanel .igear{font-size:12px;color:#9adcff;margin-top:6px;min-height:16px;}
+  #invPanel .ihint{color:#8fae74;font-size:11px;margin-top:6px;}
+  #invPanel .ihint b{background:#2a2f22;border:1px solid #444b35;border-radius:4px;padding:0 5px;}
+
+  /* Sleep overlay (K) */
+  #sleepOverlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;background:radial-gradient(circle at 50% 40%,rgba(10,16,34,.55),rgba(4,7,18,.86));z-index:8;}
+  #sleepOverlay .sBig{font-size:30px;font-weight:bold;letter-spacing:3px;color:#bcd4ff;text-shadow:0 2px 12px #000;}
+  #sleepCount{font-size:64px;font-weight:bold;color:#fff;text-shadow:0 3px 16px #000;line-height:1;}
+  #sleepOverlay .sWait{font-size:14px;color:#aeb9d6;}
+  #sleepOverlay .sHugLbl{font-size:13px;color:#8ea0c8;margin-top:6px;}
+  #sleepOverlay .hugs{display:flex;gap:12px;margin-top:4px;}
+  #sleepOverlay .hug{font-size:34px;width:64px;height:64px;line-height:64px;text-align:center;cursor:pointer;
+    background:rgba(255,255,255,.06);border:2px solid #39456b;border-radius:14px;transition:transform .1s;}
+  #sleepOverlay .hug:hover{transform:scale(1.1);}
+  #sleepOverlay .hug.sel{border-color:#9effc0;background:rgba(90,255,140,.18);box-shadow:0 0 14px rgba(90,255,140,.4);}
+
+  /* Build placement hint */
+  #buildHint{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:rgba(10,30,16,.82);
+    border:1px solid #3c7a4c;border-radius:9px;padding:8px 16px;font-size:14px;color:#cfeec0;z-index:6;text-align:center;}
+  #buildHint b{color:#9effc0;}
+  #buildHint kbd{background:#2a3320;border:1px solid #46562f;border-radius:5px;padding:1px 7px;font-family:inherit;color:#e9e4d6;}
+
   /* Damage flash */
   #flash{position:fixed;inset:0;background:radial-gradient(circle at center, transparent 40%, rgba(220,30,30,.55));
     opacity:0;pointer-events:none;transition:opacity .08s;}
@@ -149,7 +179,8 @@
   <div><b>G</b> grab berry &nbsp;·&nbsp; <b>H</b> drop berry</div>
   <div><b>T</b> tame a fox (needs a berry) &nbsp;·&nbsp; <b>B</b> bandaid (heal / revive)</div>
   <div><b>Z</b> zip your tent shut &nbsp;·&nbsp; <b>K</b> sleep (skip the night)</div>
-  <div><b>C</b> crafting &nbsp;·&nbsp; <b>Esc</b> pause</div>
+  <div><b>C</b> crafting &nbsp;·&nbsp; <b>I</b> inventory &nbsp;·&nbsp; <b>Esc</b> pause</div>
+  <div><b>Click</b> to place a build &nbsp;·&nbsp; <b>Right-click</b> to cancel</div>
   <div class="khHint">release <b>J</b> to close</div>
 </div>
 
@@ -166,7 +197,38 @@
   <div class="crow"><b>8</b> <u>🌱</u> Farm Plot <i>12 wood</i><span>grows food every minute</span></div>
   <div class="crow"><b>9</b> <u>🛠️</u> Crafting Table <i>15 wood</i><span>a workbench</span></div>
   <div class="crow"><b>0</b> <u>🩹</u> Bandaid <i>6 wood</i><span>heal / revive a teammate</span></div>
-  <div class="chint">press a number to craft &nbsp;·&nbsp; <b>C</b> to close</div>
+  <div class="chint">press a number to craft &nbsp;·&nbsp; buildables show a green hologram — click to place &nbsp;·&nbsp; <b>C</b> to close</div>
+</div>
+
+<!-- Inventory (toggle I) -->
+<div id="invPanel" class="hidden">
+  <div class="ititle">🎒 INVENTORY</div>
+  <div class="irow"><span>🪵 Wood</span><b id="invWood">0</b></div>
+  <div class="irow"><span>🍓 Berries</span><b id="invBerries">0/5</b></div>
+  <div class="irow"><span>💧 Water</span><b id="invWater">5/5</b></div>
+  <div class="irow"><span>🩹 Bandaids</span><b id="invBandaids">0</b></div>
+  <div class="irow"><span>🪓 Axe</span><b id="invAxe">Lv 0</b></div>
+  <div class="igear" id="invGear">—</div>
+  <div class="ihint">press <b>I</b> to close</div>
+</div>
+
+<!-- Sleep overlay (K) -->
+<div id="sleepOverlay" class="hidden">
+  <div class="sBig">SLEEPING 💤</div>
+  <div id="sleepCount">5</div>
+  <div class="sWait" id="sleepWait">Sleeping…</div>
+  <div class="sHugLbl">Hug a stuffie for a cosy +20 health:</div>
+  <div class="hugs">
+    <div class="hug" data-hug="bunny" title="Bunny">🐰</div>
+    <div class="hug" data-hug="bear" title="Bear">🧸</div>
+    <div class="hug" data-hug="cat" title="Kitty">🐱</div>
+    <div class="hug" data-hug="dog" title="Dog">🐶</div>
+  </div>
+</div>
+
+<!-- Build placement hint -->
+<div id="buildHint" class="hidden">
+  Placing <b id="buildHintName">build</b> — <kbd>click</kbd> to place · <kbd>right-click</kbd> to cancel
 </div>
 
 <!-- Start overlay -->
@@ -178,7 +240,7 @@
     <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp;
     <kbd>Trackpad</kbd>/<kbd>↑↓←→</kbd> look &nbsp;·&nbsp;
     <kbd>Click</kbd>/<kbd>Q</kbd> swing weapon &nbsp;·&nbsp; <kbd>X</kbd> switch weapon<br>
-    <kbd>E</kbd> eat &nbsp;·&nbsp; <kbd>F</kbd> drink &nbsp;·&nbsp; <kbd>G</kbd>/<kbd>H</kbd> grab/drop berry &nbsp;·&nbsp; <kbd>T</kbd> tame fox &nbsp;·&nbsp; <kbd>Z</kbd> zip tent &nbsp;·&nbsp; <kbd>K</kbd> sleep &nbsp;·&nbsp; <kbd>C</kbd> craft &nbsp;·&nbsp; hold <kbd>J</kbd> for all controls
+    <kbd>E</kbd> eat &nbsp;·&nbsp; <kbd>F</kbd> drink &nbsp;·&nbsp; <kbd>G</kbd>/<kbd>H</kbd> grab/drop berry &nbsp;·&nbsp; <kbd>T</kbd> tame fox &nbsp;·&nbsp; <kbd>Z</kbd> zip tent &nbsp;·&nbsp; <kbd>K</kbd> sleep &nbsp;·&nbsp; <kbd>C</kbd> craft &nbsp;·&nbsp; <kbd>I</kbd> inventory &nbsp;·&nbsp; hold <kbd>J</kbd> for all controls
   </div>
   <div id="menu">
     <input id="nameInput" maxlength="12" placeholder="YOUR NAME" autocomplete="off" />

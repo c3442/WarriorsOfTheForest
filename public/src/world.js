@@ -471,6 +471,14 @@
         color: tentCols[i], roughness: 1, flatShading: true, side: THREE.DoubleSide,
       });
 
+      // wooden floor so the inside isn't grass, plus a cosy rug
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(Wd - 0.04, 0.08, Dp - 0.04),
+        new THREE.MeshStandardMaterial({ color: 0x7a5734, roughness: 1, flatShading: true }));
+      floor.position.set(0, 0.05, 0); floor.receiveShadow = true; tent.add(floor);
+      const rug = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.03, 2.2),
+        new THREE.MeshStandardMaterial({ color: tentCols[i], roughness: 1, flatShading: true }));
+      rug.position.set(0.55, 0.1, 0.3); tent.add(rug);
+
       // vertical walls (front, local +Z toward fire, is the open entrance)
       const lw = new THREE.Mesh(sideWallGeo, mat); lw.position.set(-Wd / 2, Hw / 2, 0); lw.castShadow = true;
       const rw = new THREE.Mesh(sideWallGeo, mat); rw.position.set(Wd / 2, Hw / 2, 0); rw.castShadow = true;
@@ -551,6 +559,19 @@
     return null;
   };
 
+  // Nearest tent you can reach the zipper of — inside OR within ~1.4m outside.
+  world.tentForZip = function (pos) {
+    let best = null, bestD = 1e9;
+    for (const t of world.tents) {
+      _tv.set(pos.x - t.x, 0, pos.z - t.z).applyQuaternion(_tq.copy(t.quat).invert());
+      const ox = Math.max(0, Math.abs(_tv.x) - t.Wd / 2);
+      const oz = Math.max(0, Math.abs(_tv.z) - t.Dp / 2);
+      const out = Math.hypot(ox, oz);             // 0 when inside the footprint
+      if (out < 1.4 && out < bestD) { bestD = out; best = t; }
+    }
+    return best;
+  };
+
   // Seal (or re-open) a tent's open front. Synced across the network by index.
   world.applyTentZip = function (idx, zipped) {
     const t = world.tents[idx];
@@ -581,9 +602,9 @@
     }
   };
 
-  // Toggle the tent the player is standing in. Returns {idx, zipped} or null.
+  // Toggle the nearest reachable tent (works from outside too). Returns {idx, zipped} or null.
   world.toggleTentZip = function (pos) {
-    const t = world.insideTent(pos);
+    const t = world.tentForZip(pos);
     if (!t) return null;
     const idx = world.tents.indexOf(t);
     world.applyTentZip(idx, !t.zipped);
@@ -816,7 +837,7 @@
 
   // Place a crafted wooden barricade (a solid wall that blocks wolves).
   world.placeBarricade = function (x, z, yaw) {
-    const Wd = 1.9, H = 1.5, T = 0.18;
+    const Wd = 1.9, H = 1.35, T = 0.18;
     const grp = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
     const wall = new THREE.Mesh(new THREE.BoxGeometry(Wd, H, T), mat);
@@ -830,9 +851,11 @@
     world.scene.add(grp);
 
     // collider beads along the wall's width (so it stops movement + bites + your axe)
+    // `top` lets the player hop over it; wolves (resolved at ground) still can't pass.
     const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    const top = world.heightAt(x, z) + H;
     for (let t = -Wd / 2; t <= Wd / 2 + 0.01; t += 0.38) {
-      const bead = { x: x + cos * t, z: z - sin * t, r: 0.3 };
+      const bead = { x: x + cos * t, z: z - sin * t, r: 0.3, top };
       world.colliders.push(bead);
       world.tentWalls.push(bead);
     }
@@ -851,8 +874,9 @@
     grp.position.set(x, world.heightAt(x, z), z); grp.rotation.y = yaw;
     world.scene.add(grp);
     const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    const top = world.heightAt(x, z) + 0.6;       // low enough to hop over
     for (let t = -Wd / 2; t <= Wd / 2 + 0.01; t += 0.4) {
-      const bead = { x: x + cos * t, z: z - sin * t, r: 0.28 };
+      const bead = { x: x + cos * t, z: z - sin * t, r: 0.28, top };
       world.colliders.push(bead); world.tentWalls.push(bead);
     }
     world.hazards.push({ x, z, r: 1.3, dps: 6 });
@@ -871,8 +895,9 @@
     grp.position.set(x, world.heightAt(x, z), z); grp.rotation.y = yaw;
     world.scene.add(grp);
     const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    const top = world.heightAt(x, z) + 0.78;      // stacked logs you can hop over
     for (let t = -L / 2; t <= L / 2 + 0.01; t += 0.4) {
-      const bead = { x: x + cos * t, z: z - sin * t, r: 0.32 };
+      const bead = { x: x + cos * t, z: z - sin * t, r: 0.32, top };
       world.colliders.push(bead); world.tentWalls.push(bead);
     }
   };
@@ -921,6 +946,34 @@
     return grp;
   };
 
+  // --- Build placement: a green hologram you aim, then click to place --------
+
+  const GHOST_DIMS = {
+    barricade: [1.9, 1.35, 0.2], barbed: [1.8, 0.6, 0.2], logs: [1.7, 0.7, 0.5],
+    farm: [1.4, 0.14, 1.4], table: [1.4, 0.85, 0.9],
+  };
+
+  // A translucent green preview of a buildable, for the placement cursor.
+  world.makeGhost = function (kind) {
+    const d = GHOST_DIMS[kind] || GHOST_DIMS.table;
+    const geo = new THREE.BoxGeometry(d[0], d[1], d[2]);
+    const g = new THREE.Group();
+    const box = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x55ff88, transparent: true, opacity: 0.32, depthWrite: false }));
+    box.position.y = d[1] / 2 + 0.03; g.add(box);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xaaffcc }));
+    edges.position.copy(box.position); g.add(edges);
+    return g;
+  };
+
+  // Place a buildable by its craft id (shared by local placement + network sync).
+  world.buildById = function (id, x, z, yaw) {
+    if (id === '1') world.placeBarricade(x, z, yaw);
+    else if (id === '4') world.placeBarbedWire(x, z, yaw);
+    else if (id === '5') world.placeLogs(x, z, yaw);
+    else if (id === '8') world.placeFarmPlot(x, z);
+    else if (id === '9') world.placeCraftTable(x, z, yaw);
+  };
+
   // Crafting only works near a workbench.
   world.nearCraftTable = function (pos, range) {
     return world.craftTables.some((t) => U.dist2(pos.x, pos.z, t.x, t.z) < (range || 3.5));
@@ -937,8 +990,10 @@
   };
 
   // Resolve player/enemy against solid colliders. Mutates pos {x,z}.
-  world.resolveCollision = function (pos, radius) {
+  // feetY (optional): when given, low obstacles with a `top` are skipped if you're above them (jumping over).
+  world.resolveCollision = function (pos, radius, feetY) {
     for (const c of world.colliders) {
+      if (c.top !== undefined && feetY !== undefined && feetY > c.top) continue;
       const dx = pos.x - c.x;
       const dz = pos.z - c.z;
       const d = Math.hypot(dx, dz);

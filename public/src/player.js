@@ -7,7 +7,9 @@
   const player = {
     active: false,
     alive: true,
-    downed: false, bleedT: 0, bandaids: 0, sleeping: false,
+    downed: false, bleedT: 0, bandaids: 0,
+    sleeping: false, sleepT: 0, hugStuffie: null,
+    building: null, invOpen: false,
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
@@ -22,7 +24,7 @@
     _t: 0,
   };
 
-  const SPEED = 5.2, SPRINT = 1.7, GRAV = 20, JUMP = 7.2;
+  const SPEED = 5.2, SPRINT = 1.7, GRAV = 20, JUMP = 7.9;   // a bit higher: hop over barricades
   const ATTACK_CD = 0.45;
 
   player.init = function (camera, dom, scene) {
@@ -57,7 +59,11 @@
       if (e.code === 'KeyK') player.sleep();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
-      if (e.code === 'KeyC') { player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft(); }
+      if (e.code === 'KeyI') player.toggleInventory();
+      if (e.code === 'KeyC') {
+        if (player.building) { player.cancelBuild(); return; }   // C also cancels a pending build
+        player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft();
+      }
       if (player.craftOpen && /^Digit[0-9]$/.test(e.code)) player.craft(e.code.slice(5));
     });
     window.addEventListener('keyup', (e) => {
@@ -65,10 +71,17 @@
       if (e.code === 'KeyJ') W.hud.showKeyHelp(false);
     });
 
-    // Trackpad / mouse click = swing your weapon (whenever you're playing).
+    // Left click = place a pending build (if any), else swing your weapon.
+    // Right click = cancel a pending build.
     document.addEventListener('mousedown', (e) => {
+      if (player.building) {
+        if (e.button === 0) player.placeBuild();
+        else if (e.button === 2) player.cancelBuild();
+        return;
+      }
       if (e.button === 0 && player.active) player.attack();
     });
+    window.addEventListener('contextmenu', (e) => { if (player.building) e.preventDefault(); });
 
     // Trackpad / mouse move = look around. Captured so you can turn freely (no edge-stop).
     document.addEventListener('mousemove', (e) => {
@@ -382,6 +395,15 @@
     });
   }
 
+  // Placeables go into "hologram" build mode; everything else crafts instantly.
+  const BUILDABLES = {
+    '1': { kind: 'barricade', cost: 5, dist: 1.7, name: 'Barricade' },
+    '4': { kind: 'barbed', cost: 8, dist: 1.7, name: 'Barbed wire' },
+    '5': { kind: 'logs', cost: 4, dist: 1.5, name: 'Logs' },
+    '8': { kind: 'farm', cost: 12, dist: 2.0, name: 'Farm plot' },
+    '9': { kind: 'table', cost: 15, dist: 2.0, name: 'Crafting table' },
+  };
+
   player.craft = function (id) {
     if (!player.alive || !player.active) return;
     // crafting always needs a workbench nearby (there's one at camp to start)
@@ -393,14 +415,15 @@
       if (player.wood < c) { W.hud.toast('Need ' + c + ' wood (have ' + player.wood + ')'); return false; }
       player.wood -= c; return true;
     };
-    const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
-    const ahead = (dist) => ({ x: player.pos.x + (-sin) * dist, z: player.pos.z + (-cos) * dist });
 
-    if (id === '1') {                        // Barricade (repeatable defence)
-      if (!pay(5)) return;
-      const p = ahead(1.7); W.world.placeBarricade(p.x, p.z, player.yaw);
-      W.hud.toast('Built a barricade 🪵');
-    } else if (id === '2') {                 // Upgrade Axe (repeatable weapon)
+    const b = BUILDABLES[id];
+    if (b) {                                 // enter placement mode (pay on placing)
+      if (player.wood < b.cost) { W.hud.toast('Need ' + b.cost + ' wood (have ' + player.wood + ')'); return; }
+      startBuild(id, b);
+      return;
+    }
+
+    if (id === '2') {                        // Upgrade Axe (repeatable weapon)
       if (!pay(axeCost())) return;
       player.axeLevel += 1; player.attackDmg += 2;
       W.hud.toast('Axe upgraded! ⚔️ Lv ' + player.axeLevel + ' · dmg ' + player.attackDmg);
@@ -409,14 +432,6 @@
       if (!pay(10)) return;
       player.hasArmor = true; player.armor *= 0.6;
       W.hud.toast('Wooden armor on 🛡️ less damage');
-    } else if (id === '4') {                 // Barbed Wire (placeable hazard)
-      if (!pay(8)) return;
-      const p = ahead(1.7); W.world.placeBarbedWire(p.x, p.z, player.yaw);
-      W.hud.toast('Barbed wire set — it hurts beasts');
-    } else if (id === '5') {                 // Logs (placeable obstacle)
-      if (!pay(4)) return;
-      const p = ahead(1.5); W.world.placeLogs(p.x, p.z, player.yaw);
-      W.hud.toast('Stacked some logs 🪵');
     } else if (id === '6') {                 // Sword (one-time weapon)
       if (player.hasSword) { W.hud.toast('Already have a sword'); return; }
       if (!pay(12)) return;
@@ -428,20 +443,56 @@
       player.hasShield = true; player.armor *= 0.65;
       if (player.shield3d) player.shield3d.visible = true;
       W.hud.toast('Shield ready 🛡️ blocks more');
-    } else if (id === '8') {                 // Farming Plot
-      if (!pay(12)) return;
-      const p = ahead(2.0); W.world.placeFarmPlot(p.x, p.z);
-      W.hud.toast('Farm plot tilled 🌱 grows food');
-    } else if (id === '9') {                 // Crafting Table
-      if (!pay(15)) return;
-      const p = ahead(2.0); W.world.placeCraftTable(p.x, p.z, player.yaw);
-      W.hud.toast('Crafting table built 🛠️');
     } else if (id === '0') {                 // Bandaid (revive / heal)
       if (!pay(6)) return;
       player.bandaids += 1;
       W.hud.toast('Bandaid crafted 🩹 (' + player.bandaids + ')');
     } else { return; }
     refreshCraft();
+  };
+
+  // --- Build placement: aim a green hologram, click to place -----------------
+
+  function buildAheadPos(dist) {
+    const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
+    return { x: player.pos.x + (-sin) * dist, z: player.pos.z + (-cos) * dist };
+  }
+
+  function startBuild(id, b) {
+    if (player.building) player.cancelBuild();
+    player.craftOpen = false; W.hud.toggleCraft(false);
+    const ghost = W.world.makeGhost(b.kind);
+    player.scene.add(ghost);
+    player.building = { id, kind: b.kind, cost: b.cost, dist: b.dist, name: b.name, ghost };
+    W.hud.showBuildHint(true, b.name);
+  }
+
+  player.placeBuild = function () {
+    const b = player.building;
+    if (!b) return;
+    if (player.wood < b.cost) { W.hud.toast('Need ' + b.cost + ' wood'); player.cancelBuild(); return; }
+    player.wood -= b.cost;
+    const gx = b.ghost.position.x, gz = b.ghost.position.z, yaw = player.yaw;
+    W.world.buildById(b.id, gx, gz, yaw);
+    if (W.net && W.net.role && W.net.sendBuild) W.net.sendBuild(b.id, gx, gz, yaw);
+    W.hud.toast('Placed a ' + b.name.toLowerCase() + ' ✅');
+    player.scene.remove(b.ghost);
+    player.building = null; W.hud.showBuildHint(false);
+    refreshCraft();
+  };
+
+  player.cancelBuild = function () {
+    if (!player.building) return;
+    player.scene.remove(player.building.ghost);
+    player.building = null; W.hud.showBuildHint(false);
+    W.hud.toast('Build cancelled');
+  };
+
+  // --- Inventory --------------------------------------------------------------
+
+  player.toggleInventory = function () {
+    player.invOpen = !player.invOpen;
+    W.hud.toggleInventory(player.invOpen);
   };
 
   player.drink = function () {
@@ -477,26 +528,49 @@
     } else { W.hud.toast('Already full health'); }
   };
 
-  // Z: zip your tent shut (or re-open it). Nothing can get in while it's sealed.
+  // Z: zip the nearest tent shut (works from outside too). Nothing can get in.
   player.zipTent = function () {
     if (!player.alive || !player.active) return;
     const res = W.world.toggleTentZip(player.pos);
-    if (!res) { W.hud.toast('Stand inside a tent to zip it 🏕️'); return; }
+    if (!res) { W.hud.toast('Get closer to a tent to zip it 🏕️'); return; }
     if (res.zipped) {
       W.hud.toast(W.world.isNight() ? 'Zipped shut 🤐 — press K to sleep 💤' : 'Tent zipped shut 🤐 — nothing gets in');
     } else { W.hud.toast('Tent opened'); }
     if (W.net && W.net.role && W.net.sendZip) W.net.sendZip(res.idx, res.zipped);
   };
 
-  // K: sleep in a tent to skip the night (in co-op everyone must be asleep).
+  // K: lie down in a tent. Takes ~5s; you may hug a stuffie for a cosy bonus.
+  // The night only skips once you're done (and in co-op, everyone is).
   player.sleep = function () {
     if (!player.alive || player.downed || !player.active) return;
+    if (player.sleeping) { player.wake(true); return; }   // press again to get up early
     if (!W.world.insideTent(player.pos)) { W.hud.toast('Get in a tent to sleep 🛏️'); return; }
     if (!W.world.isNight()) { W.hud.toast('You can only sleep at night 🌙'); return; }
-    player.sleeping = !player.sleeping;
-    if (player.sleeping) {
-      W.hud.banner('SLEEPING 💤', (W.net && W.net.role) ? 'Waiting for everyone to sleep…' : 'Skipping the night…', '#bcd4ff');
-    } else { W.hud.toast('You got up'); }
+    if (player.building) player.cancelBuild();
+    player.sleeping = true; player.sleepT = 0; player.hugStuffie = null;
+    W.hud.showSleep(true);
+  };
+
+  // Pick a stuffie to hug while sleeping (cosy +health on waking).
+  player.hug = function (kind) {
+    if (!player.sleeping) return;
+    player.hugStuffie = kind;
+    W.hud.markHug(kind);
+  };
+
+  // True once this player has finished their 5s of sleep (used to sync co-op).
+  player.sleepReady = function () { return player.sleeping && player.sleepT >= 5; };
+
+  // Wake up: `early` = got up before dawn (no bonus); otherwise dawn + cosy bonus.
+  player.wake = function (early) {
+    if (!player.sleeping) return;
+    if (!early && player.hugStuffie) {
+      player.health = U.clamp(player.health + 20, 0, 100);
+      W.hud.toast('Slept cosy with a stuffie 🧸 +20 health');
+    }
+    player.sleeping = false; player.sleepT = 0; player.hugStuffie = null;
+    W.hud.showSleep(false);
+    if (early) W.hud.toast('You got up');
   };
 
   player.revive = function () {
@@ -508,6 +582,7 @@
 
   player.takeDamage = function (amount) {
     if (!player.alive || player.downed) return;
+    if (player.sleeping) player.wake(true);     // a hit jolts you awake
     amount *= player.armor;          // wooden armor reduces incoming damage
     player.health -= amount;
     player.lastHurt = player._t;
@@ -533,6 +608,13 @@
       player.camera.position.copy(player.pos); player.camera.position.y -= 0.95;
       player.camera.rotation.set(-0.55, player.yaw, 0, 'YXZ');
       if (player.bleedT > 60) { player.downed = false; player.alive = false; W.onDeath && W.onDeath(); }
+      return;
+    }
+    if (player.sleeping) {
+      player.sleepT += dt;
+      player.camera.position.copy(player.pos);
+      player.camera.rotation.y = player.yaw; player.camera.rotation.x = player.pitch;
+      W.hud.setSleepCount(Math.max(0, Math.ceil(5 - player.sleepT)), player.sleepT >= 5);
       return;
     }
     const k = player.keys;
@@ -561,7 +643,7 @@
 
     player.pos.x += wishX * speed * dt;
     player.pos.z += wishZ * speed * dt;
-    W.world.resolveCollision(player.pos, C.PLAYER_RADIUS);
+    W.world.resolveCollision(player.pos, C.PLAYER_RADIUS, player.pos.y - C.EYE_HEIGHT);  // feet height: jump over low walls
 
     // keep inside the world
     const fromC = Math.hypot(player.pos.x, player.pos.z);
@@ -619,6 +701,13 @@
     animateAxe(dt, moving);
     animateBottle(dt);
     updateBottleWater();
+
+    // keep the build hologram floating where you're aiming
+    if (player.building) {
+      const a = buildAheadPos(player.building.dist);
+      player.building.ghost.position.set(a.x, W.world.heightAt(a.x, a.z), a.z);
+      player.building.ghost.rotation.y = player.yaw;
+    }
   };
 
   function animateBottle(dt) {
@@ -663,7 +752,8 @@
 
   player.reset = function () {
     Object.assign(player, {
-      alive: true, downed: false, bleedT: 0, bandaids: 0, sleeping: false,
+      alive: true, downed: false, bleedT: 0, bandaids: 0,
+      sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasShield: false, currentWeapon: 'axe',

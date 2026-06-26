@@ -10,7 +10,14 @@
     ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'bandaidNum', 'killNum',
      'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
      'craftPanel', 'craftWood', 'crow3', 'crow6', 'crow7', 'axeLv', 'axeCost', 'keyHelp',
+     'invPanel', 'invWood', 'invBerries', 'invBandaids', 'invWater', 'invAxe', 'invGear',
+     'sleepOverlay', 'sleepCount', 'sleepWait', 'buildHint', 'buildHintName',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
+    if (els.sleepOverlay) {
+      els.sleepOverlay.querySelectorAll('[data-hug]').forEach((b) => {
+        b.onclick = () => W.player.hug(b.dataset.hug);
+      });
+    }
     els.hpFill = els.hp.querySelector('i');
     els.stFill = els.st.querySelector('i');
     els.fdFill = els.fd.querySelector('i');
@@ -32,6 +39,47 @@
     els.foeNum.textContent = s.foes;
     els.woodNum.textContent = s.wood;
     els.killNum.textContent = s.kills;
+    if (hud._inv) hud.refreshInv();          // keep the inventory live while open
+  };
+
+  // --- Inventory --------------------------------------------------------------
+  hud.toggleInventory = function (open) {
+    hud._inv = open;
+    if (els.invPanel) els.invPanel.classList.toggle('hidden', !open);
+    if (open) hud.refreshInv();
+  };
+  hud.refreshInv = function () {
+    const p = W.player; if (!els.invPanel) return;
+    els.invWood.textContent = p.wood;
+    els.invBerries.textContent = p.berries + '/' + p.berryMax;
+    els.invBandaids.textContent = p.bandaids;
+    els.invWater.textContent = p.bottle + '/' + p.bottleMax;
+    els.invAxe.textContent = 'Lv ' + p.axeLevel;
+    const gear = [p.hasSword ? '⚔️ Sword' : '', p.hasArmor ? '🛡️ Armor' : '', p.hasShield ? '🔰 Shield' : ''].filter(Boolean);
+    els.invGear.textContent = gear.length ? gear.join('   ') : '—';
+  };
+
+  // --- Sleep overlay ----------------------------------------------------------
+  hud.showSleep = function (show) {
+    if (!els.sleepOverlay) return;
+    els.sleepOverlay.classList.toggle('hidden', !show);
+    if (show) els.sleepOverlay.querySelectorAll('[data-hug]').forEach((b) => b.classList.remove('sel'));
+  };
+  hud.setSleepCount = function (n, ready) {
+    if (!els.sleepCount) return;
+    els.sleepCount.textContent = ready ? '💤' : n;
+    els.sleepWait.textContent = ready ? 'Waiting for the night to pass…' : 'Sleeping…';
+  };
+  hud.markHug = function (kind) {
+    if (!els.sleepOverlay) return;
+    els.sleepOverlay.querySelectorAll('[data-hug]').forEach((b) => b.classList.toggle('sel', b.dataset.hug === kind));
+  };
+
+  // --- Build placement hint ---------------------------------------------------
+  hud.showBuildHint = function (show, name) {
+    if (!els.buildHint) return;
+    if (show && name) els.buildHintName.textContent = name;
+    els.buildHint.classList.toggle('hidden', !show);
   };
 
   let bannerTimer = null;
