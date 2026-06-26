@@ -17,11 +17,15 @@
     plots: [],       // farm plots that grow crops
     craftTables: [], // {x,z} workbenches you must stand near to craft
     tents: [],       // {group,x,z,quat,Wd,Dp,Hw,color,zipped,...} zip-up shelters
+    campfires: [],   // {x,z} safe-haven fires (camp + crafted ones)
+    pickups: [],     // {x,z,mesh,kind} items dropped in the world (e.g. shotgun)
     trees: [],       // choppable groups
     bushes: [],      // {x,z,mesh,ready}
     daylight: 1,
     _isNight: false,
     _falling: [],
+    _treeRegrow: [], // {idx,x,z,t} felled trees waiting to grow back
+    _extraFires: [], // crafted campfires to flicker
     isNight() { return this._isNight; },
   };
 
@@ -36,6 +40,11 @@
     );
   };
 
+  // Desert biome: fades in toward the east (+X) far side. 0 = grassland, 1 = full desert.
+  world.desertAt = function (x, z) {
+    return U.clamp((x - 35) / 55, 0, 1);
+  };
+
   function buildTerrain(scene) {
     const size = C.WORLD_RADIUS * 2.6;
     const seg = 140;
@@ -46,6 +55,7 @@
     const lo = new THREE.Color('#33571f');
     const hi = new THREE.Color('#52803a');
     const sand = new THREE.Color('#c8b27a');
+    const desert = new THREE.Color('#d9c188');
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
@@ -54,6 +64,7 @@
       const t = U.clamp((h + 3) / 7, 0, 1);
       const col = lo.clone().lerp(hi, t);
       if (h < -2.2) col.lerp(sand, U.clamp((-2.2 - h) * 0.5, 0, 0.7)); // low = dirt/sand
+      col.lerp(desert, world.desertAt(x, z) * 0.85);                   // east becomes desert
       colors.push(col.r, col.g, col.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -135,6 +146,22 @@
     return g;
   }
 
+  // Tall green cactus for the desert biome.
+  function makeCactus() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3b7d3a, roughness: 1, flatShading: true });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 1.8, 7), mat);
+    body.position.y = 0.9; body.castShadow = true; g.add(body);
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.7, 6), mat);
+      arm.position.set(sx * 0.3, 0.95, 0); arm.rotation.z = sx * 0.6; g.add(arm);
+      const up = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.5, 6), mat);
+      up.position.set(sx * 0.5, 1.32, 0); up.castShadow = true; g.add(up);
+    }
+    g.userData = { type: 'cactus' };
+    return g;
+  }
+
   function scatter(scene) {
     const placed = [];
     const CAMP_CLEAR = 12;                        // no trees/bushes within this radius of camp
@@ -143,12 +170,13 @@
       U.dist2(x, z, 0, 0) > CAMP_CLEAR &&          // keep the camp clearing open
       world.heightAt(x, z) > C.WATER_LEVEL + 0.4;  // stay out of the water
 
-    // Trees
+    // Trees (skip most spots in the desert — it's barren there)
     let tries = 0;
     while (world.trees.length < C.TREE_COUNT && tries < C.TREE_COUNT * 8) {
       tries++;
       const p = U.pointInDisc(C.WORLD_RADIUS);
       if (!okSpot(p.x, p.z, 3.2)) continue;
+      if (world.desertAt(p.x, p.z) > 0.45 && U.chance(0.9)) continue;
       const tree = makeTree();
       tree.position.set(p.x, world.heightAt(p.x, p.z) - 0.1, p.z);
       tree.rotation.y = U.rand(0, Math.PI * 2);
@@ -178,6 +206,17 @@
       b.position.set(p.x, world.heightAt(p.x, p.z) + 0.2, p.z);
       scene.add(b);
       world.bushes.push({ x: p.x, z: p.z, mesh: b, ready: true });
+    }
+    // Cacti in the desert region
+    for (let i = 0; i < 70; i++) {
+      const p = U.pointInDisc(C.WORLD_RADIUS);
+      if (world.desertAt(p.x, p.z) < 0.5) continue;
+      if (world.heightAt(p.x, p.z) <= C.WATER_LEVEL + 0.4) continue;
+      if (U.dist2(p.x, p.z, 0, 0) < CAMP_CLEAR) continue;
+      const c = makeCactus();
+      c.position.set(p.x, world.heightAt(p.x, p.z), p.z); c.rotation.y = U.rand(0, 6.28);
+      scene.add(c);
+      world.colliders.push({ x: p.x, z: p.z, r: 0.4, ref: c });
     }
   }
 
@@ -322,23 +361,40 @@
       s.castShadow = true; fire.add(s);
     }
 
-    const logMat = new THREE.MeshStandardMaterial({ color: 0x4a3120, roughness: 1 });
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2 + 0.4;
-      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.0, 6), logMat);
-      log.position.set(Math.cos(a) * 0.24, 0.42, Math.sin(a) * 0.24);
-      log.rotation.x = Math.sin(a) * 0.5;
-      log.rotation.z = -Math.cos(a) * 0.5;
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x3f2a18, roughness: 1, flatShading: true });
+    const logGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.95, 7);
+    // criss-crossed logs lying flat at the base
+    for (let i = 0; i < 3; i++) {
+      const log = new THREE.Mesh(logGeo, logMat);
+      log.position.set(0, 0.12 + i * 0.02, 0);
+      log.rotation.z = Math.PI / 2;
+      log.rotation.y = i * (Math.PI / 3) + 0.3;
       log.castShadow = true; fire.add(log);
     }
+    // a couple of leaning logs (teepee)
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.5;
+      const log = new THREE.Mesh(logGeo, logMat);
+      log.position.set(Math.cos(a) * 0.2, 0.42, Math.sin(a) * 0.2);
+      log.rotation.x = Math.sin(a) * 0.6;
+      log.rotation.z = -Math.cos(a) * 0.6;
+      log.castShadow = true; fire.add(log);
+    }
+    // glowing ember bed beneath the flames
+    const embers = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.38, 0.44, 0.06, 12),
+      new THREE.MeshStandardMaterial({ color: 0x2a1408, emissive: 0xff5a14, emissiveIntensity: 1.3, roughness: 1 }),
+    );
+    embers.position.y = 0.07; fire.add(embers);
 
+    // layered flames: deep orange -> yellow -> bright core
     const flames = [];
-    [0xff6a18, 0xffab3a, 0xffe07a].forEach((col, i) => {
+    [0xff4e10, 0xff7a18, 0xffaa2c, 0xffd64a, 0xfff0a8].forEach((col, i) => {
       const f = new THREE.Mesh(
-        new THREE.ConeGeometry(0.24 - i * 0.06, 0.75 - i * 0.14, 7),
-        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.92, fog: false }),
+        new THREE.ConeGeometry(0.3 - i * 0.05, 1.0 - i * 0.15, 8),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95 - i * 0.05, fog: false }),
       );
-      f.position.y = 0.34 + i * 0.04;
+      f.position.set(U.rand(-0.03, 0.03), 0.32 + i * 0.05, U.rand(-0.03, 0.03));
       fire.add(f); flames.push(f);
     });
 
@@ -348,6 +404,7 @@
     camp.add(fire);
     world.campfire = { flames, light, base: 2.2, t: 0 };
     world.colliders.push({ x: cx, z: cz, r: 0.85 });
+    world.campfires.push({ x: cx, z: cz });          // spawn camp is a haven
 
     // --- 4 roomy wall-tents (vertical walls + peaked roof), ringing the fire ---
     // Vertical walls keep your head well clear of the canvas, so no see-through.
@@ -379,6 +436,100 @@
         new THREE.MeshStandardMaterial({ color: 0xf3efe6, roughness: 1, flatShading: true }));
       pillow.position.set(0, 0.48, -0.88); bed.add(pillow);
       return bed;
+    }
+
+    function makeTable() {
+      const g = new THREE.Group();
+      const wood = new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 1, flatShading: true });
+      const top = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.08, 0.55), wood);
+      top.position.y = 0.6; top.castShadow = true; g.add(top);
+      const legGeo = new THREE.BoxGeometry(0.08, 0.56, 0.08);
+      for (const [lx, lz] of [[-0.36, -0.21], [0.36, -0.21], [-0.36, 0.21], [0.36, 0.21]]) {
+        const leg = new THREE.Mesh(legGeo, wood);
+        leg.position.set(lx, 0.28, lz); leg.castShadow = true; g.add(leg);
+      }
+      // a little candle on top
+      const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 8),
+        new THREE.MeshStandardMaterial({ color: 0xf2e8d0, roughness: 1 }));
+      candle.position.set(0.22, 0.7, 0); g.add(candle);
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffb24a, fog: false }));
+      flame.position.set(0.22, 0.79, 0); g.add(flame);
+      return g;
+    }
+
+    function makeChair() {
+      const g = new THREE.Group();
+      const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.07, 0.4), wood);
+      seat.position.y = 0.42; seat.castShadow = true; g.add(seat);
+      const legGeo = new THREE.BoxGeometry(0.06, 0.42, 0.06);
+      for (const [lx, lz] of [[-0.16, -0.16], [0.16, -0.16], [-0.16, 0.16], [0.16, 0.16]]) {
+        const leg = new THREE.Mesh(legGeo, wood);
+        leg.position.set(lx, 0.21, lz); leg.castShadow = true; g.add(leg);
+      }
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.06), wood);
+      back.position.set(0, 0.65, -0.17); back.castShadow = true; g.add(back);
+      return g;
+    }
+
+    // --- Gadgets that sit on each tent's table ---
+    function makePhone(color) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.025, 0.32),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+      body.castShadow = true; g.add(body);
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.27), new THREE.MeshBasicMaterial({ color: 0xe8f4ff }));
+      screen.rotation.x = -Math.PI / 2; screen.position.y = 0.014; g.add(screen);
+      return g;
+    }
+    function makePigPhone() {
+      const g = makePhone(0xf28db5);
+      const pig = new THREE.MeshStandardMaterial({ color: 0xe07ba0, roughness: 1, flatShading: true });
+      for (const sx of [-0.05, 0.05]) {
+        const ear = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.05, 4), pig);
+        ear.position.set(sx, 0.02, -0.16); ear.rotation.x = -0.5; g.add(ear);
+      }
+      const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.02, 10), pig);
+      snout.rotation.x = Math.PI / 2; snout.position.set(0, 0.026, 0.07); g.add(snout);
+      for (const sx of [-0.012, 0.012]) {
+        const n = new THREE.Mesh(new THREE.SphereGeometry(0.006, 5, 5), new THREE.MeshStandardMaterial({ color: 0x7a3a55 }));
+        n.position.set(sx, 0.037, 0.07); g.add(n);
+      }
+      return g;
+    }
+    function makeIpad() {
+      const g = new THREE.Group();
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.03, 0.58),
+        new THREE.MeshStandardMaterial({ color: 0x2a2a30, roughness: 0.4, metalness: 0.2 }));
+      frame.castShadow = true; g.add(frame);
+      const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.5), new THREE.MeshBasicMaterial({ color: 0xbfe8ff }));
+      screen.rotation.x = -Math.PI / 2; screen.position.y = 0.017; g.add(screen);
+      g.rotation.x = -0.12;
+      return g;
+    }
+    function makeLaptop() {
+      const g = new THREE.Group();
+      const body = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.45, metalness: 0.3 });
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.03, 0.32), body); base.castShadow = true; g.add(base);
+      const keys = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.006, 0.2),
+        new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 1 }));
+      keys.position.set(0, 0.018, 0.03); g.add(keys);
+      const screen = new THREE.Group();
+      const sback = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.3, 0.025), body);
+      const sface = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.25), new THREE.MeshBasicMaterial({ color: 0x9fe0ff }));
+      sface.position.z = 0.014;
+      screen.add(sback, sface);
+      screen.position.set(0, 0.15, -0.15); screen.rotation.x = -0.42; // tilt up toward the chair
+      g.add(screen);
+      return g;
+    }
+    // 0=red→iPad, 1=aqua→blue phone, 2=pink→pig phone, 3=green→computer
+    function makeDevice(i) {
+      if (i === 0) return makeIpad();
+      if (i === 1) return makePhone(0x3a6fd0);
+      if (i === 2) return makePigPhone();
+      return makeLaptop();
     }
 
     // --- Plush stuffies (one kind per tent) ---
@@ -497,6 +648,13 @@
       const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, Dp, 6), ridgeMat);
       ridge.rotation.x = Math.PI / 2; ridge.position.set(0, Hw + Rh, 0); tent.add(ridge);
 
+      // wooden floor so you don't see grass inside the tent
+      const tentFloor = new THREE.Mesh(
+        new THREE.BoxGeometry(Wd - 0.06, 0.12, Dp - 0.06),
+        new THREE.MeshStandardMaterial({ color: 0x6e4a2c, roughness: 1, flatShading: true }),
+      );
+      tentFloor.position.y = 0.03; tentFloor.receiveShadow = true; tent.add(tentFloor);
+
       const bed = makeBed(tentCols[i]);              // blanket matches the tent colour
       bed.position.set(-0.55, 0, -0.6);              // inside, toward the back; entrance stays clear
       const stuffie = makeStuffieFor(i);
@@ -515,6 +673,15 @@
         bed.add(ex);
       }
       tent.add(bed);
+
+      const table = makeTable();
+      table.position.set(0.9, 0, 0.15);   // opposite the bed, entrance stays clear
+      tent.add(table);
+
+      const chair = makeChair();
+      chair.position.set(0.9, 0, 0.78);   // next to the table, facing it
+      chair.rotation.y = Math.PI;
+      tent.add(chair);
 
       tent.lookAt(cx, gy, cz); // open front faces the fire
       camp.add(tent);
@@ -541,9 +708,10 @@
     world.placeCraftTable(cx + 1.7, cz + 1.4, -2.3);   // workbench right by the campfire
   }
 
-  // The base haven: heal, infinite stamina, recover hunger/thirst within the camp ring.
+  // The base haven: heal, infinite stamina, recover hunger/thirst near ANY campfire
+  // (the spawn camp plus any campfire you craft to set up a base elsewhere).
   world.nearCamp = function (pos) {
-    return U.dist2(pos.x, pos.z, world.campPos.x, world.campPos.z) < 8;
+    return world.campfires.some((c) => U.dist2(pos.x, pos.z, c.x, c.z) < 8);
   };
 
   // --- Tents: zip up the entrance so nothing can get in -----------------------
@@ -567,7 +735,7 @@
       const ox = Math.max(0, Math.abs(_tv.x) - t.Wd / 2);
       const oz = Math.max(0, Math.abs(_tv.z) - t.Dp / 2);
       const out = Math.hypot(ox, oz);             // 0 when inside the footprint
-      if (out < 1.4 && out < bestD) { bestD = out; best = t; }
+      if (out < 2.0 && out < bestD) { bestD = out; best = t; }   // reach the zipper from outside
     }
     return best;
   };
@@ -636,10 +804,10 @@
     const count = 20;
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2 + U.rand(-0.12, 0.12);
-      const r = U.rand(150, 195);
+      const r = U.rand(250, 320);                       // pushed much farther out
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       const baseY = world.heightAt(x, z) - 5;
-      const radius = U.rand(30, 58), height = U.rand(48, 90);
+      const radius = U.rand(46, 88), height = U.rand(70, 130);  // bigger so they still read at distance
       const m = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 5, 1), rock);
       m.position.set(x, baseY + height / 2, z); m.rotation.y = U.rand(0, 6.28); grp.add(m);
       const cap = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.46, height * 0.42, 5, 1), snow);
@@ -804,6 +972,35 @@
         world._falling.splice(i, 1);
       }
     }
+
+    // regrow felled trees after a while (reuse the slot so net indices stay valid)
+    for (let i = world._treeRegrow.length - 1; i >= 0; i--) {
+      const r = world._treeRegrow[i];
+      r.t += dt;
+      if (r.t >= 75) {
+        const nt = makeTree();
+        nt.position.set(r.x, world.heightAt(r.x, r.z) - 0.1, r.z);
+        nt.rotation.y = U.rand(0, Math.PI * 2);
+        world.scene.add(nt);
+        world.trees[r.idx] = nt;
+        world.colliders.push({ x: r.x, z: r.z, r: 0.5, ref: nt });
+        world._treeRegrow.splice(i, 1);
+      }
+    }
+
+    // flicker crafted campfires
+    for (const cf of world._extraFires) {
+      cf.t += dt;
+      const fl = 1 + Math.sin(cf.t * 12) * 0.12 + Math.sin(cf.t * 7.3) * 0.08;
+      cf.light.intensity = 2.0 * fl * (world._isNight ? 1.4 : 0.7);
+      cf.flames.forEach((f, k) => { f.scale.y = fl + Math.sin(cf.t * (9 + k * 3)) * 0.18; });
+    }
+
+    // spin/bob dropped pickups so they're easy to spot
+    for (const pk of world.pickups) {
+      pk.mesh.rotation.y += dt * 1.6;
+      pk.mesh.position.y = world.heightAt(pk.x, pk.z) + 0.6 + Math.sin(world._time * 2) * 0.1;
+    }
   };
 
   // Damage a tree; returns wood gained when it falls (0 otherwise).
@@ -817,6 +1014,8 @@
       const idx = world.colliders.findIndex((c) => c.ref === tree);
       if (idx >= 0) world.colliders.splice(idx, 1);
       world._falling.push({ group: tree, t: 0, dir: U.chance(0.5) ? 1 : -1, baseY: tree.position.y });
+      const ti = world.trees.indexOf(tree);              // schedule a sapling to grow back here
+      if (ti >= 0) world._treeRegrow.push({ idx: ti, x: tree.position.x, z: tree.position.z, t: 0 });
       return U.randInt(2, 4);
     }
     return 0;
@@ -951,6 +1150,7 @@
   const GHOST_DIMS = {
     barricade: [1.9, 1.35, 0.2], barbed: [1.8, 0.6, 0.2], logs: [1.7, 0.7, 0.5],
     farm: [1.4, 0.14, 1.4], table: [1.4, 0.85, 0.9],
+    tent: [3.2, 3.3, 3.6], campfire: [1.5, 0.7, 1.5],
   };
 
   // A translucent green preview of a buildable, for the placement cursor.
@@ -958,9 +1158,9 @@
     const d = GHOST_DIMS[kind] || GHOST_DIMS.table;
     const geo = new THREE.BoxGeometry(d[0], d[1], d[2]);
     const g = new THREE.Group();
-    const box = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x55ff88, transparent: true, opacity: 0.32, depthWrite: false }));
+    const box = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x16622f, transparent: true, opacity: 0.4, depthWrite: false }));
     box.position.y = d[1] / 2 + 0.03; g.add(box);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xaaffcc }));
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x3a8f54 }));
     edges.position.copy(box.position); g.add(edges);
     return g;
   };
@@ -972,6 +1172,90 @@
     else if (id === '5') world.placeLogs(x, z, yaw);
     else if (id === '8') world.placeFarmPlot(x, z);
     else if (id === '9') world.placeCraftTable(x, z, yaw);
+    else if (id === 'tent') world.placeTent(x, z, yaw);
+    else if (id === 'fire') world.placeCampfire(x, z);
+  };
+
+  // A craftable tent for building a base out in the world (sleepable + zippable).
+  world.placeTent = function (x, z, yaw) {
+    const Wd = 3.2, Dp = 3.6, Hw = 2.2, Rh = 1.1, wallT = 0.1, color = 0xb5853f;
+    const tent = new THREE.Group();
+    tent.position.set(x, world.heightAt(x, z), z);
+    tent.rotation.y = yaw;                              // entrance faces the player
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(Wd - 0.04, 0.08, Dp - 0.04),
+      new THREE.MeshStandardMaterial({ color: 0x7a5734, roughness: 1, flatShading: true }));
+    floor.position.set(0, 0.05, 0); floor.receiveShadow = true; tent.add(floor);
+    const lw = new THREE.Mesh(new THREE.BoxGeometry(wallT, Hw, Dp), mat); lw.position.set(-Wd / 2, Hw / 2, 0); lw.castShadow = true;
+    const rw = new THREE.Mesh(new THREE.BoxGeometry(wallT, Hw, Dp), mat); rw.position.set(Wd / 2, Hw / 2, 0); rw.castShadow = true;
+    const bw = new THREE.Mesh(new THREE.BoxGeometry(Wd, Hw, wallT), mat); bw.position.set(0, Hw / 2, -Dp / 2); bw.castShadow = true;
+    tent.add(lw, rw, bw);
+    const thetaR = Math.atan2(Wd / 2, Rh), Lr = Math.hypot(Rh, Wd / 2);
+    const roofGeo = new THREE.BoxGeometry(wallT, Lr, Dp);
+    const lr = new THREE.Mesh(roofGeo, mat); lr.position.set(-Wd / 4, Hw + Rh / 2, 0); lr.rotation.z = -thetaR; lr.castShadow = true;
+    const rr = new THREE.Mesh(roofGeo, mat); rr.position.set(Wd / 4, Hw + Rh / 2, 0); rr.rotation.z = thetaR; rr.castShadow = true;
+    tent.add(lr, rr);
+    const gable = new THREE.Shape();
+    gable.moveTo(-Wd / 2, 0); gable.lineTo(Wd / 2, 0); gable.lineTo(0, Rh); gable.lineTo(-Wd / 2, 0);
+    const gg = new THREE.ShapeGeometry(gable);
+    const gB = new THREE.Mesh(gg, mat); gB.position.set(0, Hw, -Dp / 2); tent.add(gB);
+    const gF = new THREE.Mesh(gg, mat); gF.position.set(0, Hw, Dp / 2); tent.add(gF);
+    const bed = new THREE.Group();
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.24, 2.0), new THREE.MeshStandardMaterial({ color: 0x5e3f23, roughness: 1 }));
+    frame.position.y = 0.18; bed.add(frame);
+    const mattress = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.18, 1.9), new THREE.MeshStandardMaterial({ color: 0xdcd2bd, roughness: 1, flatShading: true }));
+    mattress.position.y = 0.36; bed.add(mattress);
+    bed.position.set(-0.5, 0, -0.4); tent.add(bed);
+    world.scene.add(tent);
+    const addBead = (lx, lz) => {
+      const p = new THREE.Vector3(lx, 0, lz).applyQuaternion(tent.quaternion).add(tent.position);
+      const b = { x: p.x, z: p.z, r: 0.3 }; world.colliders.push(b); world.tentWalls.push(b);
+    };
+    for (let s = -Dp / 2; s <= Dp / 2 + 0.01; s += 0.42) { addBead(-Wd / 2, s); addBead(Wd / 2, s); }
+    for (let s = -Wd / 2 + 0.42; s <= Wd / 2 - 0.42 + 0.01; s += 0.42) addBead(s, -Dp / 2);
+    world.tents.push({ group: tent, x, z, quat: tent.quaternion.clone(), Wd, Dp, Hw, color, zipped: false, flap: null, seam: null, beads: [] });
+    return tent;
+  };
+
+  // A craftable campfire — makes a new safe-haven (heal/stamina/food) anywhere.
+  world.placeCampfire = function (x, z) {
+    const fire = new THREE.Group();
+    fire.position.set(x, world.heightAt(x, z), z);
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x7d7f86, roughness: 1, flatShading: true });
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; const s = new THREE.Mesh(new THREE.IcosahedronGeometry(U.rand(0.16, 0.26), 0), stoneMat); s.position.set(Math.cos(a) * 0.7, 0.08, Math.sin(a) * 0.7); fire.add(s); }
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x4a3120, roughness: 1 });
+    for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + 0.4; const log = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.0, 6), logMat); log.position.set(Math.cos(a) * 0.24, 0.42, Math.sin(a) * 0.24); log.rotation.x = Math.sin(a) * 0.5; log.rotation.z = -Math.cos(a) * 0.5; fire.add(log); }
+    const flames = [];
+    [0xff6a18, 0xffab3a, 0xffe07a].forEach((col, i) => { const f = new THREE.Mesh(new THREE.ConeGeometry(0.24 - i * 0.06, 0.75 - i * 0.14, 7), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.92, fog: false })); f.position.y = 0.34 + i * 0.04; fire.add(f); flames.push(f); });
+    const light = new THREE.PointLight(0xff7a33, 2.0, 22, 1.6); light.position.set(0, 0.9, 0); fire.add(light);
+    world.scene.add(fire);
+    world.campfires.push({ x, z });
+    world._extraFires.push({ flames, light, t: U.rand(0, 5) });
+    world.colliders.push({ x, z, r: 0.8 });
+    return fire;
+  };
+
+  // Drop a sawed-off shotgun pickup at a spot (left by the slain bandit).
+  world.dropShotgun = function (x, z) {
+    const g = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color: 0x55585e, roughness: 0.4, metalness: 0.5 });
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.7), metal); barrel.position.z = 0.2; g.add(barrel);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.34), new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 })); stock.position.z = -0.2; g.add(stock);
+    g.position.set(x, world.heightAt(x, z) + 0.6, z);
+    world.scene.add(g);
+    world.pickups.push({ x, z, mesh: g, kind: 'shotgun' });
+    return g;
+  };
+
+  // Grab the nearest shotgun pickup within range (removes it). Returns true if taken.
+  world.takeShotgunNear = function (pos, range) {
+    for (let i = 0; i < world.pickups.length; i++) {
+      const pk = world.pickups[i];
+      if (pk.kind === 'shotgun' && U.dist2(pos.x, pos.z, pk.x, pk.z) < range) {
+        world.scene.remove(pk.mesh); world.pickups.splice(i, 1); return true;
+      }
+    }
+    return false;
   };
 
   // Crafting only works near a workbench.

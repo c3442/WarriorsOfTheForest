@@ -10,6 +10,7 @@
     downed: false, bleedT: 0, bandaids: 0,
     sleeping: false, sleepT: 0, hugStuffie: null,
     building: null, invOpen: false,
+    hasShotgun: false, shells: 0,
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
@@ -38,6 +39,7 @@
 
     buildAxe(camera);
     buildSword(camera);
+    buildShotgun(camera);
     buildShield(camera);
     buildBottle(camera);
     buildHeldBerry(camera);
@@ -64,7 +66,11 @@
         if (player.building) { player.cancelBuild(); return; }   // C also cancels a pending build
         player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft();
       }
-      if (player.craftOpen && /^Digit[0-9]$/.test(e.code)) player.craft(e.code.slice(5));
+      if (player.craftOpen) {
+        if (/^Digit[0-9]$/.test(e.code)) player.craft(e.code.slice(5));
+        else if (e.code === 'Minus') player.craft('tent');
+        else if (e.code === 'Equal') player.craft('fire');
+      }
     });
     window.addEventListener('keyup', (e) => {
       player.keys[e.code] = false;
@@ -154,6 +160,23 @@
     player.sword = g;
   }
 
+  function buildShotgun(camera) {
+    const g = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color: 0x55585e, roughness: 0.4, metalness: 0.55 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 });
+    const barrels = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.1, 0.7), metal); barrels.position.set(0, 0, -0.35); g.add(barrels);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.32), wood); stock.position.set(0, -0.03, 0.12); g.add(stock);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.1), wood); grip.position.set(0, -0.13, 0.02); grip.rotation.x = -0.4; g.add(grip);
+    g.position.set(0.32, -0.4, -0.6);
+    g.rotation.set(-0.05, 0, 0);
+    g.scale.setScalar(0.95);
+    g.visible = false;
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
+    camera.add(g);
+    player.shotgun = g;
+  }
+
   function buildShield(camera) {
     const g = new THREE.Group();
     const wood = new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 1, flatShading: true });
@@ -168,25 +191,33 @@
     player.shield3d = g;
   }
 
+  const WEAPON_OBJ = () => ({ axe: player.axe, sword: player.sword, shotgun: player.shotgun });
   function equipWeapon(which) {
-    const isSword = which === 'sword' && !!player.sword;
-    const w = isSword ? player.sword : player.axe;
-    player.axe.visible = !isSword;
-    if (player.sword) player.sword.visible = isSword;
+    const have = { axe: true, sword: !!player.hasSword, shotgun: !!player.hasShotgun };
+    if (!have[which]) which = 'axe';
+    const objs = WEAPON_OBJ();
+    player.axe.visible = which === 'axe';
+    if (player.sword) player.sword.visible = which === 'sword';
+    if (player.shotgun) player.shotgun.visible = which === 'shotgun';
+    const w = objs[which];
     player.weapon = w;
     player.weaponRest = w.userData.rest;
     player.weaponHome = w.userData.home;
-    player.currentWeapon = isSword ? 'sword' : 'axe';
+    player.currentWeapon = which;
     player.swing = undefined;
     w.rotation.copy(w.userData.rest);
     w.position.copy(w.userData.home);
   }
 
-  // X switches between the axe and the crafted sword.
+  // X cycles through the weapons you own (axe → sword → shotgun).
   player.switchWeapon = function () {
-    if (!player.hasSword) { W.hud.toast('Craft a Sword first (C)'); return; }
-    equipWeapon(player.currentWeapon === 'sword' ? 'axe' : 'sword');
-    W.hud.toast(player.currentWeapon === 'sword' ? '⚔️ Sword equipped' : '🪓 Axe equipped');
+    const order = ['axe'];
+    if (player.hasSword) order.push('sword');
+    if (player.hasShotgun) order.push('shotgun');
+    if (order.length === 1) { W.hud.toast('Craft a Sword or find the bandit’s shotgun'); return; }
+    const i = order.indexOf(player.currentWeapon);
+    equipWeapon(order[(i + 1) % order.length]);
+    W.hud.toast({ axe: '🪓 Axe', sword: '⚔️ Sword', shotgun: '🔫 Sawed-off shotgun' }[player.currentWeapon] + ' equipped');
   };
 
   const BOTTLE_HOME = new THREE.Vector3(-0.42, -0.4, -0.7);
@@ -233,7 +264,9 @@
     const now = player._t;
     if (now - player.lastAttack < ATTACK_CD) return;
     player.lastAttack = now;
-    player.swing = 0; // drives the swing animation
+    player.swing = 0; // drives the swing / recoil animation
+
+    if (player.currentWeapon === 'shotgun') { fireShotgun(); return; }
 
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
@@ -265,6 +298,33 @@
       }
     }
   };
+
+  // The sawed-off shotgun: a hard-hitting short-range blast with buckshot splash.
+  function applyShot(root, dmg) {
+    if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
+    else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
+  }
+  function fireShotgun() {
+    if (player.shells <= 0) { W.hud.toast('Out of shells 🔫'); return; }
+    player.shells -= 1;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera({ x: 0, y: 0 }, player.camera);
+    ray.far = 22;
+    const targets = [];
+    W.enemies.list.forEach((e) => { if (e.alive) targets.push(e.group); });
+    const hits = ray.intersectObjects(targets, true);
+    const dmg = 9;
+    let hitPos = null, hitRoot = null;
+    if (hits.length) { hitRoot = findRoot(hits[0].object); hitPos = hits[0].point; }
+    if (hitRoot && hitRoot.userData.type === 'enemy') applyShot(hitRoot, dmg);
+    if (hitPos) {                              // buckshot splash to nearby foes
+      for (const e of W.enemies.list) {
+        if (!e.alive || e.group === hitRoot) continue;
+        if (Math.hypot(e.group.position.x - hitPos.x, e.group.position.z - hitPos.z) < 3) applyShot(e.group, 4);
+      }
+    }
+    W.hud.toast('💥 BOOM — ' + player.shells + ' shells left');
+  }
 
   // Reward for a kill (used locally, and by net for remote-credited kills).
   player.creditKill = function (kind) {
@@ -341,9 +401,14 @@
     return g;
   }
 
-  // G: pick up a berry (carry up to 5) from a dropped berry or a nearby bush.
+  // G: pick up the bandit's dropped shotgun, or a berry from the ground / a bush.
   player.grab = function () {
     if (!player.alive || !player.active) return;
+    if (W.world.takeShotgunNear && W.world.takeShotgunNear(player.pos, 2.6)) {
+      player.hasShotgun = true; player.shells += 8; equipWeapon('shotgun');
+      W.hud.toast('Picked up the sawed-off shotgun! 🔫 (X to switch)');
+      return;
+    }
     if (player.berries >= player.berryMax) { W.hud.toast('Hands full (5/5)'); return; }
     // nearest dropped berry first
     let best = -1, bestD = 2.5;
@@ -402,12 +467,16 @@
     '5': { kind: 'logs', cost: 4, dist: 1.5, name: 'Logs' },
     '8': { kind: 'farm', cost: 12, dist: 2.0, name: 'Farm plot' },
     '9': { kind: 'table', cost: 15, dist: 2.0, name: 'Crafting table' },
+    'tent': { kind: 'tent', cost: 25, dist: 3.2, name: 'Tent' },
+    'fire': { kind: 'campfire', cost: 12, dist: 2.4, name: 'Campfire' },
   };
+  // Base structures can be built anywhere so you can set up a camp away from spawn.
+  const NO_TABLE_NEEDED = { '9': 1, tent: 1, fire: 1 };
 
   player.craft = function (id) {
     if (!player.alive || !player.active) return;
-    // crafting always needs a workbench nearby (there's one at camp to start)
-    if (!W.world.nearCraftTable(player.pos, 3.6)) {
+    // most recipes need a workbench nearby; base structures don't (build a camp anywhere)
+    if (!NO_TABLE_NEEDED[id] && !W.world.nearCraftTable(player.pos, 3.6)) {
       W.hud.toast('Stand by a crafting table 🛠️');
       return;
     }
@@ -754,6 +823,7 @@
     Object.assign(player, {
       alive: true, downed: false, bleedT: 0, bandaids: 0,
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
+      hasShotgun: false, shells: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasShield: false, currentWeapon: 'axe',

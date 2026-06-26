@@ -8,6 +8,8 @@
     list: [],
     _dying: [],
     spawnTimer: 0,
+    boss: null,
+    bossTimer: 10,     // first bandit boss appears ~10s in
   };
 
   // --- Models ---------------------------------------------------------------
@@ -126,9 +128,41 @@
     return g;
   }
 
+  // The bandit boss: a tall outlaw in a coat & hat, shotgun in hand.
+  function makeBandit() {
+    const g = new THREE.Group();
+    const coat = new THREE.MeshStandardMaterial({ color: 0x4a3b2a, roughness: 1, flatShading: true });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xc9a07a, roughness: 1 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x241c14, roughness: 1, flatShading: true });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.3, 0.55), coat);
+    torso.position.y = 1.8; torso.castShadow = true; g.add(torso);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.52, 0.52), skin);
+    head.position.set(0, 2.62, 0); head.castShadow = true; g.add(head);
+    const mask = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.24, 0.54), new THREE.MeshStandardMaterial({ color: 0x8a2b2b, roughness: 1 }));
+    mask.position.set(0, 2.52, 0.01); g.add(mask);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.06, 10), dark); brim.position.set(0, 2.88, 0); g.add(brim);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.33, 0.36, 10), dark); crown.position.set(0, 3.07, 0); g.add(crown);
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xaa6600, emissiveIntensity: 1.0 });
+    for (const sx of [-0.13, 0.13]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), eyeMat); e.position.set(sx, 2.68, 0.27); g.add(e); }
+    const legs = [];
+    const legGeo = new THREE.BoxGeometry(0.28, 1.2, 0.28);
+    for (const sx of [-0.23, 0.23]) { const l = new THREE.Mesh(legGeo, dark); l.position.set(sx, 0.6, 0); l.castShadow = true; g.add(l); legs.push(l); }
+    const armGeo = new THREE.BoxGeometry(0.24, 1.05, 0.24);
+    for (const sx of [-0.54, 0.54]) { const a = new THREE.Mesh(armGeo, coat); a.position.set(sx, 1.78, 0.06); a.castShadow = true; g.add(a); legs.push(a); }
+    // sawed-off shotgun in the right hand
+    const gun = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color: 0x55585e, roughness: 0.4, metalness: 0.5 });
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.6), metal); barrel.position.z = 0.28; gun.add(barrel);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.3), new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 })); stock.position.z = -0.12; gun.add(stock);
+    gun.position.set(0.6, 1.6, 0.35); gun.rotation.x = 0.12; g.add(gun);
+    g.userData = { type: 'enemy', kind: 'bandit', legs, mat: coat, eyeMat };
+    return g;
+  }
+
   // Build a foe of the given kind and cache each limb's base rotation for the gait.
   function buildModel(kind) {
-    const g = kind === 'werewolf' ? makeWerewolf() : kind === 'zombie' ? makeZombie() : makeWolf();
+    const g = kind === 'werewolf' ? makeWerewolf() : kind === 'zombie' ? makeZombie()
+      : kind === 'bandit' ? makeBandit() : makeWolf();
     g.userData.legBases = g.userData.legs.map((l) => l.rotation.x);
     return g;
   }
@@ -166,6 +200,20 @@
     enemies.list.push({ id, group: g, kind, alive: true, hp: stats.hp, speed: stats.speed, dmg: stats.dmg, lastAttack: -99, t: U.rand(0, 10) });
   };
 
+  // The bandit boss: spawns very far away, roams day & night, drops a shotgun.
+  enemies.spawnBoss = function (center) {
+    const a = U.rand(0, Math.PI * 2);
+    const dist = U.rand(95, 116);            // near the far edge of the world
+    const x = center.x + Math.cos(a) * dist, z = center.z + Math.sin(a) * dist;
+    const g = buildModel('bandit');
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
+    enemies.scene.add(g);
+    const id = _nextId++; g.userData.id = id;
+    const e = { id, group: g, kind: 'bandit', alive: true, hp: 55, speed: 3.0, dmg: 16, lastAttack: -99, t: 0, isBoss: true };
+    enemies.list.push(e); enemies.boss = e;
+    if (W.hud) W.hud.banner('A BANDIT ROAMS', 'Hunt him far afield for his sawed-off shotgun 🔫', '#ffb24a');
+  };
+
   function applyHit(e, amount, fromPos) {
     e.hp -= amount;
     const mat = e.group.userData.mat;
@@ -200,6 +248,11 @@
     const i = enemies.list.indexOf(e);
     if (i >= 0) enemies.list.splice(i, 1);
     enemies._dying.push({ group: e.group, t: 0 });
+    if (e.isBoss) {
+      enemies.boss = null; enemies.bossTimer = 120;     // a new bandit in ~2 min
+      if (W.world.dropShotgun) W.world.dropShotgun(e.group.position.x, e.group.position.z);
+      if (W.hud) W.hud.banner('BANDIT DOWN', 'He dropped a sawed-off shotgun 🔫 — grab it (G)', '#8fd36a');
+    }
   };
 
   function animateDying(dt) {
@@ -223,9 +276,14 @@
       enemies.spawn(center, dayNum);
       enemies.spawnTimer = U.rand(0.7, 1.9);
     }
+    // keep exactly one bandit boss prowling the map (respawns a while after death)
+    if (!enemies.boss || !enemies.boss.alive) {
+      enemies.bossTimer -= dt;
+      if (enemies.bossTimer <= 0) { enemies.spawnBoss(center); enemies.bossTimer = 1e9; }
+    }
     if (!isNight) {
       for (const e of enemies.list.slice()) {
-        if (e.alive && U.chance(dt * 0.8)) enemies.kill(e);
+        if (e.alive && e.kind !== 'bandit' && U.chance(dt * 0.8)) enemies.kill(e);   // boss survives daylight
       }
     }
 
@@ -243,7 +301,7 @@
       const d = Math.hypot(dx, dz) || 1;
       g.rotation.y = Math.atan2(dx, dz);
 
-      const reach = e.kind === 'werewolf' ? 1.9 : (e.kind === 'zombie' ? 1.6 : 1.4);
+      const reach = e.kind === 'werewolf' ? 1.9 : (e.kind === 'zombie' ? 1.6 : (e.kind === 'bandit' ? 2.2 : 1.4));
       if (d > reach) {
         const nx = dx / d, nz = dz / d;
         g.position.x += nx * e.speed * dt;
@@ -283,7 +341,7 @@
 
   enemies.serialize = function () {
     return enemies.list.map((e) => ({
-      id: e.id, k: e.kind === 'werewolf' ? 1 : e.kind === 'zombie' ? 2 : 0,
+      id: e.id, k: e.kind === 'werewolf' ? 1 : e.kind === 'zombie' ? 2 : e.kind === 'bandit' ? 3 : 0,
       x: +e.group.position.x.toFixed(2), z: +e.group.position.z.toFixed(2),
       r: +e.group.rotation.y.toFixed(2),
     }));
@@ -297,7 +355,7 @@
       seen[s.id] = true;
       let e = enemies.list.find((x) => x.id === s.id);
       if (!e) {
-        const kind = s.k === 2 ? 'zombie' : s.k === 1 ? 'werewolf' : 'wolf';
+        const kind = s.k === 3 ? 'bandit' : s.k === 2 ? 'zombie' : s.k === 1 ? 'werewolf' : 'wolf';
         const g = buildModel(kind);
         g.userData.id = s.id; g.position.set(s.x, 0, s.z);
         enemies.scene.add(g);

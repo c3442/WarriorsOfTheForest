@@ -10,7 +10,9 @@
     ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'bandaidNum', 'killNum',
      'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
      'craftPanel', 'craftWood', 'crow3', 'crow6', 'crow7', 'axeLv', 'axeCost', 'keyHelp',
-     'invPanel', 'invWood', 'invBerries', 'invBandaids', 'invWater', 'invAxe', 'invGear',
+     'weaponIc', 'slotShell', 'shellNum',
+     'invPanel', 'invWood', 'invBerries', 'invBandaids', 'invWater', 'invAxe', 'invShells',
+     'invSwordSlot', 'invArmorSlot', 'invShieldSlot', 'invShotgunSlot',
      'sleepOverlay', 'sleepCount', 'sleepWait', 'buildHint', 'buildHintName',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
     if (els.sleepOverlay) {
@@ -39,6 +41,10 @@
     els.foeNum.textContent = s.foes;
     els.woodNum.textContent = s.wood;
     els.killNum.textContent = s.kills;
+    // hotbar weapon + shells
+    if (els.weaponIc) els.weaponIc.textContent = { axe: '🪓', sword: '⚔️', shotgun: '🔫' }[W.player.currentWeapon] || '🪓';
+    if (els.slotShell) els.slotShell.classList.toggle('hidden', !W.player.hasShotgun);
+    if (els.shellNum) els.shellNum.textContent = W.player.shells || 0;
     if (hud._inv) hud.refreshInv();          // keep the inventory live while open
   };
 
@@ -54,9 +60,12 @@
     els.invBerries.textContent = p.berries + '/' + p.berryMax;
     els.invBandaids.textContent = p.bandaids;
     els.invWater.textContent = p.bottle + '/' + p.bottleMax;
-    els.invAxe.textContent = 'Lv ' + p.axeLevel;
-    const gear = [p.hasSword ? '⚔️ Sword' : '', p.hasArmor ? '🛡️ Armor' : '', p.hasShield ? '🔰 Shield' : ''].filter(Boolean);
-    els.invGear.textContent = gear.length ? gear.join('   ') : '—';
+    els.invAxe.textContent = p.axeLevel;
+    els.invShells.textContent = p.shells;
+    els.invSwordSlot.classList.toggle('empty', !p.hasSword);
+    els.invArmorSlot.classList.toggle('empty', !p.hasArmor);
+    els.invShieldSlot.classList.toggle('empty', !p.hasShield);
+    els.invShotgunSlot.classList.toggle('empty', !p.hasShotgun);
   };
 
   // --- Sleep overlay ----------------------------------------------------------

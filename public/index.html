@@ -74,16 +74,33 @@
   #keyHelp b{color:#fff;background:#2a3320;border:1px solid #46562f;border-radius:5px;padding:0 6px;font-size:13px;}
   #keyHelp .khHint{margin-top:8px;font-size:12px;color:#8fae74;}
 
-  /* Inventory panel (toggle I) */
-  #invPanel{position:fixed;left:16px;top:160px;width:210px;background:var(--panel);border-radius:10px;
-    padding:12px 14px;backdrop-filter:blur(2px);}
-  #invPanel .ititle{font-size:15px;color:#cfe8b6;margin-bottom:8px;letter-spacing:.5px;}
-  #invPanel .irow{display:flex;justify-content:space-between;padding:5px 7px;border-radius:6px;
-    background:rgba(0,0,0,.26);margin-bottom:5px;font-size:13px;color:#e7e0cf;}
-  #invPanel .irow b{color:#fff;}
-  #invPanel .igear{font-size:12px;color:#9adcff;margin-top:6px;min-height:16px;}
-  #invPanel .ihint{color:#8fae74;font-size:11px;margin-top:6px;}
-  #invPanel .ihint b{background:#2a2f22;border:1px solid #444b35;border-radius:4px;padding:0 5px;}
+  /* Minecraft-style hotbar */
+  #hotbar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:4px;
+    padding:5px;background:rgba(20,20,20,.55);border:2px solid #1c1c1c;border-radius:4px;}
+  .mcslot{position:relative;width:50px;height:50px;background:#3a3a3a;border:2px solid #8b8b8b;
+    border-right-color:#fff8;border-bottom-color:#fff8;display:flex;align-items:center;justify-content:center;}
+  .mcslot .ic{font-size:26px;line-height:1;}
+  .mcslot .ct{position:absolute;right:2px;bottom:-1px;font-size:13px;font-weight:bold;color:#fff;text-shadow:1px 1px 0 #000;}
+  .mcslot.empty{opacity:.28;}
+  #hotbar .slot{position:relative;width:50px;height:50px;background:#3a3a3a;border:2px solid #8b8b8b;
+    border-right-color:#fff8;border-bottom-color:#fff8;display:flex;align-items:center;justify-content:center;}
+  #hotbar .ic{font-size:26px;line-height:1;}
+  #hotbar .ct{position:absolute;right:2px;bottom:-1px;font-size:13px;font-weight:bold;color:#fff;text-shadow:1px 1px 0 #000;}
+  #hotbar .slot:first-child{border-color:#ffe08a;box-shadow:0 0 8px rgba(255,224,138,.5);}
+
+  /* Inventory window (toggle I) — Minecraft chest look */
+  #invPanel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+    background:#c6c6c6;border:3px solid #555;border-top-color:#fff;border-left-color:#fff;border-radius:3px;
+    padding:10px 12px 12px;z-index:7;box-shadow:0 10px 30px rgba(0,0,0,.6);}
+  #invPanel .ititle{font-size:15px;color:#3a3a3a;margin-bottom:8px;font-weight:bold;letter-spacing:.5px;}
+  #invPanel .invGrid{display:grid;grid-template-columns:repeat(5,50px);gap:4px;}
+  #invPanel .islot{position:relative;width:50px;height:50px;background:#8b8b8b;border:2px solid #373737;
+    border-right-color:#fff8;border-bottom-color:#fff8;display:flex;align-items:center;justify-content:center;}
+  #invPanel .islot .ic{font-size:26px;line-height:1;}
+  #invPanel .islot .ct{position:absolute;right:2px;bottom:-1px;font-size:13px;font-weight:bold;color:#fff;text-shadow:1px 1px 0 #000;}
+  #invPanel .islot.empty{opacity:.25;}
+  #invPanel .ihint{color:#555;font-size:11px;margin-top:8px;}
+  #invPanel .ihint b{background:#777;border-radius:3px;padding:0 5px;color:#fff;}
 
   /* Sleep overlay (K) */
   #sleepOverlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -157,14 +174,17 @@
   <div class="tod"><span id="todIcon">☀️</span> <b id="todLabel">Day</b></div>
   <div>Day <b id="dayNum">1</b></div>
   <div>Foes <b id="foeNum">0</b></div>
+  <div>Kills <b id="killNum">0</b></div>
 </div>
 
-<div id="res">
-  <div class="pill">🪵 Wood <b id="woodNum">0</b></div>
-  <div class="pill">💧 Bottle <b id="waterNum">5/5</b></div>
-  <div class="pill">🍓 Berries <b id="berryNum">0/5</b></div>
-  <div class="pill">🩹 Bandaids <b id="bandaidNum">0</b></div>
-  <div class="pill">🍖 Kills <b id="killNum">0</b></div>
+<!-- Minecraft-style hotbar -->
+<div id="hotbar">
+  <div class="slot"><span class="ic" id="weaponIc">🪓</span></div>
+  <div class="slot"><span class="ic">🪵</span><span class="ct" id="woodNum">0</span></div>
+  <div class="slot"><span class="ic">💧</span><span class="ct" id="waterNum">5/5</span></div>
+  <div class="slot"><span class="ic">🍓</span><span class="ct" id="berryNum">0/5</span></div>
+  <div class="slot"><span class="ic">🩹</span><span class="ct" id="bandaidNum">0</span></div>
+  <div class="slot hidden" id="slotShell"><span class="ic">🔫</span><span class="ct" id="shellNum">0</span></div>
 </div>
 
 <div id="banner"><div class="big"></div><div class="sub"></div></div>
@@ -197,18 +217,25 @@
   <div class="crow"><b>8</b> <u>🌱</u> Farm Plot <i>12 wood</i><span>grows food every minute</span></div>
   <div class="crow"><b>9</b> <u>🛠️</u> Crafting Table <i>15 wood</i><span>a workbench</span></div>
   <div class="crow"><b>0</b> <u>🩹</u> Bandaid <i>6 wood</i><span>heal / revive a teammate</span></div>
-  <div class="chint">press a number to craft &nbsp;·&nbsp; buildables show a green hologram — click to place &nbsp;·&nbsp; <b>C</b> to close</div>
+  <div class="crow"><b>−</b> <u>⛺</u> Tent <i>25 wood</i><span>base · sleep &amp; zip (build anywhere)</span></div>
+  <div class="crow"><b>=</b> <u>🔥</u> Campfire <i>12 wood</i><span>base · heal haven (build anywhere)</span></div>
+  <div class="chint">press a key to craft &nbsp;·&nbsp; buildables show a green hologram — click to place &nbsp;·&nbsp; <b>C</b> to close</div>
 </div>
 
-<!-- Inventory (toggle I) -->
+<!-- Inventory (toggle I) — Minecraft-style grid -->
 <div id="invPanel" class="hidden">
-  <div class="ititle">🎒 INVENTORY</div>
-  <div class="irow"><span>🪵 Wood</span><b id="invWood">0</b></div>
-  <div class="irow"><span>🍓 Berries</span><b id="invBerries">0/5</b></div>
-  <div class="irow"><span>💧 Water</span><b id="invWater">5/5</b></div>
-  <div class="irow"><span>🩹 Bandaids</span><b id="invBandaids">0</b></div>
-  <div class="irow"><span>🪓 Axe</span><b id="invAxe">Lv 0</b></div>
-  <div class="igear" id="invGear">—</div>
+  <div class="ititle">Inventory</div>
+  <div class="invGrid">
+    <div class="islot" title="Axe"><span class="ic">🪓</span><span class="ct" id="invAxe">0</span></div>
+    <div class="islot" title="Wood"><span class="ic">🪵</span><span class="ct" id="invWood">0</span></div>
+    <div class="islot" title="Water"><span class="ic">💧</span><span class="ct" id="invWater">5/5</span></div>
+    <div class="islot" title="Berries"><span class="ic">🍓</span><span class="ct" id="invBerries">0/5</span></div>
+    <div class="islot" title="Bandaids"><span class="ic">🩹</span><span class="ct" id="invBandaids">0</span></div>
+    <div class="islot empty" id="invSwordSlot" title="Sword"><span class="ic">⚔️</span></div>
+    <div class="islot empty" id="invArmorSlot" title="Armor"><span class="ic">🛡️</span></div>
+    <div class="islot empty" id="invShieldSlot" title="Shield"><span class="ic">🔰</span></div>
+    <div class="islot empty" id="invShotgunSlot" title="Shotgun"><span class="ic">🔫</span><span class="ct" id="invShells">0</span></div>
+  </div>
   <div class="ihint">press <b>I</b> to close</div>
 </div>
 
