@@ -985,7 +985,7 @@
 
   // --- Tents: zip up the entrance so nothing can get in -----------------------
 
-  const _tv = new THREE.Vector3(), _tq = new THREE.Quaternion();
+  const _tv = new THREE.Vector3(), _tq = new THREE.Quaternion(), _ev = new THREE.Vector3(), _ep = new THREE.Vector3();
 
   // Which tent (if any) the player is standing inside.
   world.insideTent = function (pos) {
@@ -1041,6 +1041,7 @@
     if (!t || t.zipped === zipped) return;
     t.zipped = zipped;
     if (zipped) {
+      t.flapHp = 30;                 // fresh flap; beasts can claw it open
       const mat = new THREE.MeshStandardMaterial({ color: t.color, roughness: 1, flatShading: true, side: THREE.DoubleSide });
       const flap = new THREE.Mesh(new THREE.BoxGeometry(t.Wd, t.Hw, 0.1), mat);
       flap.position.set(0, t.Hw / 2, t.Dp / 2); flap.castShadow = true;
@@ -1231,6 +1232,28 @@
     // --- stuffies: count days, let enemies smash them, mend after 5 days ---
     if (wasNight && !world._isNight) world._dayCount += 1;        // a new dawn
     if (world.stuffiesBroken && world._dayCount - world._stuffieBreakDay >= 5) world.reviveStuffies();
+    // hostile creatures claw at a zipped tent's flap until it tears open
+    if (W.enemies && W.enemies.list) {
+      for (let ti = 0; ti < world.tents.length; ti++) {
+        const t = world.tents[ti];
+        if (!t.zipped) continue;
+        _ev.set(0, 0, t.Dp / 2).applyQuaternion(t.quat).add(_ep.set(t.x, 0, t.z));   // entrance in world space
+        let clawing = false;
+        for (const e of W.enemies.list) {
+          if (!e.alive) continue;
+          if (Math.hypot(e.group.position.x - _ev.x, e.group.position.z - _ev.z) < 2.4) { clawing = true; break; }
+        }
+        if (clawing) {
+          const before = t.flapHp != null ? t.flapHp : 30;
+          t.flapHp = before - dt * 6;                  // ~5s to tear open with one attacker
+          if (before > 15 && t.flapHp <= 15 && W.hud) W.hud.toast('🪓 Something is tearing at your tent!');
+          if (t.flapHp <= 0) {
+            world.applyTentZip(ti, false);
+            if (W.hud) W.hud.banner('TENT BREACHED', 'The beasts tore your tent open! 🐺', '#ff7b7b');
+          }
+        }
+      }
+    }
     if (W.enemies && W.enemies.list && world.intactStuffies() > 0) {
       world._stuffieT = (world._stuffieT || 0) - dt;
       if (world._stuffieT <= 0) {
