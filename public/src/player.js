@@ -582,19 +582,29 @@
     if (player.grounded) player.pos.y = groundEye;
 
     // --- stats ---
-    if (wantSprint) player.stamina = U.clamp(player.stamina - 12 * dt, 0, 100);   // lasts longer
+    const atBase = W.world.nearCamp(player.pos);   // the camp is a safe haven
+
+    // stamina: infinite at base, otherwise drains while sprinting / recovers at rest
+    if (atBase) player.stamina = 100;
+    else if (wantSprint) player.stamina = U.clamp(player.stamina - 12 * dt, 0, 100);
     else player.stamina = U.clamp(player.stamina + 15 * dt, 0, 100);
 
-    player.hunger = U.clamp(player.hunger - 0.45 * dt, 0, 100);                     // lasts longer
-    player.thirst = U.clamp(player.thirst - 1.15 * dt, 0, 100);
+    // hunger & thirst: slowly recover at base, otherwise tick down
+    if (atBase) {
+      player.hunger = U.clamp(player.hunger + 2.5 * dt, 0, 100);
+      player.thirst = U.clamp(player.thirst + 2.5 * dt, 0, 100);
+    } else {
+      player.hunger = U.clamp(player.hunger - 0.45 * dt, 0, 100);                   // lasts longer
+      player.thirst = U.clamp(player.thirst - 1.15 * dt, 0, 100);
+    }
     if (player.hunger <= 0) player.takeDamage(2.2 * dt);
     if (player.thirst <= 0) player.takeDamage(2.0 * dt);
     if (player.hunger > 40 && player.thirst > 25 && player._t - player.lastHurt > 4) {
       player.health = U.clamp(player.health + 1.6 * dt, 0, 100);
     }
-    // resting by the campfire heals faster
-    if (W.world.nearCamp(player.pos) && player._t - player.lastHurt > 1.5) {
-      player.health = U.clamp(player.health + 4 * dt, 0, 100);
+    // resting at the base heals you fast
+    if (atBase && player._t - player.lastHurt > 1.5) {
+      player.health = U.clamp(player.health + 7 * dt, 0, 100);
     }
 
     // --- apply to camera ---

@@ -366,18 +366,18 @@
 
     function makeBed(blanketColor) {
       const bed = new THREE.Group();
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.2, 1.95),
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.26, 2.45),
         new THREE.MeshStandardMaterial({ color: 0x5e3f23, roughness: 1 }));
-      frame.position.y = 0.13; frame.castShadow = true; bed.add(frame);
-      const mattress = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.16, 1.86),
+      frame.position.y = 0.15; frame.castShadow = true; bed.add(frame);
+      const mattress = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.2, 2.34),
         new THREE.MeshStandardMaterial({ color: 0xdcd2bd, roughness: 1, flatShading: true }));
-      mattress.position.y = 0.3; mattress.castShadow = true; bed.add(mattress);
-      const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 1.05),
+      mattress.position.y = 0.38; mattress.castShadow = true; bed.add(mattress);
+      const blanket = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.14, 1.35),
         new THREE.MeshStandardMaterial({ color: blanketColor, roughness: 1, flatShading: true }));
-      blanket.position.set(0, 0.39, 0.36); bed.add(blanket);
-      const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.14, 0.34),
+      blanket.position.set(0, 0.5, 0.46); bed.add(blanket);
+      const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.18, 0.44),
         new THREE.MeshStandardMaterial({ color: 0xf3efe6, roughness: 1, flatShading: true }));
-      pillow.position.set(0, 0.37, -0.7); bed.add(pillow);
+      pillow.position.set(0, 0.48, -0.88); bed.add(pillow);
       return bed;
     }
 
@@ -490,9 +490,9 @@
       ridge.rotation.x = Math.PI / 2; ridge.position.set(0, Hw + Rh, 0); tent.add(ridge);
 
       const bed = makeBed(tentCols[i]);              // blanket matches the tent colour
-      bed.position.set(-0.55, 0, -0.5);              // inside, toward the back; entrance stays clear
+      bed.position.set(-0.55, 0, -0.6);              // inside, toward the back; entrance stays clear
       const stuffie = makeStuffieFor(i);
-      stuffie.position.set(0, 0.38, -0.2);           // themed one, near the pillow
+      stuffie.position.set(0, 0.5, -0.3);            // themed one, near the pillow
       bed.add(stuffie);
       // a couple more little plushies scattered on the bed
       const extras = [
@@ -502,7 +502,7 @@
       for (let k = 0; k < 2; k++) {
         const ex = extras[U.randInt(0, extras.length - 1)]();
         ex.scale.setScalar(0.7);
-        ex.position.set(-0.28 + k * 0.56, 0.4, 0.18 - k * 0.06);
+        ex.position.set(-0.36 + k * 0.72, 0.52, 0.28 - k * 0.06);
         ex.rotation.y = U.rand(-0.6, 0.6);
         bed.add(ex);
       }
@@ -533,9 +533,9 @@
     world.placeCraftTable(cx + 1.7, cz + 1.4, -2.3);   // workbench right by the campfire
   }
 
-  // Resting near the campfire heals you.
+  // The base haven: heal, infinite stamina, recover hunger/thirst within the camp ring.
   world.nearCamp = function (pos) {
-    return U.dist2(pos.x, pos.z, world.campPos.x, world.campPos.z) < 4;
+    return U.dist2(pos.x, pos.z, world.campPos.x, world.campPos.z) < 8;
   };
 
   // --- Tents: zip up the entrance so nothing can get in -----------------------
