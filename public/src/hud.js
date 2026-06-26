@@ -13,7 +13,7 @@
      'weaponIc', 'slotShell', 'shellNum',
      'invPanel', 'invWood', 'invBerries', 'invBandaids', 'invWater', 'invAxe', 'invShells',
      'invSwordSlot', 'invArmorSlot', 'invShieldSlot', 'invShotgunSlot',
-     'sleepOverlay', 'sleepCount', 'sleepWait', 'buildHint', 'buildHintName',
+     'sleepOverlay', 'sleepCount', 'sleepWait', 'buildHint', 'buildHintName', 'minimap',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
     if (els.sleepOverlay) {
       els.sleepOverlay.querySelectorAll('[data-hug]').forEach((b) => {
@@ -46,6 +46,42 @@
     if (els.slotShell) els.slotShell.classList.toggle('hidden', !W.player.hasShotgun);
     if (els.shellNum) els.shellNum.textContent = W.player.shells || 0;
     if (hud._inv) hud.refreshInv();          // keep the inventory live while open
+    hud.drawMinimap();
+  };
+
+  // --- Minimap (north-up, player-centred) -------------------------------------
+  hud.drawMinimap = function () {
+    const cv = els.minimap; if (!cv) return;
+    const ctx = hud._mmctx || (hud._mmctx = cv.getContext('2d'));
+    const p = W.player; if (!p || !p.pos) return;
+    const S = cv.width, c = S / 2, R = c - 3, RANGE = 300, sc = R / RANGE;
+    ctx.clearRect(0, 0, S, S);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2); ctx.fillStyle = 'rgba(22,38,18,0.72)'; ctx.fill();
+    ctx.clip();
+    const dot = (x, z, color, rad) => {
+      let mx = c + (x - p.pos.x) * sc, my = c + (z - p.pos.z) * sc;
+      const dx = mx - c, dy = my - c, d = Math.hypot(dx, dy);
+      if (d > R - 4) { const k = (R - 4) / d; mx = c + dx * k; my = c + dy * k; }
+      ctx.beginPath(); ctx.arc(mx, my, rad, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.stroke();
+    };
+    dot(0, 0, '#ffb13a', 3.4);                                    // home camp (orange)
+    if (W.net && W.net.remote) {
+      for (const id in W.net.remote) {                            // teammates (cyan)
+        const r = W.net.remote[id];
+        if (r && r.pose) dot(r.pose.x, r.pose.z, '#56d3ff', 4.2);
+      }
+    }
+    ctx.restore();
+    // player arrow at centre, pointing where you face
+    ctx.save();
+    ctx.translate(c, c); ctx.rotate(-p.yaw);
+    ctx.beginPath(); ctx.moveTo(0, -6.5); ctx.lineTo(4.5, 5.5); ctx.lineTo(-4.5, 5.5); ctx.closePath();
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke();
+    ctx.restore();
   };
 
   // --- Inventory --------------------------------------------------------------

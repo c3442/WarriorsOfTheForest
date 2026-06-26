@@ -19,6 +19,11 @@
     border-radius:50%;border:2px solid rgba(255,255,255,.85);pointer-events:none;
     box-shadow:0 0 4px rgba(0,0,0,.6);}
 
+  /* Minimap (top-left) */
+  #minimap{position:fixed;left:16px;top:14px;width:150px;height:150px;border-radius:50%;
+    border:2px solid rgba(130,170,95,.6);box-shadow:0 2px 12px rgba(0,0,0,.5);
+    background:rgba(18,30,14,.35);z-index:4;pointer-events:none;}
+
   /* Stat bars */
   #stats{position:fixed;left:16px;bottom:16px;width:220px;display:flex;flex-direction:column;gap:7px;
     padding:10px 12px;background:var(--panel);border-radius:10px;backdrop-filter:blur(2px);}
@@ -162,6 +167,7 @@
 <!-- HUD -->
 <div id="cross"></div>
 <div id="flash"></div>
+<canvas id="minimap" width="150" height="150"></canvas>
 
 <div id="stats">
   <div class="bar" id="hp"><i></i><span>HEALTH</span></div>
@@ -305,13 +311,13 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="src/utils.js?v=9"></script>
-<script src="src/world.js?v=9"></script>
-<script src="src/player.js?v=9"></script>
-<script src="src/enemies.js?v=9"></script>
-<script src="src/critters.js?v=9"></script>
-<script src="src/net.js?v=9"></script>
-<script src="src/hud.js?v=9"></script>
-<script src="src/main.js?v=9"></script>
+<script src="src/utils.js?v=10"></script>
+<script src="src/world.js?v=10"></script>
+<script src="src/player.js?v=10"></script>
+<script src="src/enemies.js?v=10"></script>
+<script src="src/critters.js?v=10"></script>
+<script src="src/net.js?v=10"></script>
+<script src="src/hud.js?v=10"></script>
+<script src="src/main.js?v=10"></script>
 </body>
 </html>

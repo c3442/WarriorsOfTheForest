@@ -3,10 +3,10 @@
   const W = (window.WOTF = window.WOTF || {});
 
   W.CONFIG = {
-    WORLD_RADIUS: 400,     // playable area radius (meters) — big world, long treks
-    TREE_COUNT: 700,
-    ROCK_COUNT: 160,
-    BUSH_COUNT: 180,
+    WORLD_RADIUS: 1000,    // playable area radius (meters) — huge world, epic treks
+    TREE_COUNT: 1400,
+    ROCK_COUNT: 320,
+    BUSH_COUNT: 360,
     EYE_HEIGHT: 1.7,
     DAY_LENGTH: 420,       // full cycle: ~5 min day + ~2 min night
     PLAYER_RADIUS: 0.45,

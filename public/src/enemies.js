@@ -203,7 +203,7 @@
   // The bandit boss: spawns very far away, roams day & night, drops a shotgun.
   enemies.spawnBoss = function (center) {
     const a = U.rand(0, Math.PI * 2);
-    const dist = U.rand(340, 390);           // a real expedition away (big world)
+    const dist = U.rand(880, 980);           // an epic expedition away (huge world)
     const x = center.x + Math.cos(a) * dist, z = center.z + Math.sin(a) * dist;
     const g = buildModel('bandit');
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
