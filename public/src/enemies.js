@@ -186,10 +186,52 @@
     return g;
   }
 
+  // A long rifle held across the chest — given to some outlaws so they snipe.
+  function giveRifle(g) {
+    if (!g || g.userData.hasRifle) return;
+    const r = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color: 0x42454a, roughness: 0.4, metalness: 0.5 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 });
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 1.05), metal); barrel.position.z = 0.42; r.add(barrel);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.4), wood); stock.position.z = -0.16; r.add(stock);
+    const scope = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.18), metal); scope.position.set(0, 0.08, 0.2); r.add(scope);
+    r.position.set(0.26, 1.18, 0.18); r.rotation.y = -0.06;
+    g.add(r); g.userData.hasRifle = true;
+  }
+  enemies._giveRifle = giveRifle;
+
+  // A big brown bear — tough, fast, and hunts day & night.
+  function makeBear() {
+    const g = new THREE.Group();
+    const fur = ['#5a3f28', '#4a3320', '#6b4a2f'][U.randInt(0, 2)];
+    const mat = new THREE.MeshStandardMaterial({ color: fur, roughness: 1, flatShading: true });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.85, 1.7), mat);
+    body.position.y = 0.95; body.castShadow = true; g.add(body);
+    const hump = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.3, 0.6), mat);
+    hump.position.set(0, 1.42, 0.3); g.add(hump);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.58, 0.6), mat);
+    head.position.set(0, 1.2, 1.0); head.castShadow = true; g.add(head);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.26, 0.32), new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 1 }));
+    snout.position.set(0, 1.12, 1.35); g.add(snout);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.08), new THREE.MeshStandardMaterial({ color: 0x140f0a }));
+    nose.position.set(0, 1.18, 1.5); g.add(nose);
+    for (const sx of [-0.2, 0.2]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(0.12, 7, 7), mat); ear.position.set(sx, 1.52, 0.92); ear.castShadow = true; g.add(ear); }
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x180f08, emissive: 0x301008, emissiveIntensity: 0.6 });
+    for (const sx of [-0.16, 0.16]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), eyeMat); e.position.set(sx, 1.3, 1.28); g.add(e); }
+    const legGeo = new THREE.BoxGeometry(0.26, 0.72, 0.26);
+    const legs = [];
+    for (const [lx, lz] of [[-0.32, 0.6], [0.32, 0.6], [-0.32, -0.6], [0.32, -0.6]]) {
+      const l = new THREE.Mesh(legGeo, mat); l.position.set(lx, 0.36, lz); l.castShadow = true; g.add(l); legs.push(l);
+    }
+    g.userData = { type: 'enemy', kind: 'bear', legs, mat, eyeMat };
+    return g;
+  }
+
   // Build a foe of the given kind and cache each limb's base rotation for the gait.
   function buildModel(kind) {
     const g = kind === 'werewolf' ? makeWerewolf() : kind === 'zombie' ? makeZombie()
-      : kind === 'bandit' ? makeBandit() : kind === 'outlaw' ? makeOutlaw() : makeWolf();
+      : kind === 'bandit' ? makeBandit() : kind === 'outlaw' ? makeOutlaw()
+      : kind === 'bear' ? makeBear() : makeWolf();
     g.userData.legBases = g.userData.legs.map((l) => l.rotation.x);
     return g;
   }
@@ -248,10 +290,23 @@
     const a = U.rand(0, Math.PI * 2), r = U.rand(2.5, 4.5);
     const x = boss.group.position.x + Math.cos(a) * r, z = boss.group.position.z + Math.sin(a) * r;
     const g = buildModel('outlaw');
+    const rifle = U.chance(0.4);                 // ~40% of guards carry rifles
+    if (rifle) giveRifle(g);
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.3, dmg: 9, lastAttack: -99, t: U.rand(0, 5), guard: boss });
+    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.3, dmg: 9, lastAttack: -99, t: U.rand(0, 5), guard: boss, rifle, shootCD: U.rand(1.5, 3) });
+  };
+
+  // A bear that prowls the woods and hunts day & night.
+  enemies.spawnBear = function (center, dayNum) {
+    const ring = U.rand(28, 48), a = U.rand(0, Math.PI * 2);
+    const x = center.x + Math.cos(a) * ring, z = center.z + Math.sin(a) * ring;
+    const g = buildModel('bear');
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
+    enemies.scene.add(g);
+    const id = _nextId++; g.userData.id = id;
+    enemies.list.push({ id, group: g, kind: 'bear', alive: true, hp: 16 + dayNum * 2, speed: U.rand(3.2, 3.9), dmg: 12 + dayNum, lastAttack: -99, t: U.rand(0, 5) });
   };
 
   // A free-roaming bandit out in the desert (day & night).
@@ -259,10 +314,25 @@
     const ring = U.rand(22, 40), a = U.rand(0, Math.PI * 2);
     const x = center.x + Math.cos(a) * ring, z = center.z + Math.sin(a) * ring;
     const g = buildModel('outlaw');
+    const rifle = U.chance(0.5);                 // desert snipers: half carry rifles
+    if (rifle) giveRifle(g);
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 10, speed: 3.0, dmg: 8, lastAttack: -99, t: U.rand(0, 5) });
+    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 10, speed: 3.0, dmg: 8, lastAttack: -99, t: U.rand(0, 5), rifle, shootCD: U.rand(1.5, 3) });
+  };
+
+  // An outlaw that defends a bandit outpost (spawns when you get close).
+  enemies.spawnOutpostGuard = function (o, oi) {
+    const a = U.rand(0, Math.PI * 2), r = U.rand(2, 7);
+    const x = o.x + Math.cos(a) * r, z = o.z + Math.sin(a) * r;
+    const g = buildModel('outlaw');
+    const rifle = U.chance(0.45);
+    if (rifle) giveRifle(g);
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
+    enemies.scene.add(g);
+    const id = _nextId++; g.userData.id = id;
+    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.1, dmg: 9, lastAttack: -99, t: U.rand(0, 5), outpost: oi, rifle, shootCD: U.rand(1.5, 3) });
   };
 
   // The boss fires its sawed-off shotgun at a target (hitscan + muzzle flash).
@@ -276,6 +346,27 @@
     flash.position.set(ex + nx * 0.8, e.group.position.y + 1.6, ez + nz * 0.8);
     enemies.scene.add(flash);
     setTimeout(() => enemies.scene.remove(flash), 90);
+  };
+
+  // A rifle outlaw snipes from long range (steady damage + a quick tracer).
+  enemies.rifleShoot = function (e, tgt) {
+    const ex = e.group.position.x, ey = e.group.position.y + 1.3, ez = e.group.position.z;
+    const d = Math.hypot(tgt.pos.x - ex, tgt.pos.z - ez) || 1;
+    tgt.onBite(U.randInt(8, 13));
+    const nx = (tgt.pos.x - ex) / d, nz = (tgt.pos.z - ez) / d;
+    // muzzle flash
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, fog: false }));
+    flash.position.set(ex + nx * 1.0, ey, ez + nz * 1.0);
+    enemies.scene.add(flash);
+    // tracer line toward the target
+    const len = Math.min(d, 40);
+    const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, len),
+      new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.6, fog: false }));
+    tracer.position.set(ex + nx * (len / 2 + 1), ey, ez + nz * (len / 2 + 1));
+    tracer.rotation.y = Math.atan2(nx, nz);
+    enemies.scene.add(tracer);
+    setTimeout(() => { enemies.scene.remove(flash); enemies.scene.remove(tracer); }, 80);
   };
 
   function applyHit(e, amount, fromPos) {
@@ -352,10 +443,30 @@
       enemies.spawnDesertBandit(center);
       enemies.desertTimer = U.rand(2.5, 5);
     }
+    // bears prowl the woods/grassland, day & night
+    enemies.bearTimer = (enemies.bearTimer || 0) - dt;
+    const bears = enemies.list.filter((e) => e.kind === 'bear' && e.alive).length;
+    if (W.world.desertAt(center.x, center.z) < 0.5 && bears < 4 && enemies.bearTimer <= 0) {
+      enemies.spawnBear(center, dayNum);
+      enemies.bearTimer = U.rand(8, 16);
+    }
+    // bandit outposts post guards that defend them when you come near
+    if (W.world.outposts && W.world.outposts.length) {
+      enemies.outpostTimer = (enemies.outpostTimer || 0) - dt;
+      if (enemies.outpostTimer <= 0) {
+        for (let oi = 0; oi < W.world.outposts.length; oi++) {
+          const o = W.world.outposts[oi];
+          if (Math.hypot(center.x - o.x, center.z - o.z) > 60) continue;
+          const guards = enemies.list.filter((x) => x.outpost === oi && x.alive).length;
+          if (guards < 4) enemies.spawnOutpostGuard(o, oi);
+        }
+        enemies.outpostTimer = U.rand(1.2, 2.2);
+      }
+    }
     if (!isNight) {
       for (const e of enemies.list.slice()) {
-        // wolves/zombies burn off at dawn; bandits & outlaws roam day & night
-        if (e.alive && e.kind !== 'bandit' && e.kind !== 'outlaw' && U.chance(dt * 0.8)) enemies.kill(e);
+        // wolves/zombies burn off at dawn; bandits, outlaws & bears roam day & night
+        if (e.alive && e.kind !== 'bandit' && e.kind !== 'outlaw' && e.kind !== 'bear' && U.chance(dt * 0.8)) enemies.kill(e);
       }
     }
 
@@ -371,7 +482,7 @@
       const dx = tgt.pos.x - g.position.x;
       const dz = tgt.pos.z - g.position.z;
       const d = Math.hypot(dx, dz) || 1;
-      const reach = e.kind === 'werewolf' ? 1.9 : (e.kind === 'zombie' ? 1.6 : (e.kind === 'bandit' ? 2.2 : (e.kind === 'outlaw' ? 1.8 : 1.4)));
+      const reach = e.kind === 'werewolf' ? 1.9 : (e.kind === 'zombie' ? 1.6 : (e.kind === 'bandit' ? 2.2 : (e.kind === 'outlaw' ? 1.8 : (e.kind === 'bear' ? 2.0 : 1.4))));
 
       // Bandit boss: summon more bodyguards + fire its shotgun from range
       if (e.isBoss) {
@@ -403,6 +514,16 @@
           }
         }
       }
+      // rifle outlaws snipe the player from long range when they have a clear shot
+      if (e.rifle && !orbiting) {
+        e.shootCD -= dt;
+        if (e.shootCD <= 0 && bestD > reach && bestD < 42 &&
+            !W.world.wallBetween(g.position.x, g.position.z, tgt.pos.x, tgt.pos.z)) {
+          e.shootCD = U.rand(2.0, 3.2);
+          enemies.rifleShoot(e, tgt);
+        }
+      }
+
       const adx = aimX - g.position.x, adz = aimZ - g.position.z, ad = Math.hypot(adx, adz) || 1;
       g.rotation.y = Math.atan2(adx, adz);
 
@@ -445,9 +566,9 @@
 
   enemies.serialize = function () {
     return enemies.list.map((e) => ({
-      id: e.id, k: e.kind === 'werewolf' ? 1 : e.kind === 'zombie' ? 2 : e.kind === 'bandit' ? 3 : e.kind === 'outlaw' ? 4 : 0,
+      id: e.id, k: e.kind === 'werewolf' ? 1 : e.kind === 'zombie' ? 2 : e.kind === 'bandit' ? 3 : e.kind === 'outlaw' ? 4 : e.kind === 'bear' ? 5 : 0,
       x: +e.group.position.x.toFixed(2), z: +e.group.position.z.toFixed(2),
-      r: +e.group.rotation.y.toFixed(2),
+      r: +e.group.rotation.y.toFixed(2), rf: e.rifle ? 1 : 0,
     }));
   };
 
@@ -459,9 +580,10 @@
       seen[s.id] = true;
       let e = enemies.list.find((x) => x.id === s.id);
       if (!e) {
-        const kind = s.k === 4 ? 'outlaw' : s.k === 3 ? 'bandit' : s.k === 2 ? 'zombie' : s.k === 1 ? 'werewolf' : 'wolf';
+        const kind = s.k === 5 ? 'bear' : s.k === 4 ? 'outlaw' : s.k === 3 ? 'bandit' : s.k === 2 ? 'zombie' : s.k === 1 ? 'werewolf' : 'wolf';
         const g = buildModel(kind);
         g.userData.id = s.id; g.position.set(s.x, 0, s.z);
+        if (s.rf && kind === 'outlaw') giveRifle(g);
         enemies.scene.add(g);
         e = { id: s.id, group: g, kind, alive: true };
         enemies.list.push(e);

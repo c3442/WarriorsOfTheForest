@@ -20,6 +20,7 @@
     campfires: [],   // {x,z} safe-haven fires (camp + crafted ones)
     seats: [],       // {x,y,z,yaw} chairs you can sit on
     pickups: [],     // {x,z,mesh,kind} items dropped in the world (e.g. shotgun)
+    outposts: [],    // {x,z} bandit outposts (guarded camps)
     trees: [],       // choppable groups
     bushes: [],      // {x,z,mesh,ready}
     daylight: 1,
@@ -843,6 +844,120 @@
     world.placeCampfire(vx + 3.2, vz + 3.2);
   }
 
+  // --- Bandit outposts: fortified camps, guarded by bandits -------------------
+
+  function makeCrate() {
+    const s = U.rand(0.5, 0.8);
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(s, s, s),
+      new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 1, flatShading: true }));
+    body.position.y = s / 2; body.castShadow = true; g.add(body);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, 0.07, s * 1.02),
+      new THREE.MeshStandardMaterial({ color: 0x5a4426, roughness: 1 }));
+    band.position.y = s / 2; g.add(band);
+    g.userData = { s };
+    return g;
+  }
+
+  function makeWatchtower() {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 1, flatShading: true });
+    const H = 4.2, half = 1.0;
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.13, H, 0.13), wood);
+      post.position.set(sx * half, H / 2, sz * half); post.castShadow = true; g.add(post);
+    }
+    const plat = new THREE.Mesh(new THREE.BoxGeometry(half * 2 + 0.5, 0.16, half * 2 + 0.5), dark);
+    plat.position.y = H; plat.castShadow = true; g.add(plat);
+    for (const [sx, sz, rot] of [[0, -1, 0], [0, 1, 0], [-1, 0, Math.PI / 2], [1, 0, Math.PI / 2]]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(half * 2 + 0.5, 0.5, 0.08), wood);
+      rail.position.set(sx * (half + 0.2), H + 0.35, sz * (half + 0.2)); rail.rotation.y = rot; g.add(rail);
+    }
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(half * 1.8, 1.1, 4),
+      new THREE.MeshStandardMaterial({ color: 0x5a3b2a, roughness: 1, flatShading: true }));
+    roof.position.y = H + 1.15; roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
+    return g;
+  }
+
+  // A bandit's own campfire — flickers, but is NOT a player haven.
+  function makeOutpostFire() {
+    const g = new THREE.Group();
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x6a6c72, roughness: 1, flatShading: true });
+    for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; const s = new THREE.Mesh(new THREE.IcosahedronGeometry(U.rand(0.14, 0.22), 0), stoneMat); s.position.set(Math.cos(a) * 0.55, 0.06, Math.sin(a) * 0.55); g.add(s); }
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x3f2a18, roughness: 1, flatShading: true });
+    for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI * 2 + 0.4; const log = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.8, 6), logMat); log.position.set(Math.cos(a) * 0.18, 0.32, Math.sin(a) * 0.18); log.rotation.x = Math.sin(a) * 0.5; log.rotation.z = -Math.cos(a) * 0.5; g.add(log); }
+    const flames = [];
+    [0xff5a16, 0xffab3a, 0xffe07a].forEach((col, i) => { const f = new THREE.Mesh(new THREE.ConeGeometry(0.2 - i * 0.05, 0.6 - i * 0.12, 7), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, fog: false })); f.position.y = 0.28 + i * 0.04; g.add(f); flames.push(f); });
+    const light = new THREE.PointLight(0xff7a33, 1.5, 16, 1.6); light.position.set(0, 0.7, 0); g.add(light);
+    g.userData = { flames, light };
+    return g;
+  }
+
+  function buildOutpost(scene, ox, oz) {
+    const grp = new THREE.Group();
+    const gy = world.heightAt(ox, oz);
+
+    // spiked palisade ring with an entrance gap
+    const R = 7.5, logH = 2.0;
+    const palMat = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 1, flatShading: true });
+    const tipMat = new THREE.MeshStandardMaterial({ color: 0x4a3018, roughness: 1, flatShading: true });
+    const N = 30;
+    for (let i = 0; i < N; i++) {
+      const t = i / N;
+      if (t > 0.2 && t < 0.32) continue;          // leave an entrance gap
+      const a = t * Math.PI * 2;
+      const px = ox + Math.cos(a) * R, pz = oz + Math.sin(a) * R, py = world.heightAt(px, pz);
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, logH, 6), palMat);
+      log.position.set(px, py + logH / 2, pz); log.castShadow = true; grp.add(log);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.35, 6), tipMat);
+      tip.position.set(px, py + logH + 0.15, pz); grp.add(tip);
+      world.colliders.push({ x: px, z: pz, r: 0.3 });
+    }
+
+    // watchtower toward the back
+    const tower = makeWatchtower();
+    const tx = ox + Math.cos(Math.PI) * 3.8, tz = oz + Math.sin(Math.PI) * 3.8;
+    tower.position.set(tx, world.heightAt(tx, tz), tz); grp.add(tower);
+    for (const [lx, lz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) world.colliders.push({ x: tx + lx, z: tz + lz, r: 0.25 });
+
+    // a shack (reuse the village house model)
+    const shack = makeHouse();
+    const hx = ox + 3.0, hz = oz + 3.0;
+    shack.position.set(hx, world.heightAt(hx, hz), hz); shack.rotation.y = U.rand(0, 6.28); grp.add(shack);
+    world.colliders.push({ x: hx, z: hz, r: Math.max(shack.userData.Wd, shack.userData.Dp) * 0.6 });
+
+    // their campfire (decorative, flickers — not a haven)
+    const fire = makeOutpostFire();
+    fire.position.set(ox, gy, oz); grp.add(fire);
+    world._extraFires.push({ flames: fire.userData.flames, light: fire.userData.light, t: U.rand(0, 5) });
+    world.colliders.push({ x: ox, z: oz, r: 0.7 });
+
+    // scattered loot crates
+    for (let i = 0; i < 4; i++) {
+      const c = makeCrate();
+      const cx2 = ox + U.rand(-3.5, 3.5), cz2 = oz + U.rand(-3.5, 3.5);
+      c.position.set(cx2, world.heightAt(cx2, cz2), cz2); c.rotation.y = U.rand(0, 6.28); grp.add(c);
+      world.colliders.push({ x: cx2, z: cz2, r: c.userData.s * 0.6 });
+    }
+
+    scene.add(grp);
+    world.outposts.push({ x: ox, z: oz });
+  }
+
+  function buildBanditOutposts(scene) {
+    let tries = 0;
+    while (world.outposts.length < 3 && tries < 80) {
+      tries++;
+      const a = U.rand(0, Math.PI * 2), r = U.rand(220, 680);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (world.heightAt(x, z) <= C.WATER_LEVEL + 0.8) continue;
+      if (world.villagePos && U.dist2(x, z, world.villagePos.x, world.villagePos.z) < 70) continue;
+      if (world.outposts.some((o) => U.dist2(x, z, o.x, o.z) < 140)) continue;
+      buildOutpost(scene, x, z);
+    }
+  }
+
   // The base haven: heal, infinite stamina, recover hunger/thirst near ANY campfire
   // (the spawn camp plus any campfire you craft to set up a base elsewhere).
   world.nearCamp = function (pos) {
@@ -1022,6 +1137,7 @@
     scatter(scene);
     buildCamp(scene);
     buildVillage(scene);
+    buildBanditOutposts(scene);
   };
 
   // dayT in [0,1): 0 = dawn, 0.25 = noon, 0.5 = dusk, 0.75 = midnight
