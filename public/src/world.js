@@ -20,7 +20,8 @@
     campfires: [],   // {x,z} safe-haven fires (camp + crafted ones)
     seats: [],       // {x,y,z,yaw} chairs you can sit on
     pickups: [],     // {x,z,mesh,kind} items dropped in the world (e.g. shotgun)
-    outposts: [],    // {x,z} bandit outposts (guarded camps)
+    outposts: [],    // {x,z,found} bandit outposts (guarded camps; found once discovered)
+    discovered: { village: false, bandit: false },  // minimap fog-of-war
     trees: [],       // choppable groups
     bushes: [],      // {x,z,mesh,ready}
     daylight: 1,
@@ -367,21 +368,12 @@
 
     const logMat = new THREE.MeshStandardMaterial({ color: 0x3f2a18, roughness: 1, flatShading: true });
     const logGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.95, 7);
-    // criss-crossed logs lying flat at the base
+    // criss-crossed logs lying flat at the base (no upright/teepee logs)
     for (let i = 0; i < 3; i++) {
       const log = new THREE.Mesh(logGeo, logMat);
       log.position.set(0, 0.12 + i * 0.02, 0);
       log.rotation.z = Math.PI / 2;
       log.rotation.y = i * (Math.PI / 3) + 0.3;
-      log.castShadow = true; fire.add(log);
-    }
-    // a couple of leaning logs (teepee)
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 + 0.5;
-      const log = new THREE.Mesh(logGeo, logMat);
-      log.position.set(Math.cos(a) * 0.2, 0.42, Math.sin(a) * 0.2);
-      log.rotation.x = Math.sin(a) * 0.6;
-      log.rotation.z = -Math.cos(a) * 0.6;
       log.castShadow = true; fire.add(log);
     }
     // glowing ember bed beneath the flames
@@ -1152,6 +1144,20 @@
     world.daylight = day;
     world._isNight = elev < NIGHT;
 
+    // --- landmark discovery: reveal on the minimap once you (or a teammate) get close ---
+    const finders = [playerPos];
+    if (W.net && W.net.remote) { for (const id in W.net.remote) { const r = W.net.remote[id]; if (r && r.pose) finders.push(r.pose); } }
+    const nearAny = (x, z, rng) => finders.some((f) => Math.hypot(f.x - x, f.z - z) < rng);
+    if (world.villagePos && !world.discovered.village && nearAny(world.villagePos.x, world.villagePos.z, 50)) {
+      world.discovered.village = true; if (W.hud) W.hud.toast('🏘️ Discovered a village');
+    }
+    if (world.banditCampPos && !world.discovered.bandit && nearAny(world.banditCampPos.x, world.banditCampPos.z, 55)) {
+      world.discovered.bandit = true; if (W.hud) W.hud.toast('🏴‍☠️ Found the bandit hideout');
+    }
+    for (const o of world.outposts) {
+      if (!o.found && nearAny(o.x, o.z, 50)) { o.found = true; if (W.hud) W.hud.toast('🏚️ Discovered a bandit outpost'); }
+    }
+
     const dusk = U.clamp(1 - Math.abs(elev - NIGHT) / 0.3, 0, 1);
     const sky = U.mixColor(SKY_NIGHT, SKY_DAY, U.smooth(day)).lerp(new THREE.Color(SKY_DUSK), dusk * 0.55);
 
@@ -1487,7 +1493,7 @@
     const stoneMat = new THREE.MeshStandardMaterial({ color: 0x7d7f86, roughness: 1, flatShading: true });
     for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; const s = new THREE.Mesh(new THREE.IcosahedronGeometry(U.rand(0.16, 0.26), 0), stoneMat); s.position.set(Math.cos(a) * 0.7, 0.08, Math.sin(a) * 0.7); fire.add(s); }
     const logMat = new THREE.MeshStandardMaterial({ color: 0x4a3120, roughness: 1 });
-    for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + 0.4; const log = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.0, 6), logMat); log.position.set(Math.cos(a) * 0.24, 0.42, Math.sin(a) * 0.24); log.rotation.x = Math.sin(a) * 0.5; log.rotation.z = -Math.cos(a) * 0.5; fire.add(log); }
+    for (let i = 0; i < 3; i++) { const log = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.9, 6), logMat); log.position.set(0, 0.14 + i * 0.02, 0); log.rotation.z = Math.PI / 2; log.rotation.y = i * (Math.PI / 3) + 0.3; log.castShadow = true; fire.add(log); }
     const flames = [];
     [0xff6a18, 0xffab3a, 0xffe07a].forEach((col, i) => { const f = new THREE.Mesh(new THREE.ConeGeometry(0.24 - i * 0.06, 0.75 - i * 0.14, 7), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.92, fog: false })); f.position.y = 0.34 + i * 0.04; fire.add(f); flames.push(f); });
     const light = new THREE.PointLight(0xff7a33, 2.0, 22, 1.6); light.position.set(0, 0.9, 0); fire.add(light);

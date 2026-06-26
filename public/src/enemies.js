@@ -200,6 +200,22 @@
   }
   enemies._giveRifle = giveRifle;
 
+  // A drawn sword held out to the side — given to the melee bandits.
+  function giveSword(g) {
+    if (!g || g.userData.hasSword) return;
+    const s = new THREE.Group();
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc8ccd4, roughness: 0.3, metalness: 0.55 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0x8a6a2a, roughness: 0.5, metalness: 0.4 });
+    const grip = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 1 });
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.8, 0.02), steel); blade.position.y = 0.5; s.add(blade);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.16, 4), steel); tip.position.y = 0.98; s.add(tip);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.06), brass); guard.position.y = 0.12; s.add(guard);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.18, 6), grip); handle.position.y = 0.02; s.add(handle);
+    s.position.set(0.46, 1.0, 0.16); s.rotation.set(-0.5, 0, -0.2);   // held out, blade forward
+    g.add(s); g.userData.hasSword = true;
+  }
+  enemies._giveSword = giveSword;
+
   // A big brown bear — tough, fast, and hunts day & night.
   function makeBear() {
     const g = new THREE.Group();
@@ -291,11 +307,11 @@
     const x = boss.group.position.x + Math.cos(a) * r, z = boss.group.position.z + Math.sin(a) * r;
     const g = buildModel('outlaw');
     const rifle = U.chance(0.4);                 // ~40% of guards carry rifles
-    if (rifle) giveRifle(g);
+    if (rifle) giveRifle(g); else giveSword(g);
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.3, dmg: 9, lastAttack: -99, t: U.rand(0, 5), guard: boss, rifle, shootCD: U.rand(1.5, 3) });
+    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.3, dmg: rifle ? 9 : 13, lastAttack: -99, t: U.rand(0, 5), guard: boss, rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
   };
 
   // A bear that prowls the woods and hunts day & night.
@@ -315,11 +331,11 @@
     const x = center.x + Math.cos(a) * ring, z = center.z + Math.sin(a) * ring;
     const g = buildModel('outlaw');
     const rifle = U.chance(0.5);                 // desert snipers: half carry rifles
-    if (rifle) giveRifle(g);
+    if (rifle) giveRifle(g); else giveSword(g);
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 10, speed: 3.0, dmg: 8, lastAttack: -99, t: U.rand(0, 5), rifle, shootCD: U.rand(1.5, 3) });
+    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 10, speed: 3.0, dmg: rifle ? 8 : 11, lastAttack: -99, t: U.rand(0, 5), rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
   };
 
   // An outlaw that defends a bandit outpost (spawns when you get close).
@@ -328,11 +344,11 @@
     const x = o.x + Math.cos(a) * r, z = o.z + Math.sin(a) * r;
     const g = buildModel('outlaw');
     const rifle = U.chance(0.45);
-    if (rifle) giveRifle(g);
+    if (rifle) giveRifle(g); else giveSword(g);
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.1, dmg: 9, lastAttack: -99, t: U.rand(0, 5), outpost: oi, rifle, shootCD: U.rand(1.5, 3) });
+    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.1, dmg: rifle ? 9 : 12, lastAttack: -99, t: U.rand(0, 5), outpost: oi, rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
   };
 
   // The boss fires its sawed-off shotgun at a target (hitscan + muzzle flash).
@@ -568,7 +584,7 @@
     return enemies.list.map((e) => ({
       id: e.id, k: e.kind === 'werewolf' ? 1 : e.kind === 'zombie' ? 2 : e.kind === 'bandit' ? 3 : e.kind === 'outlaw' ? 4 : e.kind === 'bear' ? 5 : 0,
       x: +e.group.position.x.toFixed(2), z: +e.group.position.z.toFixed(2),
-      r: +e.group.rotation.y.toFixed(2), rf: e.rifle ? 1 : 0,
+      r: +e.group.rotation.y.toFixed(2), rf: e.rifle ? 1 : 0, sw: e.sword ? 1 : 0,
     }));
   };
 
@@ -584,6 +600,7 @@
         const g = buildModel(kind);
         g.userData.id = s.id; g.position.set(s.x, 0, s.z);
         if (s.rf && kind === 'outlaw') giveRifle(g);
+        if (s.sw && kind === 'outlaw') giveSword(g);
         enemies.scene.add(g);
         e = { id: s.id, group: g, kind, alive: true };
         enemies.list.push(e);

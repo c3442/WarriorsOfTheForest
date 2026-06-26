@@ -103,7 +103,7 @@
   function buildAxe(camera) {
     const g = new THREE.Group();
     const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
-    const metal = new THREE.MeshStandardMaterial({ color: 0xaeb6c2, roughness: 0.4, metalness: 0.45 });
+    const metal = new THREE.MeshStandardMaterial({ color: (player.axeColor != null ? player.axeColor : 0xaeb6c2), roughness: 0.4, metalness: 0.45 });
 
     // Handle: hand sits at the group origin (y=0), head at the top (good swing pivot).
     const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.036, 1.0, 8), wood);

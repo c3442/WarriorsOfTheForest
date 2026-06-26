@@ -28,22 +28,29 @@
     return s;
   }
 
-  function buildAvatar() {
+  function buildAvatar(skin) {
+    const girl = skin === 'girl';
     const g = new THREE.Group();
-    const cloth = new THREE.MeshStandardMaterial({ color: 0x3f6fc4, roughness: 1, flatShading: true });
-    const skin = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.72, 0.3), cloth);
+    const cloth = new THREE.MeshStandardMaterial({ color: girl ? 0xe85a9a : 0x3f6fc4, roughness: 1, flatShading: true });
+    const lower = new THREE.MeshStandardMaterial({ color: girl ? 0x7a3a8a : 0x3a4a6a, roughness: 1, flatShading: true });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: girl ? 0x6a3b1c : 0x352617, roughness: 1, flatShading: true });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(girl ? 0.46 : 0.5, 0.72, 0.3), cloth);
     torso.position.y = 1.05; torso.castShadow = true; g.add(torso);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), skin);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), skinMat);
     head.position.y = 1.62; head.castShadow = true; g.add(head);
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.38, girl ? 0.3 : 0.14, 0.38), hairMat);
+    hair.position.y = girl ? 1.71 : 1.76; g.add(hair);
+    if (girl) { const pony = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.5, 0.13), hairMat); pony.position.set(0, 1.42, -0.22); g.add(pony); }
     for (const sx of [-0.13, 0.13]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.7, 0.18), cloth);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.7, 0.18), lower);
       leg.position.set(sx, 0.35, 0); leg.castShadow = true; g.add(leg);
     }
     for (const sx of [-0.32, 0.32]) {
       const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.6, 0.15), cloth);
       arm.position.set(sx, 1.05, 0); g.add(arm);
     }
+    g.userData.skin = girl ? 'girl' : 'boy';
     return g;
   }
 
@@ -69,11 +76,24 @@
   }
 
   function ensureAvatar(id) {
-    if (!net.remote[id]) net.remote[id] = { pose: null, avatar: null, name: null };
+    if (!net.remote[id]) net.remote[id] = { pose: null, avatar: null, name: null, skin: 'boy' };
     const r = net.remote[id];
-    if (!r.avatar && net._scene) { r.avatar = buildAvatar(); net._scene.add(r.avatar); }
+    if (!r.avatar && net._scene) { r.avatar = buildAvatar(r.skin); net._scene.add(r.avatar); }
     applyName(id);
     return r;
+  }
+
+  function setRemoteSkin(id, skin) {
+    if (!skin) return;
+    const r = ensureAvatar(id);
+    if (r.skin !== skin) {
+      r.skin = skin;
+      if (r.avatar && net._scene) {
+        net._scene.remove(r.avatar);
+        r.avatar = buildAvatar(skin); net._scene.add(r.avatar);
+        r.labelText = null; applyName(id);
+      }
+    }
   }
 
   function setRemoteName(id, name) {
