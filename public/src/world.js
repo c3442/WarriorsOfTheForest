@@ -676,6 +676,9 @@
 
       const table = makeTable();
       table.position.set(0.9, 0, 0.15);   // opposite the bed, entrance stays clear
+      const device = makeDevice(i);        // gadget on the tabletop, per tent
+      device.position.set(0, 0.66, 0.05);
+      table.add(device);
       tent.add(table);
 
       const chair = makeChair();
