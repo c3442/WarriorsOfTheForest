@@ -10,6 +10,7 @@
     downed: false, bleedT: 0, bandaids: 0,
     sleeping: false, sleepT: 0, hugStuffie: null,
     building: null, invOpen: false,
+    sitting: false, _seat: null, _seatHint: false,
     hasShotgun: false, shells: 0,
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
@@ -59,6 +60,7 @@
       if (e.code === 'KeyB') player.useBandaid();
       if (e.code === 'KeyZ') player.zipTent();
       if (e.code === 'KeyK') player.sleep();
+      if (e.code === 'KeyR') player.sit();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
       if (e.code === 'KeyI') player.toggleInventory();
@@ -564,6 +566,25 @@
     W.hud.toggleInventory(player.invOpen);
   };
 
+  // R: sit on a nearby chair (press again, or move, to stand up).
+  const SIT_EYE = 0.85;
+  player.sit = function () {
+    if (!player.alive || player.downed || !player.active) return;
+    if (player.sitting) { player.standUp(); return; }
+    if (player.building) player.cancelBuild();
+    const s = W.world.nearestSeat(player.pos, 1.8);
+    if (!s) { W.hud.toast('No seat nearby 🪑'); return; }
+    player.sitting = true; player._seat = s;
+    player.pos.set(s.x, s.y + SIT_EYE, s.z);
+    player.yaw = s.yaw;
+    W.hud.toast('Took a seat 🪑 — R or move to stand');
+  };
+  player.standUp = function () {
+    if (!player.sitting) return;
+    player.sitting = false; player._seat = null;
+    W.hud.toast('Stood up');
+  };
+
   player.drink = function () {
     if (!player.alive || !player.active) return;
     if (W.world.isWater(player.pos.x, player.pos.z)) {
@@ -686,6 +707,24 @@
       W.hud.setSleepCount(Math.max(0, Math.ceil(5 - player.sleepT)), player.sleepT >= 5);
       return;
     }
+    // sitting: hold still on the chair, look around freely; any movement stands you up
+    if (player.sitting) {
+      const sk = player.keys;
+      if (sk.KeyW || sk.KeyS || sk.KeyA || sk.KeyD || sk.Space) {
+        player.standUp();
+      } else {
+        const L = 2.0;
+        if (sk.ArrowLeft) player.yaw += L * dt;
+        if (sk.ArrowRight) player.yaw -= L * dt;
+        if (sk.ArrowUp) player.pitch = U.clamp(player.pitch + L * dt, -1.55, 1.55);
+        if (sk.ArrowDown) player.pitch = U.clamp(player.pitch - L * dt, -1.55, 1.55);
+        const s = player._seat;
+        player.camera.position.set(s.x, s.y + SIT_EYE, s.z);
+        player.camera.rotation.y = player.yaw; player.camera.rotation.x = player.pitch;
+        animateAxe(dt, false);
+        return;
+      }
+    }
     const k = player.keys;
 
     // --- look with arrow keys (works alongside trackpad/mouse) ---
@@ -777,6 +816,11 @@
       player.building.ghost.position.set(a.x, W.world.heightAt(a.x, a.z), a.z);
       player.building.ghost.rotation.y = player.yaw;
     }
+
+    // contextual hint when you wander up to a chair
+    const nearSeat = W.world.nearestSeat ? W.world.nearestSeat(player.pos, 1.8) : null;
+    if (nearSeat && !player._seatHint) { player._seatHint = true; W.hud.toast('Press R to sit 🪑'); }
+    else if (!nearSeat && player._seatHint) { player._seatHint = false; }
   };
 
   function animateBottle(dt) {
@@ -823,6 +867,7 @@
     Object.assign(player, {
       alive: true, downed: false, bleedT: 0, bandaids: 0,
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
+      sitting: false, _seat: null, _seatHint: false,
       hasShotgun: false, shells: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: 0, kills: 0, vy: 0,

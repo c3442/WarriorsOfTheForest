@@ -238,6 +238,7 @@
     const id = _nextId++; g.userData.id = id;
     const e = { id, group: g, kind: 'bandit', alive: true, hp: 55, speed: 3.0, dmg: 16, lastAttack: -99, t: 0, isBoss: true, summonCD: 8, shootCD: 3 };
     enemies.list.push(e); enemies.boss = e;
+    if (W.world.placeBanditCamp) W.world.placeBanditCamp(x, z);   // a hideout at his spawn
     for (let i = 0; i < 3; i++) enemies.spawnGuard(e);   // starts with a few bodyguards
     if (W.hud) W.hud.banner('A BANDIT BOSS ROAMS', 'Guarded by his gang — hunt him for his shotgun 🔫', '#ffb24a');
   };

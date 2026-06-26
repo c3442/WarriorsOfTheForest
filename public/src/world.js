@@ -18,6 +18,7 @@
     craftTables: [], // {x,z} workbenches you must stand near to craft
     tents: [],       // {group,x,z,quat,Wd,Dp,Hw,color,zipped,...} zip-up shelters
     campfires: [],   // {x,z} safe-haven fires (camp + crafted ones)
+    seats: [],       // {x,y,z,yaw} chairs you can sit on
     pickups: [],     // {x,z,mesh,kind} items dropped in the world (e.g. shotgun)
     trees: [],       // choppable groups
     bushes: [],      // {x,z,mesh,ready}
@@ -403,10 +404,73 @@
     const light = new THREE.PointLight(0xff7a33, 2.2, 24, 1.6);
     light.position.set(0, 0.9, 0);
     fire.add(light);
+
+    // a cooking tripod with a hanging cauldron over the flames
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.6, metalness: 0.35 });
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 1.7, 5), ironMat);
+      leg.position.set(Math.cos(a) * 0.55, 0.78, Math.sin(a) * 0.55);
+      leg.rotation.x = Math.cos(a) * 0.32; leg.rotation.z = -Math.sin(a) * 0.32;
+      leg.castShadow = true; fire.add(leg);
+    }
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.18, 0.32, 12),
+      new THREE.MeshStandardMaterial({ color: 0x33363b, roughness: 0.7, metalness: 0.4 }));
+    pot.position.y = 1.0; pot.castShadow = true; fire.add(pot);
+    const potRim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.025, 6, 14), ironMat);
+    potRim.rotation.x = Math.PI / 2; potRim.position.y = 1.16; fire.add(potRim);
+
     camp.add(fire);
     world.campfire = { flames, light, base: 2.2, t: 0 };
     world.colliders.push({ x: cx, z: cz, r: 0.85 });
     world.campfires.push({ x: cx, z: cz });          // spawn camp is a haven
+
+    // --- log benches ringing the fire (sit on them with R) ---
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+    const benchEnd = new THREE.MeshStandardMaterial({ color: 0xc9a878, roughness: 1, flatShading: true });
+    const NB = 5, BR = 1.85;
+    for (let i = 0; i < NB; i++) {
+      const a = (i / NB) * Math.PI * 2 + 0.3;
+      const bx = cx + Math.cos(a) * BR, bz = cz + Math.sin(a) * BR;
+      const gy = world.heightAt(bx, bz);
+      const bench = new THREE.Group();
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.5, 10), benchMat);
+      log.rotation.z = Math.PI / 2; log.position.y = 0.2; log.castShadow = true; bench.add(log);
+      for (const ex of [-0.76, 0.76]) {            // pale cut ends
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.03, 10), benchEnd);
+        cap.rotation.z = Math.PI / 2; cap.position.set(ex, 0.2, 0); bench.add(cap);
+      }
+      // little stub legs so it reads as a hewn bench
+      for (const ex of [-0.5, 0.5]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.2, 6), benchMat);
+        leg.position.set(ex, 0.05, 0); bench.add(leg);
+      }
+      bench.position.set(bx, gy, bz);
+      bench.rotation.y = a + Math.PI / 2;          // log lies tangent to the fire ring
+      camp.add(bench);
+      world.colliders.push({ x: bx, z: bz, r: 0.5 });
+      // sittable: perch on top, facing the fire
+      world.seats.push({ x: bx, y: gy + 0.4, z: bz, yaw: Math.atan2(bx - cx, bz - cz) });
+    }
+
+    // --- a stacked firewood pile beside the fire ---
+    const woodPile = new THREE.Group();
+    const pileMat = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 1, flatShading: true });
+    const pileEnd = new THREE.MeshStandardMaterial({ color: 0xb89466, roughness: 1, flatShading: true });
+    let py = 0.16;
+    for (const row of [[-0.22, 0, 0.22], [-0.11, 0.11]]) {
+      for (const off of row) {
+        const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.95, 8), pileMat);
+        fl.rotation.x = Math.PI / 2; fl.position.set(off, py, 0); fl.castShadow = true; woodPile.add(fl);
+        for (const ez of [-0.48, 0.48]) { const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.102, 0.102, 0.02, 8), pileEnd); cap.rotation.x = Math.PI / 2; cap.position.set(off, py, ez); woodPile.add(cap); }
+      }
+      py += 0.2;
+    }
+    const px = cx + Math.cos(1.1) * 2.4, pz = cz + Math.sin(1.1) * 2.4;
+    woodPile.position.set(px, world.heightAt(px, pz), pz);
+    woodPile.rotation.y = 0.6;
+    camp.add(woodPile);
+    world.colliders.push({ x: px, z: pz, r: 0.55 });
 
     // --- 4 roomy wall-tents (vertical walls + peaked roof), ringing the fire ---
     // Vertical walls keep your head well clear of the canvas, so no see-through.
@@ -691,6 +755,11 @@
       tent.lookAt(cx, gy, cz); // open front faces the fire
       camp.add(tent);
 
+      // register the chair as a sittable seat (in world space, now the tent is oriented)
+      const sp = new THREE.Vector3(chair.position.x, 0.42, chair.position.z).applyQuaternion(tent.quaternion).add(tent.position);
+      const fd = new THREE.Vector3(0, 0, 1).applyQuaternion(chair.quaternion).applyQuaternion(tent.quaternion);
+      world.seats.push({ x: sp.x, y: tent.position.y + 0.42, z: sp.z, yaw: Math.atan2(-fd.x, -fd.z) });
+
       // Solid walls: collider beads along the two sides + closed back; front open.
       const addBead = (lx, lz) => {
         const p = new THREE.Vector3(lx, 0, lz).applyQuaternion(tent.quaternion).add(tent.position);
@@ -778,6 +847,16 @@
   // (the spawn camp plus any campfire you craft to set up a base elsewhere).
   world.nearCamp = function (pos) {
     return world.campfires.some((c) => U.dist2(pos.x, pos.z, c.x, c.z) < 8);
+  };
+
+  // Nearest seat (chair) within range, so the player can sit on it.
+  world.nearestSeat = function (pos, range) {
+    let best = null, bd = range || 1.8;
+    for (const s of world.seats) {
+      const d = U.dist2(pos.x, pos.z, s.x, s.z);
+      if (d < bd) { bd = d; best = s; }
+    }
+    return best;
   };
 
   // --- Tents: zip up the entrance so nothing can get in -----------------------
@@ -1301,6 +1380,63 @@
     world._extraFires.push({ flames, light, t: U.rand(0, 5) });
     world.colliders.push({ x, z, r: 0.8 });
     return fire;
+  };
+
+  // The bandit boss's hideout: a flickering campfire, ragged tents, loot crates & a red banner.
+  world.placeBanditCamp = function (x, z) {
+    if (world._banditCamp) {
+      world.scene.remove(world._banditCamp);
+      const i = world._extraFires.indexOf(world._banditFireEntry);
+      if (i >= 0) world._extraFires.splice(i, 1);
+    }
+    const camp = new THREE.Group();
+    const gy = world.heightAt(x, z);
+    camp.position.set(x, gy, z);
+    const H = (lx, lz) => world.heightAt(x + lx, z + lz) - gy;
+
+    // campfire (flickers via _extraFires, but is NOT a player safe-haven)
+    const fire = new THREE.Group();
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x6a6a70, roughness: 1, flatShading: true });
+    for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; const s = new THREE.Mesh(new THREE.IcosahedronGeometry(U.rand(0.16, 0.24), 0), stoneMat); s.position.set(Math.cos(a) * 0.6, 0.08, Math.sin(a) * 0.6); s.castShadow = true; fire.add(s); }
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x33240f, roughness: 1, flatShading: true });
+    for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI * 2; const log = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.85, 6), logMat); log.position.set(Math.cos(a) * 0.18, 0.36, Math.sin(a) * 0.18); log.rotation.x = Math.sin(a) * 0.6; log.rotation.z = -Math.cos(a) * 0.6; fire.add(log); }
+    const flames = [];
+    [0xff5212, 0xffab2e, 0xffd86a].forEach((col, i) => { const f = new THREE.Mesh(new THREE.ConeGeometry(0.22 - i * 0.05, 0.72 - i * 0.13, 7), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.92, fog: false })); f.position.y = 0.3 + i * 0.04; fire.add(f); flames.push(f); });
+    const light = new THREE.PointLight(0xff7a33, 1.8, 18, 1.8); light.position.set(0, 0.9, 0); fire.add(light);
+    camp.add(fire);
+    const fireEntry = { flames, light, t: U.rand(0, 5) };
+    world._extraFires.push(fireEntry); world._banditFireEntry = fireEntry;
+
+    // ragged tents around the fire
+    const canvasMat = new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 1, flatShading: true, side: THREE.DoubleSide });
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.6, r = 4.2;
+      const tx = Math.cos(a) * r, tz = Math.sin(a) * r;
+      const t = new THREE.Group(); t.position.set(tx, H(tx, tz), tz);
+      const Wd = 2.2, Hd = 1.7, theta = Math.atan2(Wd / 2, Hd), L = Math.hypot(Hd, Wd / 2);
+      const panel = new THREE.BoxGeometry(0.06, L, 2.6);
+      const left = new THREE.Mesh(panel, canvasMat); left.position.set(-Wd / 4, Hd / 2, 0); left.rotation.z = -theta; left.castShadow = true;
+      const right = new THREE.Mesh(panel, canvasMat); right.position.set(Wd / 4, Hd / 2, 0); right.rotation.z = theta; right.castShadow = true;
+      t.add(left, right); t.rotation.y = a; camp.add(t);
+    }
+
+    // loot crates strewn about
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+    for (let i = 0; i < 5; i++) {
+      const a = U.rand(0, Math.PI * 2), r = U.rand(1.6, 3.4), cxp = Math.cos(a) * r, czp = Math.sin(a) * r, sz = U.rand(0.4, 0.6);
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, sz), crateMat);
+      crate.position.set(cxp, H(cxp, czp) + sz / 2, czp); crate.rotation.y = U.rand(0, 3); crate.castShadow = true; camp.add(crate);
+    }
+
+    // a red bandit banner on a pole
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3, 6), new THREE.MeshStandardMaterial({ color: 0x352616, roughness: 1 }));
+    pole.position.set(2.4, H(2.4, -2.2) + 1.5, -2.2); pole.castShadow = true; camp.add(pole);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.6), new THREE.MeshStandardMaterial({ color: 0x8a2b2b, roughness: 1, side: THREE.DoubleSide }));
+    flag.position.set(2.86, H(2.4, -2.2) + 2.55, -2.2); camp.add(flag);
+
+    world.scene.add(camp);
+    world._banditCamp = camp;
+    world.banditCampPos = { x, z };
   };
 
   // Drop a sawed-off shotgun pickup at a spot (left by the slain bandit).
