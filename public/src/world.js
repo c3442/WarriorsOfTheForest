@@ -42,12 +42,12 @@
 
   // Desert biome: fades in toward the east (+X) far side. 0 = grassland, 1 = full desert.
   world.desertAt = function (x, z) {
-    return U.clamp((x - 35) / 55, 0, 1);
+    return U.clamp((x - 130) / 180, 0, 1);    // the far east third is desert
   };
 
   function buildTerrain(scene) {
     const size = C.WORLD_RADIUS * 2.6;
-    const seg = 140;
+    const seg = 300;          // more segments to keep the big terrain smooth
     const geo = new THREE.PlaneGeometry(size, size, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
@@ -807,10 +807,10 @@
     const count = 20;
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2 + U.rand(-0.12, 0.12);
-      const r = U.rand(250, 320);                       // pushed much farther out
+      const r = U.rand(440, 540);                       // ring the big world's edge
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       const baseY = world.heightAt(x, z) - 5;
-      const radius = U.rand(46, 88), height = U.rand(70, 130);  // bigger so they still read at distance
+      const radius = U.rand(70, 130), height = U.rand(110, 200);  // bigger so they read from afar
       const m = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 5, 1), rock);
       m.position.set(x, baseY + height / 2, z); m.rotation.y = U.rand(0, 6.28); grp.add(m);
       const cap = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.46, height * 0.42, 5, 1), snow);
@@ -899,7 +899,7 @@
     if (world.scene) world.scene.background = sky;
     if (world.scene.fog) {
       world.scene.fog.color.copy(sky);
-      world.scene.fog.density = U.lerp(0.011, 0.0048, day); // a bit clearer at night
+      world.scene.fog.density = U.lerp(0.0055, 0.0024, day); // thinner so you can see across the big world
     }
     // gradient sky dome: horizon = sky colour, zenith = a deeper blue
     if (world.skyDome) {
