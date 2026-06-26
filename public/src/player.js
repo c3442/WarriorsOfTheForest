@@ -40,6 +40,7 @@
     player.pos = new THREE.Vector3(start.x, W.world.heightAt(start.x, start.z) + C.EYE_HEIGHT, start.z);
 
     player.arrows = [];                 // arrows currently in flight (colours chosen in the menu)
+    player._dmgNums = [];               // floating Fortnite-style damage numbers
 
     buildAxe(camera);
     buildSword(camera);
@@ -208,28 +209,47 @@
 
   function buildBow(camera) {
     const g = new THREE.Group();
-    const limbMat = new THREE.MeshStandardMaterial({ color: (player.bowColor != null ? player.bowColor : 0x7a4a24), roughness: 0.8, flatShading: true });
+    const bcol = (player.bowColor != null ? player.bowColor : 0x7a4a24);
+    const limbMat = new THREE.MeshStandardMaterial({ color: bcol, roughness: 0.55, metalness: 0.1, flatShading: false });
     player.bowLimbMat = limbMat;
-    // curved bow limb (a C arc) standing vertically
-    const arc = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.018, 8, 24, Math.PI * 1.15), limbMat);
-    arc.rotation.z = Math.PI * 0.575; arc.position.x = 0.04; g.add(arc);
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.16, 8), limbMat);
-    grip.position.set(0.04, 0, 0); g.add(grip);
-    // bowstring (straight chord on the near side)
-    const strMat = new THREE.MeshStandardMaterial({ color: 0xeaeaea, roughness: 0.6 });
-    const str = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.64, 4), strMat);
-    str.position.set(0.32, 0, 0); g.add(str);
-    // a nocked arrow ready to loose (coloured)
+
+    // recurve limbs: a smooth curve through the riser that flips back at the tips
+    const V = (y, z) => new THREE.Vector3(0, y, z);
+    const curve = new THREE.CatmullRomCurve3([
+      V(0.40, 0.05), V(0.34, -0.05), V(0.20, -0.14), V(0.07, -0.07),
+      V(0, -0.05), V(-0.07, -0.07), V(-0.20, -0.14), V(-0.34, -0.05), V(-0.40, 0.05),
+    ]);
+    const body = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.014, 8, false), limbMat);
+    g.add(body);
+    // limb tip caps + a leather grip wrap in the middle
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.22, 10), new THREE.MeshStandardMaterial({ color: 0x2c1d12, roughness: 1 }));
+    grip.position.set(0, 0, -0.045); g.add(grip);
+    const riser = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.16, 0.05), limbMat);
+    riser.position.set(0, 0, -0.06); g.add(riser);
+
+    // bowstring drawn back to the nock (forms a shallow V toward the camera)
+    const strMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.5, emissive: 0x222222 });
+    const nockPt = V(0, 0.10);
+    const strU = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, V(0.40, 0.05).distanceTo(nockPt), 4), strMat);
+    strU.position.copy(V(0.40, 0.05).clone().lerp(nockPt, 0.5)); strU.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), V(0.40, 0.05).clone().sub(nockPt).normalize()); g.add(strU);
+    const strL = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, V(-0.40, 0.05).distanceTo(nockPt), 4), strMat);
+    strL.position.copy(V(-0.40, 0.05).clone().lerp(nockPt, 0.5)); strL.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), V(-0.40, 0.05).clone().sub(nockPt).normalize()); g.add(strL);
+
+    // nocked arrow ready to loose (coloured), pointing forward (-Z)
     const aMat = new THREE.MeshStandardMaterial({ color: (player.arrowColor != null ? player.arrowColor : 0xe6c54a), roughness: 0.7, flatShading: true });
     player.bowArrowMat = aMat;
     const nock = new THREE.Group();
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.66, 6), aMat); shaft.rotation.x = Math.PI / 2; nock.add(shaft);
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.09, 6), new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.4, metalness: 0.4 }));
-    tip.rotation.x = -Math.PI / 2; tip.position.z = -0.37; nock.add(tip);
-    nock.position.set(0.3, 0, 0); g.add(nock);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.74, 6), aMat); shaft.rotation.x = Math.PI / 2; nock.add(shaft);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.026, 0.09, 6), new THREE.MeshStandardMaterial({ color: 0xb9c0c9, roughness: 0.35, metalness: 0.5 }));
+    tip.rotation.x = -Math.PI / 2; tip.position.z = -0.42; nock.add(tip);
+    const fMat = new THREE.MeshStandardMaterial({ color: (player.arrowColor != null ? player.arrowColor : 0xe6c54a), roughness: 1, side: THREE.DoubleSide });
+    for (const r of [0, Math.PI / 2, Math.PI]) { const fin = new THREE.Mesh(new THREE.PlaneGeometry(0.07, 0.1), fMat); fin.position.z = 0.3; fin.rotation.z = r; fin.rotation.y = Math.PI / 2; nock.add(fin); }
+    nock.position.copy(nockPt); g.add(nock);
     player.bowNock = nock;
-    g.position.set(0.26, -0.26, -0.62);
-    g.rotation.set(0, 0.12, 0);
+    player._nockHome = nock.position.clone();   // resting nock position (for the draw animation)
+
+    g.position.set(0.22, -0.24, -0.62);
+    g.rotation.set(0.05, 0.18, 0.0);
     g.scale.setScalar(1.0);
     g.visible = false;
     g.userData.rest = g.rotation.clone();
@@ -349,7 +369,7 @@
     player.swing = 0; // drives the swing / recoil animation
 
     if (player.currentWeapon === 'shotgun') { fireShotgun(); return; }
-    if (player.currentWeapon === 'bow') { fireArrow(); return; }
+    if (player.currentWeapon === 'bow') { player._bowLoosed = false; return; }   // looses at full draw (see animateBow)
 
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
@@ -373,6 +393,7 @@
         const killed = W.enemies.damage(root, player.attackDmg, player.pos);
         if (killed) player.creditKill(root.userData.kind);
       }
+      player.popDamage(root.position, player.attackDmg);
     } else if (root.userData.type === 'tree') {
       const wood = W.world.chopTree(root);
       if (wood) {
@@ -386,6 +407,7 @@
   function applyShot(root, dmg) {
     if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
     else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
+    player.popDamage(root.position, dmg);
   }
   function fireShotgun() {
     if (player.shells <= 0) { W.hud.toast('Out of shells 🔫'); return; }
@@ -413,17 +435,58 @@
   const ARROW_FWD = new THREE.Vector3(0, 0, -1);
   function fireArrow() {
     const dir = player.camera.getWorldDirection(new THREE.Vector3());
-    const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.5);
+    const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.6);
+    start.y -= 0.14;                                   // leaves from the bow, just under the crosshair
     const arrow = buildFlyingArrow();
     arrow.position.copy(start);
     arrow.quaternion.setFromUnitVectors(ARROW_FWD, dir.clone().normalize());
     player.scene.add(arrow);
-    player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(62), life: 0 });
+    player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(52), life: 0 });   // a touch slower, easy to follow
   }
   function applyArrow(root) {
     const dmg = 6;
     if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
     else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
+    player.popDamage(root.position, dmg);
+  }
+
+  // --- Floating damage numbers (Fortnite-style) -------------------------------
+  function makeDamageSprite(amount, color) {
+    const cv = document.createElement('canvas'); cv.width = 128; cv.height = 96;
+    const ctx = cv.getContext('2d');
+    ctx.font = "900 60px 'Trebuchet MS', sans-serif";
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,0.9)'; ctx.lineJoin = 'round';
+    ctx.strokeText(amount, 64, 50); ctx.fillStyle = color; ctx.fillText(amount, 64, 50);
+    const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 2;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    spr.renderOrder = 998;
+    return spr;
+  }
+  player.popDamage = function (pos, amount) {
+    if (!player._dmgNums) player._dmgNums = [];
+    const big = amount >= 9;
+    const spr = makeDamageSprite(Math.round(amount), big ? '#ffd23a' : '#ffffff');
+    spr.position.set(pos.x + (Math.random() - 0.5) * 0.7, pos.y + 1.9, pos.z + (Math.random() - 0.5) * 0.7);
+    player.scene.add(spr);
+    player._dmgNums.push({ spr, t: 0, vx: (Math.random() - 0.5) * 0.8, vy: 1.5, big });
+  };
+  function updateDamageNums(dt) {
+    for (let i = player._dmgNums.length - 1; i >= 0; i--) {
+      const d = player._dmgNums[i]; d.t += dt;
+      d.spr.position.y += d.vy * dt; d.spr.position.x += d.vx * dt; d.vy *= (1 - dt * 1.5);
+      const k = d.t / 1.2;
+      const pop = 1 + Math.min(d.t * 5, 0.5) - Math.max(0, k - 0.5) * 0.45;   // pop in, then shrink
+      const base = d.big ? 1.05 : 0.78;
+      d.spr.scale.set(base * pop, base * 0.75 * pop, 1);
+      d.spr.material.opacity = k < 0.65 ? 1 : Math.max(0, 1 - (k - 0.65) / 0.35);
+      if (d.t > 1.2) {
+        player.scene.remove(d.spr);
+        if (d.spr.material.map) d.spr.material.map.dispose();
+        d.spr.material.dispose();
+        player._dmgNums.splice(i, 1);
+      }
+    }
   }
   // advance arrows in flight; hit foes or expire
   function updateArrows(dt) {
@@ -825,6 +888,7 @@
   player.update = function (dt) {
     player._t += dt;
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
+    if (player._dmgNums && player._dmgNums.length) updateDamageNums(dt);
     if (!player.alive) return;
     if (player.downed) {
       player.bleedT += dt;
@@ -978,10 +1042,45 @@
     }
   }
 
+  // Minecraft-style bow: draw the string + arrow back, loose at full draw, then re-nock.
+  function animateBow(dt, moving, w, rest, home) {
+    const nock = player.bowNock, nh = player._nockHome;
+    if (player.swing !== undefined) {
+      player.swing += dt;
+      const k = Math.min(player.swing / ATTACK_CD, 1);
+      const RELEASE = 0.42;
+      if (!player._bowLoosed && k >= RELEASE) {        // full draw → loose the arrow
+        player._bowLoosed = true;
+        fireArrow();
+        if (nock) nock.visible = false;                // the nocked arrow has flown off
+      }
+      if (k >= 1) {                                    // settle + re-nock
+        player.swing = undefined;
+        w.rotation.copy(rest); w.position.copy(home);
+        if (nock) { nock.position.copy(nh); nock.visible = true; }
+        return;
+      }
+      let draw = 0, snap = 0;
+      if (k < RELEASE) draw = U.smooth(k / RELEASE);                 // pull back 0..1
+      else snap = 1 - (k - RELEASE) / (1 - RELEASE);                 // recoil settles 1..0
+      w.position.copy(home);
+      w.position.z = home.z + draw * 0.10 + snap * 0.04;             // bow toward your face on draw, jerks on release
+      w.position.x = home.x - draw * 0.03;
+      w.rotation.copy(rest);
+      w.rotation.x = rest.x - draw * 0.10 + snap * 0.06;
+      if (nock && nock.visible) nock.position.z = nh.z + draw * 0.22;  // arrow + string draw back toward you
+    } else {
+      const sway = moving ? Math.sin(player._t * 9) * 0.04 : Math.sin(player._t * 2) * 0.012;
+      w.rotation.copy(rest); w.rotation.z = rest.z + sway;
+      w.position.copy(home);
+    }
+  }
+
   function animateAxe(dt, moving) {
     const w = player.weapon;
     if (!w) return;
     const rest = player.weaponRest, home = player.weaponHome;
+    if (player.currentWeapon === 'bow') { animateBow(dt, moving, w, rest, home); return; }
     if (player.swing !== undefined) {
       player.swing += dt;
       const k = Math.min(player.swing / ATTACK_CD, 1);

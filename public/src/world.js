@@ -57,6 +57,10 @@
   world.swampAt = function (x, z) {
     return U.clamp((z - 360) / 460, 0, 1) * (1 - world.desertAt(x, z));
   };
+  // Lush rainforest: fades in toward the far west (-X), away from snow/swamp.
+  world.rainforestAt = function (x, z) {
+    return U.clamp((-x - 320) / 460, 0, 1) * (1 - world.snowAt(x, z)) * (1 - world.swampAt(x, z));
+  };
 
   function buildTerrain(scene) {
     const size = C.WORLD_RADIUS * 2.6;
@@ -71,6 +75,7 @@
     const desert = new THREE.Color('#d9c188');
     const snow = new THREE.Color('#e6edf2');
     const swamp = new THREE.Color('#3c4a2c');
+    const jungle = new THREE.Color('#184a1c');
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
@@ -82,6 +87,7 @@
       col.lerp(desert, world.desertAt(x, z) * 0.85);                   // east becomes desert
       col.lerp(snow, world.snowAt(x, z) * 0.92);                       // north becomes snowy tundra
       col.lerp(swamp, world.swampAt(x, z) * 0.8);                      // south becomes murky swamp
+      col.lerp(jungle, world.rainforestAt(x, z) * 0.85);               // west becomes lush rainforest
       colors.push(col.r, col.g, col.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -188,15 +194,7 @@
       U.dist2(x, z, 0, 0) > CAMP_CLEAR &&          // keep the camp clearing open
       world.heightAt(x, z) > C.WATER_LEVEL + 0.4;  // stay out of the water
 
-    // Trees (skip most spots in the desert — it's barren there)
-    let tries = 0;
-    while (world.trees.length < C.TREE_COUNT && tries < C.TREE_COUNT * 8) {
-      tries++;
-      const p = U.pointInDisc(C.WORLD_RADIUS);
-      if (!okSpot(p.x, p.z, 3.2)) continue;
-      if (world.desertAt(p.x, p.z) > 0.45 && U.chance(0.9)) continue;
-      if (world.snowAt(p.x, p.z) > 0.5 && U.chance(0.7)) continue;   // sparse trees in the tundra
-      const big = U.chance(0.16);                 // ~1 in 6 is a giant tree (lots of wood)
+    const addTree = (p, big) => {
       const tree = makeTree(big);
       tree.position.set(p.x, world.heightAt(p.x, p.z) - 0.1, p.z);
       tree.rotation.y = U.rand(0, Math.PI * 2);
@@ -204,6 +202,30 @@
       world.trees.push(tree);
       world.colliders.push({ x: p.x, z: p.z, r: big ? 0.9 : 0.5, ref: tree });
       placed.push(p);
+    };
+
+    // Trees everywhere except desert (barren) and tundra (sparse); rainforest is densest.
+    let tries = 0;
+    while (world.trees.length < C.TREE_COUNT && tries < C.TREE_COUNT * 8) {
+      tries++;
+      const p = U.pointInDisc(C.WORLD_RADIUS);
+      const rf = world.rainforestAt(p.x, p.z);
+      if (!okSpot(p.x, p.z, rf > 0.4 ? 1.8 : 3.0)) continue;   // pack tighter in the jungle
+      if (world.desertAt(p.x, p.z) > 0.45 && U.chance(0.9)) continue;
+      if (world.snowAt(p.x, p.z) > 0.5 && U.chance(0.7)) continue;   // sparse trees in the tundra
+      addTree(p, U.chance(rf > 0.4 ? 0.32 : 0.16));            // bigger canopy in the rainforest
+    }
+    // extra-dense canopy for the rainforest — sample directly in the west and pack
+    // tightly (overlapping canopies read as thick jungle; skip the slow gap test).
+    let rfPlaced = 0, rfTries = 0;
+    while (rfPlaced < 1300 && rfTries < 9000) {
+      rfTries++;
+      const x = -U.rand(345, 985), z = U.rand(-560, 560);
+      if (Math.hypot(x, z) > C.WORLD_RADIUS) continue;
+      if (world.rainforestAt(x, z) < 0.4) continue;
+      if (world.heightAt(x, z) <= C.WATER_LEVEL + 0.4) continue;
+      addTree({ x, z }, U.chance(0.32));
+      rfPlaced++;
     }
     // Rocks
     for (let i = 0; i < C.ROCK_COUNT; i++) {
@@ -1154,25 +1176,68 @@
   }
 
   function buildFlowers(scene) {
-    const geo = new THREE.IcosahedronGeometry(0.08, 0);
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.7, flatShading: true });
-    const palette = ['#e8702a', '#f2c33a', '#f25a7a', '#f6f1e7', '#c25ad8'];
+    // tiny geometry merger (no BufferGeometryUtils dependency)
+    const mergeParts = (parts) => {
+      const pos = [], nrm = [];
+      for (const part of parts) {
+        const g = part.geo.index ? part.geo.toNonIndexed() : part.geo.clone();
+        g.applyMatrix4(part.m);
+        const pa = g.attributes.position.array, na = g.attributes.normal && g.attributes.normal.array;
+        for (let i = 0; i < pa.length; i++) pos.push(pa[i]);
+        if (na) for (let i = 0; i < na.length; i++) nrm.push(na[i]);
+      }
+      const out = new THREE.BufferGeometry();
+      out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      if (nrm.length === pos.length) out.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+      else out.computeVertexNormals();
+      return out;
+    };
+
+    const HEAD_Y = 0.22;
+    // flower head: a ring of flattened petals (tinted per flower)
+    const petal = new THREE.SphereGeometry(1, 6, 4);
+    const petalParts = [], PET = 6;
+    for (let k = 0; k < PET; k++) {
+      const ang = (k / PET) * Math.PI * 2;
+      const mm = new THREE.Matrix4()
+        .makeTranslation(Math.cos(ang) * 0.06, HEAD_Y, Math.sin(ang) * 0.06)
+        .multiply(new THREE.Matrix4().makeScale(0.05, 0.018, 0.05));
+      petalParts.push({ geo: petal, m: mm });
+    }
+    const headGeo = mergeParts(petalParts);
+    const headMat = new THREE.MeshStandardMaterial({ roughness: 0.7, flatShading: true });
+
+    const stemGeo = new THREE.CylinderGeometry(0.008, 0.012, HEAD_Y, 5);
+    stemGeo.translate(0, HEAD_Y / 2, 0);
+    const stemMat = new THREE.MeshStandardMaterial({ color: 0x3f7a32, roughness: 1, flatShading: true });
+
+    const coreGeo = new THREE.SphereGeometry(0.032, 6, 5);
+    coreGeo.translate(0, HEAD_Y + 0.004, 0);
+    const coreMat = new THREE.MeshStandardMaterial({ color: 0xf2d23a, roughness: 0.6, emissive: 0x33280a, emissiveIntensity: 0.25 });
+
+    const palette = ['#e8702a', '#f2c33a', '#f25a7a', '#f6f1e7', '#c25ad8', '#6aa6ff', '#ff8fbf'];
     const N = 1000;
-    const inst = new THREE.InstancedMesh(geo, mat, N);
-    const m = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion(), col = new THREE.Color();
+    const heads = new THREE.InstancedMesh(headGeo, headMat, N);
+    const stems = new THREE.InstancedMesh(stemGeo, stemMat, N);
+    const cores = new THREE.InstancedMesh(coreGeo, coreMat, N);
+    const m = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion(), e = new THREE.Euler(), col = new THREE.Color();
     let n = 0;
     for (let i = 0; i < N; i++) {
       const pt = U.pointInDisc(62);
       const h = world.heightAt(pt.x, pt.z);
       if (h <= C.WATER_LEVEL + 0.5) continue;
-      const sc = U.rand(0.7, 1.4); s.set(sc, sc, sc); p.set(pt.x, h + 0.18, pt.z);
-      m.compose(p, q, s); inst.setMatrixAt(n, m);
-      col.set(palette[U.randInt(0, palette.length - 1)]); inst.setColorAt(n, col);
+      const sc = U.rand(0.7, 1.4); s.set(sc, sc, sc); p.set(pt.x, h, pt.z);
+      e.set(0, U.rand(0, Math.PI * 2), 0); q.setFromEuler(e);
+      m.compose(p, q, s);
+      heads.setMatrixAt(n, m); stems.setMatrixAt(n, m); cores.setMatrixAt(n, m);
+      col.set(palette[U.randInt(0, palette.length - 1)]); heads.setColorAt(n, col);
       n++;
     }
-    inst.count = n; inst.instanceMatrix.needsUpdate = true; if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-    scene.add(inst);
-    world.flowers = inst;
+    heads.count = stems.count = cores.count = n;
+    heads.instanceMatrix.needsUpdate = stems.instanceMatrix.needsUpdate = cores.instanceMatrix.needsUpdate = true;
+    if (heads.instanceColor) heads.instanceColor.needsUpdate = true;
+    scene.add(stems); scene.add(heads); scene.add(cores);
+    world.flowers = heads;
   }
 
   // Soft drifting clouds high overhead — they follow the player so the sky is

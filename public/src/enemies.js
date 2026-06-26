@@ -330,7 +330,7 @@
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    enemies.list.push({ id, group: g, kind: 'bear', alive: true, hp: 16 + dayNum * 2, speed: U.rand(3.2, 3.9), dmg: 12 + dayNum, lastAttack: -99, t: U.rand(0, 5) });
+    enemies.list.push({ id, group: g, kind: 'bear', alive: true, hp: (16 + dayNum * 2) * 3, speed: U.rand(3.2, 3.9), dmg: 12 + dayNum, lastAttack: -99, t: U.rand(0, 5) });
   };
 
   // A free-roaming bandit out in the desert (day & night).
