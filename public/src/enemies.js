@@ -277,10 +277,11 @@
     const id = _nextId++;
     g.userData.id = id;
 
+    // foes grow tankier, faster and hit harder every night
     const stats = {
-      wolf: { hp: 3, speed: U.rand(2.6, 3.4) + dayNum * 0.1, dmg: 5 + Math.floor(dayNum * 0.5) },
-      werewolf: { hp: 7 + dayNum, speed: U.rand(3.0, 3.7) + dayNum * 0.12, dmg: 10 + dayNum },
-      zombie: { hp: 5 + dayNum, speed: U.rand(1.6, 2.2) + dayNum * 0.06, dmg: 7 + Math.floor(dayNum * 0.5) },
+      wolf: { hp: 3 + Math.floor(dayNum * 0.7), speed: U.rand(2.6, 3.4) + dayNum * 0.14, dmg: 5 + dayNum },
+      werewolf: { hp: 7 + dayNum * 2, speed: U.rand(3.0, 3.7) + dayNum * 0.16, dmg: 10 + Math.floor(dayNum * 1.5) },
+      zombie: { hp: 5 + Math.floor(dayNum * 1.5), speed: U.rand(1.6, 2.2) + dayNum * 0.09, dmg: 7 + dayNum },
     }[kind];
     enemies.list.push({ id, group: g, kind, alive: true, hp: stats.hp, speed: stats.speed, dmg: stats.dmg, lastAttack: -99, t: U.rand(0, 10) });
   };
@@ -464,6 +465,14 @@
       if (k >= 1) { enemies.scene.remove(f.group); enemies._dying.splice(i, 1); }
     }
   }
+
+  // Is any living hostile within `range` of a point? (used to block sleeping)
+  enemies.anyHostileNear = function (pos, range) {
+    for (const e of enemies.list) {
+      if (e.alive && Math.hypot(e.group.position.x - pos.x, e.group.position.z - pos.z) < range) return true;
+    }
+    return false;
+  };
 
   // Host/solo simulation. targets: [{ pos, onBite(dmg) }] — the nearest is hunted.
   enemies.update = function (dt, isNight, dayNum, targets) {

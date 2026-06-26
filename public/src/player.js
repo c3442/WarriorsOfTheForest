@@ -760,6 +760,9 @@
     if (player.sleeping) { player.wake(true); return; }   // press again to get up early
     if (!W.world.insideTent(player.pos)) { W.hud.toast('Get in a tent to sleep 🛏️'); return; }
     if (!W.world.isNight()) { W.hud.toast('You can only sleep at night 🌙'); return; }
+    if (W.enemies.anyHostileNear && W.enemies.anyHostileNear(player.pos, 5)) {
+      W.hud.toast('Too dangerous to sleep — a hostile is within 5m!'); return;
+    }
     if (player.building) player.cancelBuild();
     player.sleeping = true; player.sleepT = 0; player.hugStuffie = null;
     W.hud.showSleep(true);
@@ -826,11 +829,16 @@
       return;
     }
     if (player.sleeping) {
-      player.sleepT += dt;
-      player.camera.position.copy(player.pos);
-      player.camera.rotation.y = player.yaw; player.camera.rotation.x = player.pitch;
-      W.hud.setSleepCount(Math.max(0, Math.ceil(5 - player.sleepT)), player.sleepT >= 5);
-      return;
+      // a hostile creeping within 5m jolts you awake
+      if (W.enemies.anyHostileNear && W.enemies.anyHostileNear(player.pos, 5)) {
+        player.wake(true); W.hud.toast('A hostile crept up — sleep interrupted!');
+      } else {
+        player.sleepT += dt;
+        player.camera.position.copy(player.pos);
+        player.camera.rotation.y = player.yaw; player.camera.rotation.x = player.pitch;
+        W.hud.setSleepCount(Math.max(0, Math.ceil(5 - player.sleepT)), player.sleepT >= 5);
+        return;
+      }
     }
     // sitting: hold still on the chair, look around freely; any movement stands you up
     if (player.sitting) {
@@ -904,10 +912,10 @@
     else if (wantSprint) player.stamina = U.clamp(player.stamina - 12 * dt, 0, 100);
     else player.stamina = U.clamp(player.stamina + 15 * dt, 0, 100);
 
-    // hunger & thirst: slowly recover at base, otherwise tick down
+    // hunger & thirst: recover fast at base (10x), otherwise tick down
     if (atBase) {
-      player.hunger = U.clamp(player.hunger + 2.5 * dt, 0, 100);
-      player.thirst = U.clamp(player.thirst + 2.5 * dt, 0, 100);
+      player.hunger = U.clamp(player.hunger + 25 * dt, 0, 100);
+      player.thirst = U.clamp(player.thirst + 25 * dt, 0, 100);
     } else {
       player.hunger = U.clamp(player.hunger - 0.45 * dt, 0, 100);                   // lasts longer
       player.thirst = U.clamp(player.thirst - 1.15 * dt, 0, 100);
@@ -917,9 +925,9 @@
     if (player.hunger > 40 && player.thirst > 25 && player._t - player.lastHurt > 4) {
       player.health = U.clamp(player.health + 1.6 * dt, 0, 100);
     }
-    // resting at the base heals you fast
+    // resting at the base heals you fast (5x)
     if (atBase && player._t - player.lastHurt > 1.5) {
-      player.health = U.clamp(player.health + 7 * dt, 0, 100);
+      player.health = U.clamp(player.health + 35 * dt, 0, 100);
     }
 
     // --- apply to camera ---
