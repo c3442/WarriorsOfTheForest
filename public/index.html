@@ -126,6 +126,10 @@
   #buildHint b{color:#9effc0;}
   #buildHint kbd{background:#2a3320;border:1px solid #46562f;border-radius:5px;padding:1px 7px;font-family:inherit;color:#e9e4d6;}
 
+  /* Cinematic vignette + subtle warm tint */
+  #vignette{position:fixed;inset:0;pointer-events:none;z-index:3;
+    background:radial-gradient(ellipse at center, transparent 52%, rgba(8,10,6,.34) 100%);}
+
   /* Damage flash */
   #flash{position:fixed;inset:0;background:radial-gradient(circle at center, transparent 40%, rgba(220,30,30,.55));
     opacity:0;pointer-events:none;transition:opacity .08s;}
@@ -174,6 +178,7 @@
 
 <!-- HUD -->
 <div id="cross"></div>
+<div id="vignette"></div>
 <div id="flash"></div>
 <canvas id="minimap" width="150" height="150"></canvas>
 
@@ -330,13 +335,13 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="src/utils.js?v=25"></script>
-<script src="src/world.js?v=25"></script>
-<script src="src/player.js?v=25"></script>
-<script src="src/enemies.js?v=25"></script>
-<script src="src/critters.js?v=25"></script>
-<script src="src/net.js?v=25"></script>
-<script src="src/hud.js?v=25"></script>
-<script src="src/main.js?v=25"></script>
+<script src="src/utils.js?v=27"></script>
+<script src="src/world.js?v=27"></script>
+<script src="src/player.js?v=27"></script>
+<script src="src/enemies.js?v=27"></script>
+<script src="src/critters.js?v=27"></script>
+<script src="src/net.js?v=27"></script>
+<script src="src/hud.js?v=27"></script>
+<script src="src/main.js?v=27"></script>
 </body>
 </html>

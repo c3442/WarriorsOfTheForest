@@ -1211,7 +1211,7 @@
     buildCamp(scene);
     buildVillage(scene);
     buildBanditOutposts(scene);
-    buildGrass(scene);                 // lush wind-blown grass + wildflowers around camp
+    // buildGrass(scene);              // tall grass removed (user request)
     buildFlowers(scene);
   };
 
