@@ -82,9 +82,9 @@
   const trunkMat = () => new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
   const foliagePalette = ['#2f6b35', '#36772f', '#27602f', '#3f8a40'];
 
-  function makeTree() {
+  function makeTree(big) {
     const g = new THREE.Group();
-    const scale = U.rand(0.8, 1.5);
+    const scale = big ? U.rand(2.6, 3.6) : U.rand(0.8, 1.5);
 
     const trunkH = 2.2 * scale;
     const trunk = new THREE.Mesh(
@@ -98,7 +98,7 @@
 
     const fColor = foliagePalette[U.randInt(0, foliagePalette.length - 1)];
     const fMat = new THREE.MeshStandardMaterial({ color: fColor, roughness: 1, flatShading: true });
-    const tiers = U.randInt(2, 3);
+    const tiers = big ? U.randInt(3, 4) : U.randInt(2, 3);
     for (let i = 0; i < tiers; i++) {
       const r = (1.5 - i * 0.32) * scale;
       const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 1.7 * scale, 7), fMat);
@@ -107,7 +107,8 @@
       cone.userData.parent = g;
       g.add(cone);
     }
-    g.userData = { type: 'tree', hp: 4, scale, alive: true };
+    // big trees are tougher but drop a lot more wood
+    g.userData = { type: 'tree', hp: big ? 8 : 4, scale, alive: true, big: !!big };
     return g;
   }
 
@@ -177,12 +178,13 @@
       const p = U.pointInDisc(C.WORLD_RADIUS);
       if (!okSpot(p.x, p.z, 3.2)) continue;
       if (world.desertAt(p.x, p.z) > 0.45 && U.chance(0.9)) continue;
-      const tree = makeTree();
+      const big = U.chance(0.16);                 // ~1 in 6 is a giant tree (lots of wood)
+      const tree = makeTree(big);
       tree.position.set(p.x, world.heightAt(p.x, p.z) - 0.1, p.z);
       tree.rotation.y = U.rand(0, Math.PI * 2);
       scene.add(tree);
       world.trees.push(tree);
-      world.colliders.push({ x: p.x, z: p.z, r: 0.5, ref: tree });
+      world.colliders.push({ x: p.x, z: p.z, r: big ? 0.9 : 0.5, ref: tree });
       placed.push(p);
     }
     // Rocks
@@ -711,6 +713,73 @@
     world.placeCraftTable(cx + 1.7, cz + 1.4, -2.3);   // workbench right by the campfire
   }
 
+  // --- A far-off village (~500m from camp) -----------------------------------
+
+  function makeHouse() {
+    const g = new THREE.Group();
+    const wallCols = ['#cbb083', '#bd965c', '#cfc3a6', '#b0a890', '#c79a6a'];
+    const wall = new THREE.MeshStandardMaterial({ color: wallCols[U.randInt(0, wallCols.length - 1)], roughness: 1, flatShading: true });
+    const roofMat = new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0x7a3b2a : 0x5a4030, roughness: 1, flatShading: true });
+    const Wd = U.rand(3.0, 4.4), Dp = U.rand(3.0, 4.4), H = U.rand(2.4, 3.2);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(Wd, H, Dp), wall);
+    body.position.y = H / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(Wd, Dp) / 2 * 1.04, H * 0.7, 4), roofMat);
+    roof.position.y = H + H * 0.35; roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.6, 0.08), new THREE.MeshStandardMaterial({ color: 0x4a3120, roughness: 1 }));
+    door.position.set(0, 0.8, Dp / 2 + 0.02); g.add(door);
+    const winMat = new THREE.MeshStandardMaterial({ color: 0x9fd0e8, emissive: 0x20303c, roughness: 0.4 });
+    for (const sx of [-Wd / 2 - 0.02, Wd / 2 + 0.02]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.6), winMat);
+      win.position.set(sx, 1.45, 0); g.add(win);
+    }
+    g.userData = { type: 'house', Wd, Dp };
+    return g;
+  }
+
+  function buildVillage(scene) {
+    // pick a spot ~500m out that isn't underwater
+    let vx = 0, vz = 0, guard = 0;
+    do {
+      const a = U.rand(0, Math.PI * 2), r = U.rand(470, 520);
+      vx = Math.cos(a) * r; vz = Math.sin(a) * r;
+    } while (world.heightAt(vx, vz) <= C.WATER_LEVEL + 0.6 && guard++ < 20);
+    world.villagePos = { x: vx, z: vz };
+
+    // houses ringed around a plaza, each facing inward
+    const n = U.randInt(7, 10);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + U.rand(-0.18, 0.18);
+      const rr = U.rand(7, 12);
+      const hx = vx + Math.cos(a) * rr, hz = vz + Math.sin(a) * rr;
+      const h = makeHouse();
+      const hy = world.heightAt(hx, hz);
+      h.position.set(hx, hy, hz);
+      h.lookAt(vx, hy, vz);                 // door faces the plaza
+      scene.add(h);
+      world.colliders.push({ x: hx, z: hz, r: Math.max(h.userData.Wd, h.userData.Dp) * 0.6 });
+    }
+
+    // a stone well at the centre
+    const wellMat = new THREE.MeshStandardMaterial({ color: 0x8a8f99, roughness: 1, flatShading: true });
+    const well = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.75, 0.7, 12), wellMat); ring.position.y = 0.35; ring.castShadow = true; well.add(ring);
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.1, 12), new THREE.MeshStandardMaterial({ color: 0x2f6f9e, roughness: 0.3 })); water.position.y = 0.5; well.add(water);
+    for (const sx of [-0.62, 0.62]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, 0.1), new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 })); post.position.set(sx, 1.0, 0); post.castShadow = true; well.add(post); }
+    const wroof = new THREE.Mesh(new THREE.ConeGeometry(1.0, 0.5, 4), new THREE.MeshStandardMaterial({ color: 0x7a3b2a, roughness: 1, flatShading: true })); wroof.position.y = 1.9; wroof.rotation.y = Math.PI / 4; wroof.castShadow = true; well.add(wroof);
+    well.position.set(vx, world.heightAt(vx, vz), vz);
+    scene.add(well);
+    world.colliders.push({ x: vx, z: vz, r: 0.95 });
+
+    // a campfire just off the plaza makes the village a rest-stop haven
+    world.placeCampfire(vx + 3.2, vz + 3.2);
+  }
+
+  // The base haven: heal, infinite stamina, recover hunger/thirst near ANY campfire
+  // (the spawn camp plus any campfire you craft to set up a base elsewhere).
+  world.nearCamp = function (pos) {
+    return world.campfires.some((c) => U.dist2(pos.x, pos.z, c.x, c.z) < 8);
+  };
+
   // The base haven: heal, infinite stamina, recover hunger/thirst near ANY campfire
   // (the spawn camp plus any campfire you craft to set up a base elsewhere).
   world.nearCamp = function (pos) {
@@ -879,6 +948,7 @@
     buildWater(scene);
     scatter(scene);
     buildCamp(scene);
+    buildVillage(scene);
   };
 
   // dayT in [0,1): 0 = dawn, 0.25 = noon, 0.5 = dusk, 0.75 = midnight

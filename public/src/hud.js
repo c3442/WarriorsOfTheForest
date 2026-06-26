@@ -68,6 +68,7 @@
       ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.stroke();
     };
     dot(0, 0, '#ffb13a', 3.4);                                    // home camp (orange)
+    if (W.world && W.world.villagePos) dot(W.world.villagePos.x, W.world.villagePos.z, '#7fe07f', 3.4); // village (green)
     if (W.net && W.net.remote) {
       for (const id in W.net.remote) {                            // teammates (cyan)
         const r = W.net.remote[id];
