@@ -1429,16 +1429,27 @@
 
   // A glowing gold "★ HOTEL ★" sign (always-bright sprite).
   function makeHotelSign() {
-    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 96;
     const ctx = cv.getContext('2d');
-    ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(40,28,0,0.85)';
-    ctx.strokeText('★ HOTEL ★', 128, 34);
-    ctx.fillStyle = '#ffd76a'; ctx.fillText('★ HOTEL ★', 128, 34);
+    ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
+    ctx.strokeText('★★★★★', 128, 26); ctx.fillStyle = '#ffd76a'; ctx.fillText('★★★★★', 128, 26);
+    ctx.font = "bold 36px 'Trebuchet MS', sans-serif";
+    ctx.strokeText('HOTEL', 128, 66); ctx.fillStyle = '#fff6d8'; ctx.fillText('HOTEL', 128, 66);
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: true, transparent: true }));
-    spr.scale.set(3.4, 0.85, 1);
+    spr.scale.set(3.4, 1.28, 1);
     return spr;
+  }
+  // A small "★★★★★" plaque for the facade.
+  function makeStarPlaque() {
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
+    const ctx = cv.getContext('2d'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = "bold 40px 'Trebuchet MS', sans-serif";
+    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(40,28,0,0.85)'; ctx.strokeText('★★★★★', 128, 34);
+    ctx.fillStyle = '#ffd76a'; ctx.fillText('★★★★★', 128, 34);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: true, transparent: true }));
+    spr.scale.set(2.6, 0.65, 1); return spr;
   }
 
   // A tiny luxury resort hotel (cream walls, gold trim, glass, entrance canopy,
@@ -1446,62 +1457,109 @@
   function makeLuxuryHotel() {
     const g = new THREE.Group();
     const wallMat = new THREE.MeshStandardMaterial({ color: 0xf4ece0, roughness: 0.6 });
+    const marble = new THREE.MeshStandardMaterial({ color: 0xece3d2, roughness: 0.3, metalness: 0.1 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
     const gold = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.32, metalness: 0.75 });
     const glass = new THREE.MeshStandardMaterial({ color: 0x244a66, roughness: 0.08, metalness: 0.35, emissive: 0x0c2236, emissiveIntensity: 0.45 });
-    const water = new THREE.MeshStandardMaterial({ color: 0x36bcd8, roughness: 0.12, metalness: 0.2, emissive: 0x0a3a4a, emissiveIntensity: 0.35 });
-    const W = 5.5, D = 4.5, FLOOR = 2.3, FLOORS = 3, H = FLOOR * FLOORS;
+    const waterM = new THREE.MeshStandardMaterial({ color: 0x36bcd8, roughness: 0.12, metalness: 0.2, emissive: 0x0a3a4a, emissiveIntensity: 0.35 });
+    const W = 22, D = 15, FLOOR = 3.0, FLOORS = 3, H = FLOOR * FLOORS, TH = 0.2;
+    const hw = W / 2, hd = D / 2;
+    const cols = [], STEP = 0.62, R = 0.55;
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), wallMat);
-    body.position.y = H / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
-    for (let f = 1; f < FLOORS; f++) {                          // gold bands between floors
-      const band = new THREE.Mesh(new THREE.BoxGeometry(W + 0.12, 0.12, D + 0.12), gold);
-      band.position.y = f * FLOOR; g.add(band);
-    }
-    const cornice = new THREE.Mesh(new THREE.BoxGeometry(W + 0.34, 0.26, D + 0.34), gold);
-    cornice.position.y = H; g.add(cornice);
-    // window grids (front/back)
-    for (const zf of [D / 2 + 0.03, -D / 2 - 0.03]) {
-      for (let f = 0; f < FLOORS; f++) for (let c = -1; c <= 1; c++) {
-        const win = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.3, 0.06), glass);
-        win.position.set(c * 1.6, FLOOR * f + FLOOR * 0.55, zf); g.add(win);
+    // wall builders that drop colliders too, honouring door gaps
+    const spans = (a, b, gaps) => {
+      let segs = [[a, b]];
+      for (const [g0, g1] of (gaps || [])) {
+        const out = [];
+        for (const [s, e] of segs) {
+          if (g1 <= s || g0 >= e) { out.push([s, e]); continue; }
+          if (g0 > s) out.push([s, g0]);
+          if (g1 < e) out.push([g1, e]);
+        }
+        segs = out;
       }
-    }
-    for (const xf of [W / 2 + 0.03, -W / 2 - 0.03]) {          // side windows
-      for (let f = 0; f < FLOORS; f++) {
-        const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.3, 1.3), glass);
-        win.position.set(xf, FLOOR * f + FLOOR * 0.55, 0); g.add(win);
+      return segs;
+    };
+    const wallX = (z, x1, x2, gaps) => {
+      for (const [s, e] of spans(x1, x2, gaps)) {
+        if (e - s < 0.02) continue;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(e - s, FLOOR, TH), wallMat);
+        m.position.set((s + e) / 2, FLOOR / 2, z); m.castShadow = true; m.receiveShadow = true; g.add(m);
+        for (let x = s; x <= e + 0.001; x += STEP) cols.push({ x, z });
       }
-    }
-    // grand entrance (front = +Z): canopy, gold columns, glass door, red carpet
-    const canopy = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.16, 1.5), gold);
-    canopy.position.set(0, 2.4, D / 2 + 0.75); g.add(canopy);
-    for (const sx of [-1.05, 1.05]) {
-      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 2.4, 10), gold);
-      col.position.set(sx, 1.2, D / 2 + 1.3); g.add(col);
-    }
-    const door = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.0, 0.08), glass);
-    door.position.set(0, 1.0, D / 2 + 0.05); g.add(door);
-    const carpet = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.04, 2.6), new THREE.MeshStandardMaterial({ color: 0x9a1f2a, roughness: 0.95 }));
-    carpet.position.set(0, 0.03, D / 2 + 1.4); g.add(carpet);
-    // infinity pool + rim + loungers facing the lake
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 2.4), wallMat);
-    rim.position.set(0, 0.09, D / 2 + 3.6); g.add(rim);
-    const pool = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.26, 2.0), water);
-    pool.position.set(0, 0.18, D / 2 + 3.6); g.add(pool);
-    for (const sx of [-2.4, 2.4]) {
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 1.1), wallMat);
-      seat.position.set(sx, 0.22, D / 2 + 3.4); g.add(seat);
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.1), wallMat);
-      back.position.set(sx, 0.4, D / 2 + 2.95); back.rotation.x = -0.5; g.add(back);
-    }
-    // rooftop railing + glowing sign
-    for (const [w, d, x, z] of [[W, 0.08, 0, D / 2], [W, 0.08, 0, -D / 2], [0.08, D, W / 2, 0], [0.08, D, -W / 2, 0]]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(w, 0.4, d), gold);
-      rail.position.set(x, H + 0.45, z); g.add(rail);
-    }
-    const sign = makeHotelSign(); sign.position.set(0, H + 1.4, 0); g.add(sign);
+    };
+    const wallZ = (x, z1, z2, gaps) => {
+      for (const [s, e] of spans(z1, z2, gaps)) {
+        if (e - s < 0.02) continue;
+        const m = new THREE.Mesh(new THREE.BoxGeometry(TH, FLOOR, e - s), wallMat);
+        m.position.set(x, FLOOR / 2, (s + e) / 2); m.castShadow = true; m.receiveShadow = true; g.add(m);
+        for (let z = s; z <= e + 0.001; z += STEP) cols.push({ x, z });
+      }
+    };
 
-    g.userData = { type: 'hotel', R: Math.max(W, D) * 0.6 + 0.3 };
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.12, D), marble); floor.position.y = 0.06; floor.receiveShadow = true; g.add(floor);
+
+    // outer shell — grand entrance in the front wall (+Z, faces the lake)
+    const ENT = 1.7;
+    wallX(hd, -hw, hw, [[-ENT, ENT]]);
+    wallX(-hd, -hw, hw, []);
+    wallZ(-hw, -hd, hd, []);
+    wallZ(hw, -hd, hd, []);
+
+    // interior: a row of guest rooms along the back, opening into the front lobby
+    const PART = 1.5;
+    const edges = [-hw, -6.6, -2.2, 2.2, 6.6, hw];             // 5 rooms
+    const roomGaps = [];
+    for (let i = 0; i < edges.length - 1; i++) { const cxr = (edges[i] + edges[i + 1]) / 2; roomGaps.push([cxr - 0.8, cxr + 0.8]); }
+    wallX(PART, -hw, hw, roomGaps);                            // partition with a doorway per room
+    for (let i = 1; i < edges.length - 1; i++) wallZ(edges[i], -hd, PART, []);   // room dividers
+
+    // a bed + nightstand in each guest room
+    const blankets = [0x9a1f2a, 0x2f5aa0, 0x2f7a3a, 0x8a3fae, 0xb5853f];
+    for (let i = 0; i < edges.length - 1; i++) {
+      const cx = (edges[i] + edges[i + 1]) / 2, bz = -hd + 1.5;
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 2.4), wood); frame.position.set(cx, 0.2, bz); g.add(frame);
+      const matt = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.26, 2.4), new THREE.MeshStandardMaterial({ color: 0xf4f1e8, roughness: 1 })); matt.position.set(cx, 0.5, bz); g.add(matt);
+      const blanket = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.14, 1.4), new THREE.MeshStandardMaterial({ color: blankets[i % blankets.length], roughness: 1 })); blanket.position.set(cx, 0.6, bz + 0.45); g.add(blanket);
+      const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.2, 0.5), new THREE.MeshStandardMaterial({ color: 0xfbf7ee, roughness: 1 })); pillow.position.set(cx, 0.63, bz - 0.9); g.add(pillow);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.1, 0.14), gold); head.position.set(cx, 0.75, bz - 1.16); g.add(head);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshStandardMaterial({ color: 0xfff0b0, emissive: 0xffd76a, emissiveIntensity: 0.8 })); lamp.position.set(cx + 1.1, 0.62, bz - 0.9); g.add(lamp);
+    }
+
+    // upper floors (solid) + trim + ribbon windows
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(W, H - FLOOR, D), wallMat); upper.position.y = FLOOR + (H - FLOOR) / 2; upper.castShadow = true; upper.receiveShadow = true; g.add(upper);
+    for (let f = 1; f < FLOORS; f++) { const band = new THREE.Mesh(new THREE.BoxGeometry(W + 0.14, 0.14, D + 0.14), gold); band.position.y = f * FLOOR; g.add(band); }
+    const cornice = new THREE.Mesh(new THREE.BoxGeometry(W + 0.4, 0.3, D + 0.4), gold); cornice.position.y = H; g.add(cornice);
+    for (let f = 1; f < FLOORS; f++) {
+      const y = FLOOR * f + FLOOR * 0.55;
+      for (const zf of [hd + 0.04, -hd - 0.04]) { const s = new THREE.Mesh(new THREE.BoxGeometry(W * 0.86, 1.5, 0.06), glass); s.position.set(0, y, zf); g.add(s); }
+      for (const xf of [hw + 0.04, -hw - 0.04]) { const s = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.5, D * 0.86), glass); s.position.set(xf, y, 0); g.add(s); }
+    }
+
+    // lobby furniture (front zone)
+    const lz = (PART + hd) / 2;
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.0, 0.8), gold); desk.position.set(-hw + 2.6, 0.55, hd - 1.3); g.add(desk);
+    const deskTop = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.12, 0.95), marble); deskTop.position.set(-hw + 2.6, 1.08, hd - 1.3); g.add(deskTop);
+    const rug = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.04, 4.2), new THREE.MeshStandardMaterial({ color: 0x9a1f2a, roughness: 0.95 })); rug.position.set(0, 0.13, lz); g.add(rug);
+    const chandelier = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), new THREE.MeshStandardMaterial({ color: 0xfff0b0, emissive: 0xffd76a, emissiveIntensity: 0.9 })); chandelier.position.set(0, FLOOR - 0.5, lz); g.add(chandelier);
+    for (const sx of [-hw + 1.1, hw - 1.1]) { const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 0.5, 8), gold); pot.position.set(sx, 0.25, hd - 1.0); g.add(pot); const palm = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.3, 6), new THREE.MeshStandardMaterial({ color: 0x2f7a3a, roughness: 1, flatShading: true })); palm.position.set(sx, 1.15, hd - 1.0); g.add(palm); }
+
+    // grand entrance: canopy, columns, carpet, big star plaque
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.18, 2.0), gold); canopy.position.set(0, FLOOR + 0.1, hd + 1.1); g.add(canopy);
+    for (const sx of [-1.9, 1.9]) { const col = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, FLOOR, 10), gold); col.position.set(sx, FLOOR / 2, hd + 1.9); g.add(col); }
+    const carpet = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.04, 3.4), new THREE.MeshStandardMaterial({ color: 0x9a1f2a, roughness: 0.95 })); carpet.position.set(0, 0.14, hd + 2.0); g.add(carpet);
+    const plaque = makeStarPlaque(); plaque.scale.multiplyScalar(1.5); plaque.position.set(0, FLOOR + 0.7, hd + 0.06); g.add(plaque);
+
+    // infinity pool + loungers facing the lake
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(6.0, 0.2, 3.4), wallMat); rim.position.set(0, 0.1, hd + 5.4); g.add(rim);
+    const pool = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.28, 2.8), waterM); pool.position.set(0, 0.2, hd + 5.4); g.add(pool);
+    for (const sx of [-4.0, 4.0]) { const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 1.3), wallMat); seat.position.set(sx, 0.24, hd + 5.0); g.add(seat); const bk = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.1), wallMat); bk.position.set(sx, 0.45, hd + 4.5); bk.rotation.x = -0.5; g.add(bk); }
+
+    // rooftop railing + glowing five-star sign
+    for (const [w, d, x, z] of [[W, 0.1, 0, hd], [W, 0.1, 0, -hd], [0.1, D, hw, 0], [0.1, D, -hw, 0]]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(w, 0.45, d), gold); rail.position.set(x, H + 0.5, z); g.add(rail); }
+    const sign = makeHotelSign(); sign.scale.multiplyScalar(1.9); sign.position.set(0, H + 2.0, 0); g.add(sign);
+
+    g.userData = { type: 'hotel', R: Math.max(W, D) * 0.6 + 0.3, halfW: hw, halfD: hd, wallCols: cols, wallR: R };
     return g;
   }
 
@@ -1529,9 +1587,14 @@
       if (world.heightAt(hx, hz) <= C.WATER_LEVEL + 0.4) continue;
       const hotel = makeLuxuryHotel();
       hotel.position.set(hx, world.heightAt(hx, hz) - 0.05, hz);
-      hotel.rotation.y = Math.atan2(wx, wz);                      // front (+Z) faces the lake
+      const ry = Math.atan2(wx, wz);                              // front (+Z) faces the lake
+      hotel.rotation.y = ry;
       scene.add(hotel);
-      world.colliders.push({ x: hx, z: hz, r: hotel.userData.R, ref: hotel });
+      // wall colliders ring the hotel but leave the doorway open so you can walk in
+      const cs = Math.cos(ry), sn = Math.sin(ry);
+      for (const lp of hotel.userData.wallCols) {
+        world.colliders.push({ x: hx + lp.x * cs + lp.z * sn, z: hz - lp.x * sn + lp.z * cs, r: hotel.userData.wallR, ref: hotel });
+      }
       placed++;
     }
     world._hotelCount = placed;
