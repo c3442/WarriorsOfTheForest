@@ -346,6 +346,21 @@
     enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 10, speed: 3.0, dmg: rifle ? 8 : 11, lastAttack: -99, t: U.rand(0, 5), rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
   };
 
+  // A raider that storms the home camp (day 8+ nightly raids).
+  enemies.spawnRaider = function (dayNum) {
+    const cp = W.world.campPos || { x: 0, z: 0 };
+    const a = U.rand(0, Math.PI * 2), r = U.rand(16, 30);
+    const x = cp.x + Math.cos(a) * r, z = cp.z + Math.sin(a) * r;
+    const g = buildModel('outlaw');
+    const rifle = U.chance(0.35);
+    if (rifle) giveRifle(g); else giveSword(g);
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a + Math.PI;   // face the camp
+    enemies.scene.add(g);
+    const id = _nextId++; g.userData.id = id;
+    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12 + dayNum, speed: 3.2,
+      dmg: rifle ? 9 : 13, lastAttack: -99, t: U.rand(0, 5), raider: true, rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
+  };
+
   // An outlaw that defends a bandit outpost (spawns when you get close).
   enemies.spawnOutpostGuard = function (o, oi) {
     const a = U.rand(0, Math.PI * 2), r = U.rand(2, 7);
@@ -454,10 +469,18 @@
   enemies.update = function (dt, isNight, dayNum, targets) {
     const center = targets[0] ? targets[0].pos : { x: 0, z: 0 };
     enemies.spawnTimer -= dt;
-    const cap = Math.min(3 + dayNum * 2, 16) + (targets.length - 1) * 4;
+    // every night gets harder: more foes on the field, and they arrive faster
+    const cap = Math.min(4 + dayNum * 3, 45) + (targets.length - 1) * 5;
     if (isNight && enemies.list.length < cap && enemies.spawnTimer <= 0) {
       enemies.spawn(center, dayNum);
-      enemies.spawnTimer = U.rand(0.7, 1.9);
+      enemies.spawnTimer = Math.max(0.25, U.rand(0.7, 1.9) - dayNum * 0.07);
+    }
+    // from day 8, bandits raid the home camp once per night (bigger waves on later days)
+    if (dayNum >= 8 && isNight && enemies._lastRaidDay !== dayNum) {
+      enemies._lastRaidDay = dayNum;
+      const wave = 3 + Math.floor((dayNum - 8) / 2);
+      for (let i = 0; i < wave; i++) enemies.spawnRaider(dayNum);
+      if (W.hud && W.hud.banner) W.hud.banner('⚔ BANDIT RAID', 'Bandits are storming the camp — defend it!', '#ff6a4a');
     }
     // keep exactly one bandit boss prowling the map (respawns a while after death)
     if (!enemies.boss || !enemies.boss.alive) {

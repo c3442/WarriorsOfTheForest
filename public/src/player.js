@@ -49,7 +49,7 @@
     buildShield(camera);
     buildBottle(camera);
     buildHeldBerry(camera);
-    equipWeapon('axe');                 // you start with the axe in hand
+    equipWeapon('bow');                 // you START WITH THE BOW (user request)
     player.dropped = [];
 
     // --- input: WASD move, trackpad/mouse look, click attack, etc. ---
