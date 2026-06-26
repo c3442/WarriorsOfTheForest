@@ -30,7 +30,7 @@
     #mJmp{right:130px;bottom:126px;width:66px;height:66px;font-size:26px;}
     #mSpr{left:62px;bottom:34px;width:62px;height:62px;font-size:15px;font-weight:bold;}
     #mActs{position:fixed;right:10px;top:46%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:flex-end;gap:7px;z-index:7;pointer-events:auto;}
-    #mMoreRow{position:fixed;right:10px;bottom:84px;display:none;flex-direction:column;align-items:flex-end;gap:7px;z-index:7;pointer-events:auto;}
+    #mMoreRow{position:fixed;right:10px;top:46%;transform:translateY(-50%);display:none;flex-direction:column;align-items:flex-end;gap:7px;z-index:7;pointer-events:auto;}
     #mMoreRow.open{display:flex;}
     .mpill{display:flex;align-items:center;gap:6px;padding:0 13px;height:46px;border-radius:23px;
       background:rgba(18,22,14,.62);border:2px solid rgba(255,255,255,.42);color:#fff;
@@ -79,7 +79,11 @@
   // secondary actions behind the "⋯ More" button — labelled
   [['KeyZ', '🤐', 'Zip'], ['KeyK', '💤', 'Sleep'], ['KeyR', '🪑', 'Sit'], ['KeyT', '🦊', 'Tame'], ['KeyH', '🤚', 'Drop']]
     .forEach(([code, emoji, text]) => { const b = pill(emoji, text); onTap(b, () => tapKey(code)); moreRow.appendChild(b); });
-  onTap(more, () => moreRow.classList.toggle('open'));
+  onTap(more, () => {                            // swap the primary column for the extras
+    const open = moreRow.classList.toggle('open');
+    acts.style.display = open ? 'none' : 'flex';
+    more.textContent = open ? '↩ Back' : '⋯ More';
+  });
 
   onTap(atk, doAttack);
   // jump: hold Space while pressed

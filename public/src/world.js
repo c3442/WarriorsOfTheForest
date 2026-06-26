@@ -1508,7 +1508,7 @@
   // Drop a few tiny luxury hotels on lake shores, facing the water.
   function buildLakeHotels(scene) {
     let placed = 0, tries = 0;
-    while (placed < 6 && tries++ < 800) {
+    while (placed < 40 && tries++ < 6000) {
       const p = U.pointInDisc(C.WORLD_RADIUS * 0.92);
       if (U.dist2(p.x, p.z, 0, 0) < 60) continue;                 // not on top of camp
       const h = world.heightAt(p.x, p.z);
