@@ -384,8 +384,8 @@
 
   player.craft = function (id) {
     if (!player.alive || !player.active) return;
-    // crafting needs a workbench nearby (id '9' = a new table, which you can build anywhere)
-    if (id !== '9' && !W.world.nearCraftTable(player.pos, 3.6)) {
+    // crafting always needs a workbench nearby (there's one at camp to start)
+    if (!W.world.nearCraftTable(player.pos, 3.6)) {
       W.hud.toast('Stand by a crafting table 🛠️');
       return;
     }

@@ -351,7 +351,7 @@
 
     // --- 4 roomy wall-tents (vertical walls + peaked roof), ringing the fire ---
     // Vertical walls keep your head well clear of the canvas, so no see-through.
-    const tentCols = [0xe5352b, 0x25cdd6, 0xf266b0, 0xf2f2f2]; // fire red, aqua blue, pink, white
+    const tentCols = [0xe5352b, 0x25cdd6, 0xf266b0, 0x4e9c3a]; // fire red, aqua blue, pink, green
     const ridgeMat = new THREE.MeshStandardMaterial({ color: 0x42301f, roughness: 1 });
     const R = 5.0, Wd = 3.6, Dp = 4.0, Hw = 2.4, Rh = 1.3;   // ring, width, depth, wall height, roof rise
     const wallT = 0.1;
