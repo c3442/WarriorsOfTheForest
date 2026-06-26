@@ -359,11 +359,11 @@
     enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12, speed: 3.1, dmg: rifle ? 9 : 12, lastAttack: -99, t: U.rand(0, 5), outpost: oi, rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
   };
 
-  // The boss fires its sawed-off shotgun at a target (hitscan + muzzle flash).
+  // The boss fires its sawed-off shotgun — also a lousy shot, hits maybe 1 in 3.
   enemies.bossShoot = function (e, tgt) {
     const ex = e.group.position.x, ez = e.group.position.z;
     const d = Math.hypot(tgt.pos.x - ex, tgt.pos.z - ez) || 1;
-    tgt.onBite(Math.max(6, Math.round(26 - d)));                  // close = harder hit
+    if (U.chance(0.34)) tgt.onBite(Math.max(6, Math.round(26 - d)));   // close = harder hit
     const flash = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.95, fog: false }));
     const nx = (tgt.pos.x - ex) / d, nz = (tgt.pos.z - ez) / d;
@@ -372,18 +372,22 @@
     setTimeout(() => enemies.scene.remove(flash), 90);
   };
 
-  // A rifle outlaw snipes from long range (steady damage + a quick tracer).
+  // A rifle outlaw fires from range — but the bandits have HORRIBLE aim and
+  // miss most of their shots (the tracer visibly whizzes wide).
   enemies.rifleShoot = function (e, tgt) {
     const ex = e.group.position.x, ey = e.group.position.y + 1.3, ez = e.group.position.z;
     const d = Math.hypot(tgt.pos.x - ex, tgt.pos.z - ez) || 1;
-    tgt.onBite(U.randInt(8, 13));
-    const nx = (tgt.pos.x - ex) / d, nz = (tgt.pos.z - ez) / d;
-    // muzzle flash
+    const hit = U.chance(0.25);                  // only lands ~1 in 4 shots
+    if (hit) tgt.onBite(U.randInt(8, 13));
+    // aim toward the target, but spray wide on a miss
+    let aimx = tgt.pos.x, aimz = tgt.pos.z;
+    if (!hit) { aimx += U.rand(-9, 9); aimz += U.rand(-9, 9); }
+    const ax = aimx - ex, az = aimz - ez, ad = Math.hypot(ax, az) || 1;
+    const nx = ax / ad, nz = az / ad;
     const flash = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, fog: false }));
     flash.position.set(ex + nx * 1.0, ey, ez + nz * 1.0);
     enemies.scene.add(flash);
-    // tracer line toward the target
     const len = Math.min(d, 40);
     const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, len),
       new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.6, fog: false }));

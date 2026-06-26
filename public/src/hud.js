@@ -57,8 +57,33 @@
     const S = cv.width, c = S / 2, R = c - 3, RANGE = 300, sc = R / RANGE;
     ctx.clearRect(0, 0, S, S);
     ctx.save();
-    ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2); ctx.fillStyle = 'rgba(22,38,18,0.72)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2); ctx.fillStyle = 'rgba(10,14,9,0.85)'; ctx.fill();
     ctx.clip();
+
+    // --- fog of war: explored ground fills in with biome colour as you roam ---
+    if (!hud._explored) hud._explored = new Set();
+    const CELL = 24, RAD = 2;
+    const pcx = Math.round(p.pos.x / CELL), pcz = Math.round(p.pos.z / CELL);
+    for (let dx = -RAD; dx <= RAD; dx++) for (let dz = -RAD; dz <= RAD; dz++) hud._explored.add((pcx + dx) + ',' + (pcz + dz));
+    const cellPx = CELL * sc;
+    const span = Math.ceil(RANGE / CELL) + 1;
+    for (let cx = pcx - span; cx <= pcx + span; cx++) {
+      for (let cz = pcz - span; cz <= pcz + span; cz++) {
+        if (!hud._explored.has(cx + ',' + cz)) continue;
+        const wx = cx * CELL, wz = cz * CELL;
+        const h = W.world.heightAt(wx, wz);
+        let col;
+        if (h < -2.0) col = '#2f6fb0';                                  // water (blue)
+        else {
+          const d = W.world.desertAt ? W.world.desertAt(wx, wz) : 0;
+          const g = [78, 124, 60], t = [206, 184, 126];                 // forest -> desert
+          col = 'rgb(' + Math.round(g[0] + (t[0] - g[0]) * d) + ',' + Math.round(g[1] + (t[1] - g[1]) * d) + ',' + Math.round(g[2] + (t[2] - g[2]) * d) + ')';
+        }
+        ctx.fillStyle = col;
+        ctx.fillRect(c + (wx - p.pos.x) * sc - cellPx / 2 - 0.5, c + (wz - p.pos.z) * sc - cellPx / 2 - 0.5, cellPx + 1, cellPx + 1);
+      }
+    }
+
     const dot = (x, z, color, rad) => {
       let mx = c + (x - p.pos.x) * sc, my = c + (z - p.pos.z) * sc;
       const dx = mx - c, dy = my - c, d = Math.hypot(dx, dy);

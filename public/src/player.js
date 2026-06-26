@@ -12,6 +12,7 @@
     building: null, invOpen: false,
     sitting: false, _seat: null, _seatHint: false,
     hasShotgun: false, shells: 0,
+    hasBow: true, bowColor: '#7a4a24', arrowColor: '#e6c54a',   // start with a bow
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
@@ -38,13 +39,19 @@
     const start = { x: 0, z: 4 };
     player.pos = new THREE.Vector3(start.x, W.world.heightAt(start.x, start.z) + C.EYE_HEIGHT, start.z);
 
+    // pick up the player's chosen weapon/arrow colours from the start screen
+    const bc = document.getElementById('bowColor'); if (bc) player.bowColor = bc.value;
+    const ac = document.getElementById('arrowColor'); if (ac) player.arrowColor = ac.value;
+    player.arrows = [];                 // arrows currently in flight
+
     buildAxe(camera);
     buildSword(camera);
     buildShotgun(camera);
+    buildBow(camera);
     buildShield(camera);
     buildBottle(camera);
     buildHeldBerry(camera);
-    equipWeapon('axe');
+    equipWeapon('bow');                 // you start with the bow drawn
     player.dropped = [];
 
     // --- input: WASD move, trackpad/mouse look, click attack, etc. ---
