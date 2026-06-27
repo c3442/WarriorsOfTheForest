@@ -1687,6 +1687,117 @@
 
   // --- Public API ------------------------------------------------------------
 
+  // --- Lootable chests --------------------------------------------------------
+  world.chests = []; world._chestAnim = [];
+  world.placeChest = function (x, z, yaw) {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x7a5025, roughness: 1, flatShading: true });
+    const iron = new THREE.MeshStandardMaterial({ color: 0x6a6f78, roughness: 0.5, metalness: 0.45 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.55), wood); body.position.y = 0.25; body.castShadow = true; g.add(body);
+    for (const by of [0.12, 0.38]) { const band = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.05, 0.57), iron); band.position.y = by; g.add(band); }
+    const lid = new THREE.Group();
+    const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.22, 0.59), wood); lidMesh.position.y = 0.11; lidMesh.castShadow = true; lid.add(lidMesh);
+    lid.position.set(0, 0.5, -0.275); g.add(lid);          // hinge at the back
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.06), iron); lock.position.set(0, 0.46, 0.29); g.add(lock);
+    g.position.set(x, world.heightAt(x, z), z); g.rotation.y = yaw || 0;
+    world.scene.add(g);
+    const chest = { x, z, group: g, lid, opened: false };
+    world.chests.push(chest);
+    world.colliders.push({ x, z, r: 0.5, ref: g });
+    return chest;
+  };
+  // Open the nearest unopened chest and return its loot (or null).
+  world.openChestNear = function (pos, range) {
+    let best = null, bd = range || 2.6;
+    for (const c of world.chests) {
+      if (c.opened) continue;
+      const d = U.dist2(pos.x, pos.z, c.x, c.z);
+      if (d < bd) { bd = d; best = c; }
+    }
+    if (!best) return null;
+    best.opened = true; world._chestAnim.push(best);
+    const loot = { wood: U.randInt(8, 22) };
+    if (U.chance(0.55)) loot.berries = U.randInt(1, 3);
+    if (U.chance(0.4)) loot.bandaids = U.randInt(1, 2);
+    if (U.chance(0.4)) loot.shells = U.randInt(2, 5);
+    if (U.chance(0.45)) loot.food = U.randInt(15, 30);
+    return loot;
+  };
+  function buildChests(scene) {
+    let n = 0, tries = 0;
+    while (n < 38 && tries < 1500) {
+      tries++;
+      const p = U.pointInDisc(C.WORLD_RADIUS * 0.95);
+      if (world.heightAt(p.x, p.z) <= C.WATER_LEVEL + 0.6) continue;
+      if (U.dist2(p.x, p.z, 0, 0) < 28) continue;
+      if (world.chests.some((c) => U.dist2(p.x, p.z, c.x, c.z) < 40)) continue;
+      world.placeChest(p.x, p.z, U.rand(0, 6.28)); n++;
+    }
+  }
+
+  // --- Fish swimming in the lakes (ambient) -----------------------------------
+  world.fish = [];
+  function buildFish(scene) {
+    const cols = [0x6a8fd8, 0xd88a4a, 0x9aa0ac, 0xe0c050, 0xc85a5a];
+    for (const lk of world._lakes) {
+      if (lk.r < 22) continue;                              // only the bigger lakes hold fish
+      const count = U.randInt(4, 9);
+      for (let i = 0; i < count; i++) {
+        const f = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: cols[U.randInt(0, cols.length - 1)], roughness: 0.5, flatShading: true });
+        const body = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.5, 5), mat); body.rotation.z = -Math.PI / 2; f.add(body);
+        const tail = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.18, 4), mat); tail.rotation.z = Math.PI / 2; tail.position.x = -0.32; f.add(tail);
+        f.userData = { lk, a: U.rand(0, Math.PI * 2), rad: U.rand(0.25, 0.75) * lk.r / lk.aspect, sp: U.rand(0.25, 0.6), ph: U.rand(0, 6) };
+        scene.add(f); world.fish.push(f);
+      }
+    }
+  }
+
+  // --- Rideable horses --------------------------------------------------------
+  world.horses = [];
+  const HORSE_COATS = [0x7a5230, 0x4a3526, 0x9a9aa0, 0x2a2420, 0xcaa46a];
+  function makeHorse() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: HORSE_COATS[U.randInt(0, HORSE_COATS.length - 1)], roughness: 1, flatShading: true });
+    const mane = new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 1, flatShading: true });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 1.7), mat); body.position.y = 1.25; body.castShadow = true; g.add(body);
+    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.8, 0.5), mat); neck.position.set(0, 1.75, 0.85); neck.rotation.x = -0.5; neck.castShadow = true; g.add(neck);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.8), mat); head.position.set(0, 2.1, 1.2); head.rotation.x = 0.3; head.castShadow = true; g.add(head);
+    const mh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.72, 0.55), mane); mh.position.set(0, 1.95, 0.72); mh.rotation.x = -0.5; g.add(mh);
+    const legs = [];
+    for (const [lx, lz] of [[-0.26, 0.6], [0.26, 0.6], [-0.26, -0.6], [0.26, -0.6]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.0, 0.18), mat); leg.position.set(lx, 0.5, lz); leg.castShadow = true; g.add(leg); legs.push(leg);
+    }
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.7, 0.12), mane); tail.position.set(0, 1.2, -0.95); tail.rotation.x = 0.5; g.add(tail);
+    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.18, 0.7), new THREE.MeshStandardMaterial({ color: 0x4a2f1a, roughness: 1 })); saddle.position.set(0, 1.74, 0.1); g.add(saddle);
+    g.userData = { type: 'horse', legs };
+    return g;
+  }
+  function buildHorses(scene) {
+    let n = 0, tries = 0;
+    while (n < 12 && tries < 500) {
+      tries++;
+      const p = U.pointInDisc(C.WORLD_RADIUS * 0.85);
+      if (world.heightAt(p.x, p.z) <= C.WATER_LEVEL + 0.6) continue;
+      if (U.dist2(p.x, p.z, 0, 0) < 22) continue;
+      if (world.desertAt(p.x, p.z) > 0.5 || world.snowAt(p.x, p.z) > 0.5) continue;
+      const h = makeHorse();
+      h.position.set(p.x, world.heightAt(p.x, p.z), p.z); h.rotation.y = U.rand(0, 6.28);
+      scene.add(h);
+      world.horses.push({ group: h, ridden: false, t: U.rand(0, 6) });
+      n++;
+    }
+  }
+  world.nearestHorse = function (pos, range) {
+    let best = null, bd = range || 3.4;
+    for (const h of world.horses) {
+      if (h.ridden) continue;
+      const d = U.dist2(pos.x, pos.z, h.group.position.x, h.group.position.z);
+      if (d < bd) { bd = d; best = h; }
+    }
+    return best;
+  };
+
   world.init = function (scene) {
     genLakes();                        // carve lakes before the terrain reads heights
     buildTerrain(scene);
@@ -1700,6 +1811,9 @@
     buildVillage(scene);
     buildBanditOutposts(scene);
     buildLakeHotels(scene);            // tiny luxury hotels on the lake shores
+    buildChests(scene);                // lootable chests scattered around
+    buildFish(scene);                  // fish swimming in the lakes
+    buildHorses(scene);                // rideable horses out in the grass
     // buildGrass(scene);              // tall grass removed (user request)
     buildFlowers(scene);
     buildBirds(scene);                 // ambient life: birds overhead + butterflies
@@ -1875,6 +1989,24 @@
         b.rotation.y = tt * u.sp + u.ph;
         const flap = Math.sin(tt * 14 + u.ph) * 1.1;
         u.wings[0].rotation.y = flap; u.wings[1].rotation.y = -flap;
+      }
+    }
+
+    // opened chests swing their lids up
+    for (let i = world._chestAnim.length - 1; i >= 0; i--) {
+      const c = world._chestAnim[i];
+      c.lid.rotation.x = Math.max(c.lid.rotation.x - dt * 6, -1.45);
+      if (c.lid.rotation.x <= -1.45) world._chestAnim.splice(i, 1);
+    }
+    // fish swim slow loops near the surface of their lake
+    if (world.fish.length) {
+      const tt = world._time;
+      for (const f of world.fish) {
+        const u = f.userData;
+        u.a += u.sp * dt;
+        const x = u.lk.x + Math.cos(u.a) * u.rad * u.lk.aspect, z = u.lk.z + Math.sin(u.a) * u.rad;
+        f.position.set(x, C.WATER_LEVEL - 0.1 + Math.sin(tt * 1.6 + u.ph) * 0.07, z);
+        f.rotation.y = -u.a;
       }
     }
 

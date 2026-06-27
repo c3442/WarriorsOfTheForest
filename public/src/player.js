@@ -69,6 +69,7 @@
       if (e.code === 'KeyK') player.sleep();
       if (e.code === 'KeyR') player.sit();
       if (e.code === 'KeyU') player.plant();
+      if (e.code === 'KeyM') player.toggleMount();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
       if (e.code === 'KeyI') player.toggleInventory();
@@ -691,6 +692,11 @@
   // G: pick up the bandit's dropped shotgun, or a berry from the ground / a bush.
   player.grab = function () {
     if (!player.alive || !player.active) return;
+    // open a nearby lootable chest first
+    if (W.world.openChestNear) {
+      const loot = W.world.openChestNear(player.pos, 2.6);
+      if (loot) { player.applyLoot(loot); return; }
+    }
     if (W.world.takeShotgunNear && W.world.takeShotgunNear(player.pos, 2.6)) {
       player.hasShotgun = true; player.shells += 8; equipWeapon('shotgun');
       W.hud.toast('Picked up the sawed-off shotgun! 🔫 (X to switch)');
@@ -713,11 +719,58 @@
       for (const bush of W.world.bushes) {
         if (bush.ready && U.dist2(player.pos.x, player.pos.z, bush.x, bush.z) < 3.0) { fromBush = true; break; }
       }
-      if (!fromBush) { W.hud.toast('No berries nearby'); return; }
+      if (!fromBush) {
+        if (player.tryFish()) return;            // by a lake with nothing to grab → cast a line
+        W.hud.toast('No berries nearby'); return;
+      }
     }
     player.berries += 1;
     player.heldBerry.visible = true;
     W.hud.toast('Picked a berry 🍓 (' + player.berries + '/' + player.berryMax + ')');
+  };
+
+  // Loot from a chest into your pack.
+  player.applyLoot = function (loot) {
+    const parts = [];
+    if (loot.wood) { player.wood += loot.wood; parts.push('+' + loot.wood + ' 🪵'); }
+    if (loot.berries) { player.berries = U.clamp(player.berries + loot.berries, 0, player.berryMax); if (player.heldBerry) player.heldBerry.visible = player.berries > 0; parts.push('+' + loot.berries + ' 🍓'); }
+    if (loot.bandaids) { player.bandaids += loot.bandaids; parts.push('+' + loot.bandaids + ' 🩹'); }
+    if (loot.shells && player.hasShotgun) { player.shells += loot.shells; parts.push('+' + loot.shells + ' 🔫'); }
+    if (loot.food) { player.hunger = U.clamp(player.hunger + loot.food, 0, 100); parts.push('+' + loot.food + ' 🍖'); }
+    W.hud.toast('Looted a chest! ' + parts.join('  '));
+  };
+
+  // --- Fishing: cast a line by a lake, wait, reel in a fish for food ----------
+  function nearWater() {
+    if (W.world.isWater(player.pos.x, player.pos.z)) return true;
+    for (let a = 0; a < 6.28; a += 0.7) {
+      if (W.world.isWater(player.pos.x + Math.cos(a) * 2.8, player.pos.z + Math.sin(a) * 2.8)) return true;
+    }
+    return false;
+  }
+  player.tryFish = function () {
+    if (player._fishUntil) { W.hud.toast('Already fishing… hold still 🎣'); return true; }
+    if (!nearWater()) return false;
+    player._fishUntil = player._t + U.rand(1.8, 3.6);
+    W.hud.toast('Casting a line… 🎣 (hold still)');
+    return true;
+  };
+
+  // --- Mounts: hop on a horse to gallop around (M) ----------------------------
+  player.toggleMount = function () {
+    if (!player.alive || !player.active) return;
+    if (player._mount) {                          // dismount: drop the horse beside you
+      const h = player._mount; h.ridden = false; player._mount = null;
+      const sx = Math.cos(player.yaw), sz = Math.sin(player.yaw);
+      h.group.position.set(player.pos.x + sx * 1.8, W.world.heightAt(player.pos.x, player.pos.z), player.pos.z + sz * 1.8);
+      W.hud.toast('Dismounted 🐴');
+      return;
+    }
+    const h = W.world.nearestHorse && W.world.nearestHorse(player.pos, 3.4);
+    if (!h) { W.hud.toast('No horse nearby to ride 🐴'); return; }
+    if (player._fishUntil) player._fishUntil = 0;
+    h.ridden = true; player._mount = h;
+    W.hud.toast('Giddy-up! 🐴 — M to dismount, faster on horseback');
   };
 
   // K: drop one carried berry onto the ground in front of you.
@@ -1065,7 +1118,7 @@
 
     const moving = fwd !== 0 || str !== 0;
     const wantSprint = k.ShiftLeft && moving && fwd > 0 && player.stamina > 1;
-    const speed = SPEED * (wantSprint ? SPRINT : 1) * (player.speedMult || 1);   // Swift Boots upgrade
+    const speed = SPEED * (wantSprint ? SPRINT : 1) * (player.speedMult || 1) * (player._mount ? 2.2 : 1);   // horseback = fast
 
     player.pos.x += wishX * speed * dt;
     player.pos.z += wishZ * speed * dt;
@@ -1131,6 +1184,31 @@
     // head bob
     const bob = moving && player.grounded ? Math.sin(player._t * (wantSprint ? 14 : 9)) * 0.04 : 0;
     player.camera.position.y += bob;
+
+    // riding a horse: sit up high, place the horse under you, gallop its legs
+    if (player._mount) {
+      player.camera.position.y += 1.05;
+      const h = player._mount.group;
+      h.position.set(player.pos.x, W.world.heightAt(player.pos.x, player.pos.z), player.pos.z);
+      h.rotation.y = player.yaw + Math.PI;
+      const gait = moving ? Math.sin(player._t * 13) * 0.55 : Math.sin(player._t * 2) * 0.05;
+      const lg = h.userData.legs;
+      lg[0].rotation.x = gait; lg[3].rotation.x = gait;
+      lg[1].rotation.x = -gait; lg[2].rotation.x = -gait;
+    }
+
+    // fishing: cancels if you move; otherwise reel in after the wait
+    if (player._fishUntil) {
+      if (moving) { player._fishUntil = 0; W.hud.toast('Line reeled in'); }
+      else if (player._t >= player._fishUntil) {
+        player._fishUntil = 0;
+        if (U.chance(0.82)) {
+          player.hunger = U.clamp(player.hunger + 26, 0, 100);
+          player.fishCaught = (player.fishCaught || 0) + 1;
+          W.hud.toast('Caught a fish! 🐟 +26 food');
+        } else W.hud.toast('It got away…');
+      }
+    }
 
     animateAxe(dt, moving);
     animateBottle(dt);
