@@ -1546,10 +1546,11 @@
 
     // second-floor guest rooms: a 2x2 grid (these walls only block upstairs)
     const M2 = FLOOR - 0.4;
+    const z0gaps = [[-1.6, 1.6], [SX0 - 0.1, SX1 + 0.5]];   // central doorway + an opening above the staircase landing
     visZ(0, -hd, hd, [[-1.6, 1.6]], FLOOR, FLOOR);
-    visX(0, -hw, hw, [[-1.6, 1.6]], FLOOR, FLOOR);
+    visX(0, -hw, hw, z0gaps, FLOOR, FLOOR);
     colZ(0, -hd, hd, [[-1.6, 1.6]], M2);
-    colX(0, -hw, hw, [[-1.6, 1.6]], M2);
+    colX(0, -hw, hw, z0gaps, M2);
 
     // staircase (visible steps; walking uses the smooth ramp platform)
     const STEPS = 9, sdepth = (SZ1 - SZ0) / STEPS;
