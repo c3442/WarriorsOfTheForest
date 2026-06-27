@@ -3,7 +3,7 @@
   const W = (window.WOTF = window.WOTF || {});
 
   W.CONFIG = {
-    WORLD_RADIUS: 1000,    // playable area radius (meters) — huge world, epic treks
+    WORLD_RADIUS: 1500,    // playable area radius — a vast 1500x1500 world
     TREE_COUNT: 3400,
     ROCK_COUNT: 320,
     BUSH_COUNT: 620,

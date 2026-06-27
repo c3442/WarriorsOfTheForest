@@ -48,7 +48,16 @@
   const tapKey = (code) => { press(code); setTimeout(() => release(code), 80); };
   const P = () => W.player;
 
-  function doAttack() { const p = P(); if (!p) return; if (p.building) p.placeBuild(); else p.attack(); }
+  // press = start (bow draws on hold), release = loose the bow
+  function pressAtk() { const p = P(); if (!p) return; if (p.building) { p.placeBuild(); return; } if (p.pressAttack) p.pressAttack(); else p.attack(); }
+  function releaseAtk() { const p = P(); if (p && p.releaseAttack) p.releaseAttack(); }
+  // a quick screen-tap: bow fires a medium-charge shot, other weapons swing
+  function tapAttack() {
+    const p = P(); if (!p) return;
+    if (p.building) { p.placeBuild(); return; }
+    if (p.currentWeapon === 'bow' && p.startDraw) { p.startDraw(); p._bowCharge = 0.55; p.releaseDraw(); }
+    else p.attack();
+  }
 
   // --- DOM ---
   const mk = (id, cls, label) => { const e = document.createElement('div'); if (id) e.id = id; if (cls) e.className = cls; if (label != null) e.textContent = label; return e; };
@@ -85,7 +94,10 @@
     more.textContent = open ? '↩ Back' : '⋯ More';
   });
 
-  onTap(atk, doAttack);
+  // attack button: hold to draw/charge the bow, release to loose
+  atk.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); pressAtk(); }, { passive: false });
+  atk.addEventListener('touchend', (e) => { e.preventDefault(); releaseAtk(); }, { passive: false });
+  atk.addEventListener('touchcancel', () => releaseAtk());
   // jump: hold Space while pressed
   jmp.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); if (P()) P().keys.Space = true; }, { passive: false });
   jmp.addEventListener('touchend', (e) => { e.preventDefault(); if (P()) P().keys.Space = false; }, { passive: false });
@@ -136,7 +148,7 @@
     for (const t of e.changedTouches) {
       if (t.identifier !== lookId) continue;
       lookId = null;
-      if (moved < 14 && Date.now() - lt < 300) doAttack();   // quick tap = attack / place
+      if (moved < 14 && Date.now() - lt < 300) tapAttack();   // quick tap = attack / place
     }
   }, { passive: false });
   look.addEventListener('touchcancel', () => { lookId = null; });

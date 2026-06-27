@@ -30,7 +30,7 @@
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color('#0a1230');
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 4000);
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 6500);
     scene.add(camera);
 
     // post-processing: a soft bloom on bright areas
