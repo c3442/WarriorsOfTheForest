@@ -1510,7 +1510,7 @@
     const PART = 1.5;
     const edges = [-hw, -6.6, -2.2, 2.2, 6.6, hw];             // 5 rooms
     const roomGaps = [];
-    for (let i = 0; i < edges.length - 1; i++) { const cxr = (edges[i] + edges[i + 1]) / 2; roomGaps.push([cxr - 0.8, cxr + 0.8]); }
+    for (let i = 0; i < edges.length - 1; i++) { const cxr = (edges[i] + edges[i + 1]) / 2; roomGaps.push([cxr - 1.35, cxr + 1.35]); }
     wallX(PART, -hw, hw, roomGaps);                            // partition with a doorway per room
     for (let i = 1; i < edges.length - 1; i++) wallZ(edges[i], -hd, PART, []);   // room dividers
 
@@ -1559,23 +1559,49 @@
     for (const [w, d, x, z] of [[W, 0.1, 0, hd], [W, 0.1, 0, -hd], [0.1, D, hw, 0], [0.1, D, -hw, 0]]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(w, 0.45, d), gold); rail.position.set(x, H + 0.5, z); g.add(rail); }
     const sign = makeHotelSign(); sign.scale.multiplyScalar(1.9); sign.position.set(0, H + 2.0, 0); g.add(sign);
 
+    // --- extra luxury ---
+    // rooftop golden dome + spire
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(2.4, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), gold); dome.position.y = H + 0.3; g.add(dome);
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(0.26, 2.4, 8), gold); spire.position.y = H + 3.0; g.add(spire);
+    const spireBall = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), new THREE.MeshStandardMaterial({ color: 0xfff0b0, emissive: 0xffd76a, emissiveIntensity: 0.9 })); spireBall.position.y = H + 4.3; g.add(spireBall);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const fin = new THREE.Mesh(new THREE.ConeGeometry(0.32, 1.3, 6), gold); fin.position.set(sx * (hw - 0.6), H + 0.95, sz * (hd - 0.6)); g.add(fin); }
+    // upper-floor balconies on the front
+    for (let f = 1; f < FLOORS; f++) {
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(W * 0.5, 0.14, 1.1), marble); slab.position.set(0, f * FLOOR + 0.1, hd + 0.55); g.add(slab);
+      const balRail = new THREE.Mesh(new THREE.BoxGeometry(W * 0.5, 0.5, 0.08), gold); balRail.position.set(0, f * FLOOR + 0.4, hd + 1.05); g.add(balRail);
+    }
+    // tiered marble fountain in the forecourt
+    const fz = hd + 3.6;
+    const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2.0, 0.5, 16), marble); basin.position.set(0, 0.25, fz); g.add(basin);
+    const fw1 = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.12, 16), waterM); fw1.position.set(0, 0.47, fz); g.add(fw1);
+    const ft2 = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.85, 0.42, 12), marble); ft2.position.set(0, 0.78, fz); g.add(ft2);
+    const fw2 = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.1, 12), waterM); fw2.position.set(0, 1.0, fz); g.add(fw2);
+    const fspout = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.9, 8), gold); fspout.position.set(0, 1.4, fz); g.add(fspout);
+    // topiary flanking the carpet + lamp posts at the entrance
+    for (const sx of [-1.9, 1.9]) { const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.4, 6), wood); trunk.position.set(sx, 0.2, hd + 1.7); g.add(trunk); const ball = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 8), new THREE.MeshStandardMaterial({ color: 0x2f7a3a, roughness: 1, flatShading: true })); ball.position.set(sx, 0.85, hd + 1.7); g.add(ball); }
+    for (const sx of [-2.9, 2.9]) { const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.6, 8), gold); post.position.set(sx, 1.3, hd + 0.7); g.add(post); const glob = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), new THREE.MeshStandardMaterial({ color: 0xfff3c0, emissive: 0xffe08a, emissiveIntensity: 0.95 })); glob.position.set(sx, 2.7, hd + 0.7); g.add(glob); }
+    // gold flag poles on the roof front
+    for (const sx of [-hw + 1, hw - 1]) { const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.2, 6), gold); pole.position.set(sx, H + 1.1, hd - 0.4); g.add(pole); const flag = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.55, 0.04), new THREE.MeshStandardMaterial({ color: 0x9a1f2a, roughness: 1 })); flag.position.set(sx + 0.52, H + 1.7, hd - 0.4); g.add(flag); }
+
     g.userData = { type: 'hotel', R: Math.max(W, D) * 0.6 + 0.3, halfW: hw, halfD: hd, wallCols: cols, wallR: R };
     return g;
   }
 
   // Drop a few tiny luxury hotels on lake shores, facing the water.
   function buildLakeHotels(scene) {
+    const HD = 7.5, MIN_SP = 44;                                  // hotel half-depth + min spacing
+    const spots = [];
     let placed = 0, tries = 0;
-    while (placed < 40 && tries++ < 6000) {
+    while (placed < 36 && tries++ < 12000) {
       const p = U.pointInDisc(C.WORLD_RADIUS * 0.92);
-      if (U.dist2(p.x, p.z, 0, 0) < 60) continue;                 // not on top of camp
+      if (U.dist2(p.x, p.z, 0, 0) < 90) continue;                 // not on top of camp
       const h = world.heightAt(p.x, p.z);
-      if (h <= C.WATER_LEVEL + 0.4 || h > C.WATER_LEVEL + 2.0) continue;  // low shore land only
+      if (h <= C.WATER_LEVEL + 0.4 || h > C.WATER_LEVEL + 2.6) continue;  // low shore land only
       // find the nearest water and its direction
       let wx = 0, wz = 0, found = false, near = 1e9;
       for (let a = 0; a < 16; a++) {
         const ang = (a / 16) * Math.PI * 2, cx = Math.cos(ang), cz = Math.sin(ang);
-        for (let d = 3; d <= 14; d += 2.5) {
+        for (let d = 3; d <= 16; d += 2.5) {
           if (world.heightAt(p.x + cx * d, p.z + cz * d) <= C.WATER_LEVEL + 0.1) {
             if (d < near) { near = d; wx = cx; wz = cz; found = true; }
             break;
@@ -1583,14 +1609,20 @@
         }
       }
       if (!found) continue;
-      const hx = p.x - wx * 2.5, hz = p.z - wz * 2.5;             // sit back from the shore
+      const back = HD + 1 - near;                                 // push so the pool/entrance sits at the shore
+      const hx = p.x - wx * back, hz = p.z - wz * back;
+      // footprint must be on land (centre + back wall)
       if (world.heightAt(hx, hz) <= C.WATER_LEVEL + 0.4) continue;
+      if (world.heightAt(hx - wx * HD, hz - wz * HD) <= C.WATER_LEVEL + 0.4) continue;
+      let clash = false; for (const s of spots) { if (U.dist2(hx, hz, s.x, s.z) < MIN_SP) { clash = true; break; } }
+      if (clash) continue;                                         // keep them spread out
+      spots.push({ x: hx, z: hz });
       const hotel = makeLuxuryHotel();
       hotel.position.set(hx, world.heightAt(hx, hz) - 0.05, hz);
       const ry = Math.atan2(wx, wz);                              // front (+Z) faces the lake
       hotel.rotation.y = ry;
       scene.add(hotel);
-      // wall colliders ring the hotel but leave the doorway open so you can walk in
+      // wall colliders ring the hotel but leave every doorway open so you can walk in
       const cs = Math.cos(ry), sn = Math.sin(ry);
       for (const lp of hotel.userData.wallCols) {
         world.colliders.push({ x: hx + lp.x * cs + lp.z * sn, z: hz - lp.x * sn + lp.z * cs, r: hotel.userData.wallR, ref: hotel });

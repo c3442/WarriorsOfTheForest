@@ -58,7 +58,7 @@
     window.addEventListener('keydown', (e) => {
       player.keys[e.code] = true;
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
-      if (e.code === 'KeyQ') player.attack();
+      if (e.code === 'KeyQ' && !e.repeat) player.pressAttack();
       if (e.code === 'KeyX') player.switchWeapon();
       if (e.code === 'KeyE') player.eat();
       if (e.code === 'KeyF') player.drink();
@@ -86,6 +86,7 @@
     window.addEventListener('keyup', (e) => {
       player.keys[e.code] = false;
       if (e.code === 'KeyJ') W.hud.showKeyHelp(false);
+      if (e.code === 'KeyQ') player.releaseAttack();      // loose the bow
     });
 
     // Left click = place a pending build (if any), else swing your weapon.
@@ -96,7 +97,10 @@
         else if (e.button === 2) player.cancelBuild();
         return;
       }
-      if (e.button === 0 && player.active) player.attack();
+      if (e.button === 0 && player.active) player.pressAttack();
+    });
+    document.addEventListener('mouseup', (e) => {
+      if (e.button === 0) player.releaseAttack();          // loose the bow on release
     });
     window.addEventListener('contextmenu', (e) => { if (player.building) e.preventDefault(); });
 
@@ -294,6 +298,8 @@
   function equipWeapon(which) {
     const have = { axe: true, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, shotgun: !!player.hasShotgun };
     if (!have[which]) which = 'axe';
+    player._bowDrawing = false; player._bowCharge = 0; player._bowSnap = undefined;   // cancel any draw
+    if (player.bowNock && player._nockHome) { player.bowNock.visible = true; player.bowNock.position.copy(player._nockHome); }
     const objs = WEAPON_OBJ();
     if (player.katana) player.katana.visible = which === 'katana';
     player.axe.visible = which === 'axe';
@@ -363,6 +369,39 @@
     w.scale.y = Math.max(0.03, player.bottle / player.bottleMax);
   }
 
+  // Press/release routing: the bow draws on hold & looses on release; everything
+  // else swings/fires immediately on press.
+  player.pressAttack = function () {
+    if (!player.alive || !player.active) return;
+    if (player.currentWeapon === 'bow') player.startDraw();
+    else player.attack();
+  };
+  player.releaseAttack = function () {
+    if (player.currentWeapon === 'bow') player.releaseDraw();
+  };
+
+  // Begin pulling the bowstring back (charges while held).
+  player.startDraw = function () {
+    if (!player.alive || !player.active || player.currentWeapon !== 'bow') return;
+    if (player._bowDrawing || player._bowSnap !== undefined) return;
+    if (player._t - player.lastAttack < 0.15) return;
+    player._bowDrawing = true; player._bowCharge = 0;
+    if (player.bowNock) { player.bowNock.visible = true; player.bowNock.position.copy(player._nockHome); }
+  };
+  // Release the string: the arrow flies with power scaled by how far you drew.
+  player.releaseDraw = function () {
+    if (!player._bowDrawing) return;
+    player._bowDrawing = false;
+    const charge = player._bowCharge || 0;
+    player._bowCharge = 0;
+    if (charge >= 0.12) {                 // too short a draw fizzles (no shot)
+      player.lastAttack = player._t;
+      fireArrow(charge);
+      if (player.bowNock) player.bowNock.visible = false;
+      player._bowSnap = 0;                // release recoil
+    }
+  };
+
   player.attack = function () {
     if (!player.alive || !player.active) return;
     const now = player._t;
@@ -371,7 +410,6 @@
     player.swing = 0; // drives the swing / recoil animation
 
     if (player.currentWeapon === 'shotgun') { fireShotgun(); return; }
-    if (player.currentWeapon === 'bow') { player._bowLoosed = false; return; }   // looses at full draw (see animateBow)
 
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
@@ -495,7 +533,8 @@
 
   // The bow: looses a coloured arrow that flies and hits a foe.
   const ARROW_FWD = new THREE.Vector3(0, 0, -1);
-  function fireArrow() {
+  function fireArrow(charge) {
+    const c = charge == null ? 1 : U.clamp(charge, 0, 1);
     const dir = player.camera.getWorldDirection(new THREE.Vector3());
     const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.6);
     start.y -= 0.14;                                   // leaves from the bow, just under the crosshair
@@ -503,10 +542,12 @@
     arrow.position.copy(start);
     arrow.quaternion.setFromUnitVectors(ARROW_FWD, dir.clone().normalize());
     player.scene.add(arrow);
-    player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(52), life: 0 });   // a touch slower, easy to follow
+    const speed = 32 + c * 32;                         // fuller draw → faster, flatter arrow
+    player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(speed), life: 0, pow: c });
   }
-  function applyArrow(root) {
-    const dmg = 6;
+  function applyArrow(root, pow) {
+    const c = pow == null ? 1 : pow;
+    const dmg = Math.round(4 + c * 8) + (player.bowDmgBonus || 0);   // fuller draw hits harder
     if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
     else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
     player.popDamage(root.position, dmg);
@@ -563,7 +604,7 @@
         if (!e.alive) continue;
         const ep = e.group.position;
         const hd = Math.hypot(a.mesh.position.x - ep.x, a.mesh.position.z - ep.z);
-        if (hd < 1.0 && a.mesh.position.y > ep.y - 0.2 && a.mesh.position.y < ep.y + 2.3) { applyArrow(e.group); done = true; break; }
+        if (hd < 1.0 && a.mesh.position.y > ep.y - 0.2 && a.mesh.position.y < ep.y + 2.3) { applyArrow(e.group, a.pow); done = true; break; }
       }
       const groundY = W.world.heightAt(a.mesh.position.x, a.mesh.position.z);
       if (done || a.life > 3.5 || a.mesh.position.y < groundY - 0.1) {
@@ -1024,7 +1065,7 @@
 
     const moving = fwd !== 0 || str !== 0;
     const wantSprint = k.ShiftLeft && moving && fwd > 0 && player.stamina > 1;
-    const speed = SPEED * (wantSprint ? SPRINT : 1);
+    const speed = SPEED * (wantSprint ? SPRINT : 1) * (player.speedMult || 1);   // Swift Boots upgrade
 
     player.pos.x += wishX * speed * dt;
     player.pos.z += wishZ * speed * dt;
@@ -1118,32 +1159,31 @@
   }
 
   // Minecraft-style bow: draw the string + arrow back, loose at full draw, then re-nock.
+  const DRAW_TIME = 0.7;   // seconds to reach a full draw
   function animateBow(dt, moving, w, rest, home) {
     const nock = player.bowNock, nh = player._nockHome;
-    if (player.swing !== undefined) {
-      player.swing += dt;
-      const k = Math.min(player.swing / ATTACK_CD, 1);
-      const RELEASE = 0.42;
-      if (!player._bowLoosed && k >= RELEASE) {        // full draw → loose the arrow
-        player._bowLoosed = true;
-        fireArrow();
-        if (nock) nock.visible = false;                // the nocked arrow has flown off
-      }
-      if (k >= 1) {                                    // settle + re-nock
-        player.swing = undefined;
+    // release recoil: the bow snaps forward, then re-nocks a fresh arrow
+    if (player._bowSnap !== undefined) {
+      player._bowSnap += dt / 0.16;
+      if (player._bowSnap >= 1) {
+        player._bowSnap = undefined;
         w.rotation.copy(rest); w.position.copy(home);
         if (nock) { nock.position.copy(nh); nock.visible = true; }
         return;
       }
-      let draw = 0, snap = 0;
-      if (k < RELEASE) draw = U.smooth(k / RELEASE);                 // pull back 0..1
-      else snap = 1 - (k - RELEASE) / (1 - RELEASE);                 // recoil settles 1..0
+      const s = 1 - player._bowSnap;
+      w.rotation.copy(rest); w.rotation.x = rest.x + s * 0.07;
+      w.position.copy(home); w.position.z = home.z + s * 0.05;
+      return;
+    }
+    if (player._bowDrawing) {                          // pulling the string back (held)
+      player._bowCharge = Math.min(1, (player._bowCharge || 0) + dt / DRAW_TIME);
+      const draw = U.smooth(player._bowCharge);
       w.position.copy(home);
-      w.position.z = home.z + draw * 0.10 + snap * 0.04;             // bow toward your face on draw, jerks on release
-      w.position.x = home.x - draw * 0.03;
-      w.rotation.copy(rest);
-      w.rotation.x = rest.x - draw * 0.10 + snap * 0.06;
-      if (nock && nock.visible) nock.position.z = nh.z + draw * 0.22;  // arrow + string draw back toward you
+      w.position.z = home.z + draw * 0.10;
+      w.position.x = home.x - draw * 0.03 + (player._bowCharge >= 1 ? Math.sin(player._t * 34) * 0.004 : 0); // full-draw tension jitter
+      w.rotation.copy(rest); w.rotation.x = rest.x - draw * 0.10;
+      if (nock && nock.visible) nock.position.z = nh.z + draw * 0.24;  // arrow + string draw toward your eye
     } else {
       const sway = moving ? Math.sin(player._t * 9) * 0.04 : Math.sin(player._t * 2) * 0.012;
       w.rotation.copy(rest); w.rotation.z = rest.z + sway;
