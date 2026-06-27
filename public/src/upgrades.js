@@ -15,7 +15,7 @@
     tough: { name: 'Toughness', emoji: '🛡️', max: 5, cost: (l) => 18 + l * 14, blurb: '-15% damage taken' },
     pack: { name: 'Big Pack', emoji: '🎒', max: 4, cost: (l) => 18 + l * 12, blurb: '+3 berry & water' },
     sharp: { name: 'Sharp Arrows', emoji: '🏹', max: 6, cost: (l) => 14 + l * 9, blurb: '+2 arrow damage' },
-    foxfight: { name: 'Fox Fighters', emoji: '🦊', max: 1, cost: () => 30, blurb: 'tamed foxes maul enemies' },
+    foxfight: { name: 'Fox Fighters', emoji: '🦊', max: 5, cost: (l) => 25 + l * 18, blurb: 'tamed foxes maul harder & faster' },
   };
   const ORDER = ['vitality', 'swift', 'tough', 'pack', 'sharp', 'foxfight'];   // 1..6, turret = 7
 
@@ -43,7 +43,6 @@
     if (key === 'tough') p.armor *= 0.85;                 // permanent 15% damage cut
     if (key === 'pack') { p.berryMax += 3; p.bottleMax += 3; }
     if (key === 'vitality') p.health = Math.min(100, p.health + 20);
-    if (key === 'foxfight') p._foxFight = true;
     applyDerived();
     W.hud.toast(def.emoji + ' ' + def.name + ' → Lv ' + p.up[key] + '!');
     refresh();
@@ -119,18 +118,22 @@
           }
         }
       }
-      // Fox Fighters: tamed foxes maul nearby foes
-      if (p._foxFight && W.critters && W.critters.list) {
+      // Fox Fighters: tamed foxes maul nearby foes (scales with the upgrade level)
+      const flvl = (p.up && p.up.foxfight) || 0;
+      if (flvl > 0 && W.critters && W.critters.list) {
+        const fdmg = 2 + flvl * 3;                 // Lv1=5 … Lv5=17
+        const frange = 3.0 + flvl * 0.5;           // reach grows
+        const fcd = Math.max(0.35, 0.95 - flvl * 0.12);   // attacks faster
         for (const c of W.critters.list) {
           if (!c.tamed) continue;
           c._fcd = (c._fcd || 0) - dt; if (c._fcd > 0) continue;
           const fp = c.group.position;
           for (const e of foes) {
             if (!e.alive) continue;
-            if (Math.hypot(e.group.position.x - fp.x, e.group.position.z - fp.z) < 3.4) {
-              c._fcd = 0.8;
-              const killed = W.enemies.damage(e.group, 4, { x: fp.x, z: fp.z });
-              if (p.popDamage) p.popDamage(e.group.position, 4);
+            if (Math.hypot(e.group.position.x - fp.x, e.group.position.z - fp.z) < frange) {
+              c._fcd = fcd;
+              const killed = W.enemies.damage(e.group, fdmg, { x: fp.x, z: fp.z });
+              if (p.popDamage) p.popDamage(e.group.position, fdmg);
               if (killed && p.creditKill) p.creditKill(e.kind);
               break;
             }

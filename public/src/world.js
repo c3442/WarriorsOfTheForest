@@ -2222,9 +2222,32 @@
 
   // Resolve player/enemy against solid colliders. Mutates pos {x,z}.
   // feetY (optional): when given, low obstacles with a `top` are skipped if you're above them (jumping over).
+  // Highest building floor/stair surface you can stand on at (x,z), given your feet
+  // are at feetY (you can only mount a surface within STEP of your feet).
+  world.standHeight = function (x, z, feetY) {
+    const ps = world.platforms;
+    if (!ps || !ps.length) return -Infinity;
+    let best = -Infinity; const STEP = 0.6;
+    for (let i = 0; i < ps.length; i++) {
+      const pl = ps[i];
+      const dx = x - pl.cx, dz = z - pl.cz;
+      const lx = pl.cos * dx - pl.sin * dz;   // world -> building-local
+      const lz = pl.sin * dx + pl.cos * dz;
+      if (lx < pl.x0 || lx > pl.x1 || lz < pl.z0 || lz > pl.z1) continue;
+      let surf;
+      if (pl.ramp) {
+        const t = Math.max(0, Math.min(1, (lz - pl.z0) / (pl.z1 - pl.z0)));
+        surf = pl.yLow + (pl.yHigh - pl.yLow) * t;
+      } else surf = pl.y;
+      if (surf <= feetY + STEP && surf > best) best = surf;
+    }
+    return best;
+  };
+
   world.resolveCollision = function (pos, radius, feetY) {
     for (const c of world.colliders) {
       if (c.top !== undefined && feetY !== undefined && feetY > c.top) continue;
+      if (c.minY !== undefined && feetY !== undefined && feetY < c.minY) continue;
       const dx = pos.x - c.x;
       const dz = pos.z - c.z;
       const d = Math.hypot(dx, dz);

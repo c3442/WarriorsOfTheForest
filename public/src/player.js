@@ -1078,16 +1078,24 @@
       player.pos.z *= (C.WORLD_RADIUS + 6) / fromC;
     }
 
-    // --- vertical (gravity, jump, terrain follow) ---
-    const groundEye = W.world.heightAt(player.pos.x, player.pos.z) + C.EYE_HEIGHT;
+    // --- vertical (gravity, jump, terrain + building floors/stairs) ---
+    const feetY = player.pos.y - C.EYE_HEIGHT;
+    let standY = W.world.heightAt(player.pos.x, player.pos.z);
+    if (W.world.standHeight) {
+      const s = W.world.standHeight(player.pos.x, player.pos.z, feetY);
+      if (s > standY) standY = s;
+    }
+    const groundEye = standY + C.EYE_HEIGHT;
     if (player.grounded && k.Space) { player.vy = JUMP; player.grounded = false; }
     player.vy -= GRAV * dt;
     player.pos.y += player.vy * dt;
     if (player.pos.y <= groundEye) {
       player.pos.y = groundEye; player.vy = 0; player.grounded = true;
+    } else if (player.grounded) {
+      // follow gentle slopes / steps up; fall when stepping off a ledge
+      if (player.pos.y - groundEye <= 0.6) { player.pos.y = groundEye; player.vy = 0; }
+      else player.grounded = false;
     }
-    // when walking, hug the terrain instead of stair-stepping
-    if (player.grounded) player.pos.y = groundEye;
 
     // --- stats ---
     const atBase = W.world.nearCamp(player.pos);   // the camp is a safe haven
