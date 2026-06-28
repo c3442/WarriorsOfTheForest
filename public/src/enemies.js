@@ -475,8 +475,86 @@
   };
 
   // Host/solo simulation. targets: [{ pos, onBite(dmg) }] — the nearest is hunted.
+  // --- Village archers: 5 friendly bowmen who guard the village from foes -----
+  const A_FWD = new THREE.Vector3(0, 0, -1);
+  enemies.archers = [];
+  enemies.archerArrows = [];
+
+  function makeArcher() {
+    const g = new THREE.Group();
+    const cloth = new THREE.MeshStandardMaterial({ color: 0x3f7a3a, roughness: 1, flatShading: true });
+    const hood = new THREE.MeshStandardMaterial({ color: 0x2f5a2c, roughness: 1, flatShading: true });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x7a4a24, roughness: 1 });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.32), cloth); torso.position.y = 1.1; torso.castShadow = true; g.add(torso);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), skin); head.position.y = 1.68; head.castShadow = true; g.add(head);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.34, 6), hood); cap.position.y = 1.96; g.add(cap);
+    for (const sx of [-0.14, 0.14]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.76, 0.19), hood); leg.position.set(sx, 0.38, 0); leg.castShadow = true; g.add(leg); }
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.03, 6, 14, Math.PI * 1.25), wood); bow.position.set(0.3, 1.15, 0.2); bow.rotation.z = Math.PI / 2; g.add(bow);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.14), cloth); arm.position.set(0.3, 1.2, 0.12); g.add(arm);
+    g.userData = { type: 'archer' };
+    return g;
+  }
+
+  enemies.spawnVillageArchers = function () {
+    const vp = W.world.villagePos; if (!vp || !enemies.scene) return;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2, r = 11;
+      const x = vp.x + Math.cos(a) * r, z = vp.z + Math.sin(a) * r;
+      const g = makeArcher();
+      g.position.set(x, W.world.heightAt(x, z), z);
+      enemies.scene.add(g);
+      enemies.archers.push({ group: g, x, z, cd: U.rand(0, 1.6) });
+    }
+    enemies._archersSpawned = true;
+  };
+
+  function archerShoot(ar, target) {
+    const sy = W.world.heightAt(ar.x, ar.z) + 1.5;
+    const tp = target.group.position;
+    const dir = new THREE.Vector3(tp.x - ar.x, (tp.y + 1.0) - sy, tp.z - ar.z).normalize();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.7, 5), new THREE.MeshStandardMaterial({ color: 0xe6c54a, roughness: 0.7 }));
+    shaft.rotation.x = Math.PI / 2;
+    const arrow = new THREE.Group(); arrow.add(shaft);
+    arrow.position.set(ar.x, sy, ar.z);
+    arrow.quaternion.setFromUnitVectors(A_FWD, dir.clone());
+    enemies.scene.add(arrow);
+    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(46), life: 0, dmg: 7 });
+  }
+
+  function updateArchers(dt) {
+    if (!enemies._archersSpawned && W.world.villagePos) enemies.spawnVillageArchers();
+    const host = !(W.net && W.net.role === 'client');
+    for (const ar of enemies.archers) {
+      ar.cd -= dt;
+      let best = null, bd = 48 * 48;
+      for (const e of enemies.list) { if (!e.alive) continue; const dx = e.group.position.x - ar.x, dz = e.group.position.z - ar.z; const d = dx * dx + dz * dz; if (d < bd) { bd = d; best = e; } }
+      if (best) {
+        ar.group.rotation.y = Math.atan2(best.group.position.x - ar.x, best.group.position.z - ar.z);
+        if (ar.cd <= 0) { ar.cd = U.rand(0.9, 1.7); archerShoot(ar, best); }
+      }
+    }
+    for (let i = enemies.archerArrows.length - 1; i >= 0; i--) {
+      const a = enemies.archerArrows[i]; a.life += dt;
+      a.vel.y -= 9.8 * dt * 0.3;
+      a.mesh.position.addScaledVector(a.vel, dt);
+      a.mesh.quaternion.setFromUnitVectors(A_FWD, a.vel.clone().normalize());
+      let done = false;
+      for (const e of enemies.list) {
+        if (!e.alive) continue;
+        const ep = e.group.position;
+        if (Math.hypot(a.mesh.position.x - ep.x, a.mesh.position.z - ep.z) < 1.1 && a.mesh.position.y > ep.y - 0.2 && a.mesh.position.y < ep.y + 2.4) {
+          if (host) enemies.damage(e.group, a.dmg, { x: a.mesh.position.x, z: a.mesh.position.z });
+          done = true; break;
+        }
+      }
+      if (done || a.life > 3.5) { enemies.scene.remove(a.mesh); enemies.archerArrows.splice(i, 1); }
+    }
+  }
+
   enemies.update = function (dt, isNight, dayNum, targets) {
     const center = targets[0] ? targets[0].pos : { x: 0, z: 0 };
+    updateArchers(dt);
     enemies.spawnTimer -= dt;
     // every night gets harder: more foes on the field, and they arrive faster
     const cap = Math.min(4 + dayNum * 3, 45) + (targets.length - 1) * 5;

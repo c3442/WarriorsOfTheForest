@@ -991,24 +991,38 @@
 
   // --- A far-off village (~500m from camp) -----------------------------------
 
+  // A cottage you can walk into: hollow walls with a doorway (front +Z), a cosy
+  // interior (bed + table), and a wall-collider ring left open at the door.
   function makeHouse() {
     const g = new THREE.Group();
-    const wallCols = ['#cbb083', '#bd965c', '#cfc3a6', '#b0a890', '#c79a6a'];
-    const wall = new THREE.MeshStandardMaterial({ color: wallCols[U.randInt(0, wallCols.length - 1)], roughness: 1, flatShading: true });
+    const palette = ['#cbb083', '#bd965c', '#cfc3a6', '#b0a890', '#c79a6a'];
+    const wall = new THREE.MeshStandardMaterial({ color: palette[U.randInt(0, palette.length - 1)], roughness: 1, flatShading: true });
     const roofMat = new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0x7a3b2a : 0x5a4030, roughness: 1, flatShading: true });
-    const Wd = U.rand(3.0, 4.4), Dp = U.rand(3.0, 4.4), H = U.rand(2.4, 3.2);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(Wd, H, Dp), wall);
-    body.position.y = H / 2; body.castShadow = true; body.receiveShadow = true; g.add(body);
+    const Wd = U.rand(3.8, 5.2), Dp = U.rand(3.8, 5.2), H = U.rand(2.6, 3.2);
+    const hw = Wd / 2, hd = Dp / 2, TH = 0.16, doorHalf = 0.72, DOOR_H = 2.0;
+
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(Wd, 0.1, Dp), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 }));
+    floor.position.y = 0.05; floor.receiveShadow = true; g.add(floor);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(Wd, H, TH), wall); back.position.set(0, H / 2, -hd); back.castShadow = true; back.receiveShadow = true; g.add(back);
+    for (const sx of [-hw, hw]) { const w = new THREE.Mesh(new THREE.BoxGeometry(TH, H, Dp), wall); w.position.set(sx, H / 2, 0); w.castShadow = true; w.receiveShadow = true; g.add(w); }
+    const flankW = hw - doorHalf;
+    for (const sgn of [-1, 1]) { const fw = new THREE.Mesh(new THREE.BoxGeometry(flankW, H, TH), wall); fw.position.set(sgn * (doorHalf + hw) / 2, H / 2, hd); fw.castShadow = true; g.add(fw); }
+    const above = new THREE.Mesh(new THREE.BoxGeometry(doorHalf * 2, H - DOOR_H, TH), wall); above.position.set(0, DOOR_H + (H - DOOR_H) / 2, hd); g.add(above);
     const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(Wd, Dp) / 2 * 1.04, H * 0.7, 4), roofMat);
     roof.position.y = H + H * 0.35; roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.6, 0.08), new THREE.MeshStandardMaterial({ color: 0x4a3120, roughness: 1 }));
-    door.position.set(0, 0.8, Dp / 2 + 0.02); g.add(door);
     const winMat = new THREE.MeshStandardMaterial({ color: 0x9fd0e8, emissive: 0x20303c, roughness: 0.4 });
-    for (const sx of [-Wd / 2 - 0.02, Wd / 2 + 0.02]) {
-      const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.6), winMat);
-      win.position.set(sx, 1.45, 0); g.add(win);
-    }
-    g.userData = { type: 'house', Wd, Dp };
+    for (const sx of [-hw - 0.02, hw + 0.02]) { const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.6), winMat); win.position.set(sx, 1.45, 0); g.add(win); }
+    // cosy interior
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.4, 1.9), new THREE.MeshStandardMaterial({ color: 0x8a3b3b, roughness: 1 })); bed.position.set(-hw + 0.75, 0.25, -hd + 1.15); g.add(bed);
+    const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.16, 0.4), new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 1 })); pillow.position.set(-hw + 0.75, 0.5, -hd + 0.4); g.add(pillow);
+    const table = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7, 0.9), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 })); table.position.set(hw - 0.9, 0.35, -hd + 0.9); g.add(table);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), new THREE.MeshStandardMaterial({ color: 0xfff0b0, emissive: 0xffcf6a, emissiveIntensity: 0.8 })); lamp.position.set(hw - 0.9, 0.84, -hd + 0.9); g.add(lamp);
+
+    const cols = [], STEP = 0.5;
+    for (const sx of [-hw, hw]) for (let z = -hd; z <= hd + 0.001; z += STEP) cols.push({ x: sx, z });
+    for (let x = -hw; x <= hw + 0.001; x += STEP) cols.push({ x, z: -hd });
+    for (let x = -hw; x <= hw + 0.001; x += STEP) { if (Math.abs(x) < doorHalf + 0.1) continue; cols.push({ x, z: hd }); }
+    g.userData = { type: 'house', Wd, Dp, wallCols: cols, wallR: 0.4 };
     return g;
   }
 
@@ -1030,9 +1044,13 @@
       const h = makeHouse();
       const hy = world.heightAt(hx, hz);
       h.position.set(hx, hy, hz);
-      h.lookAt(vx, hy, vz);                 // door faces the plaza
+      const ry = Math.atan2(vx - hx, vz - hz);   // door (+Z) faces the plaza
+      h.rotation.y = ry;
       scene.add(h);
-      world.colliders.push({ x: hx, z: hz, r: Math.max(h.userData.Wd, h.userData.Dp) * 0.6 });
+      const cs = Math.cos(ry), sn = Math.sin(ry);
+      for (const lp of h.userData.wallCols) {     // hollow walls, doorway left open
+        world.colliders.push({ x: hx + lp.x * cs + lp.z * sn, z: hz - lp.x * sn + lp.z * cs, r: h.userData.wallR, ref: h });
+      }
     }
 
     // a stone well at the centre
@@ -1130,8 +1148,12 @@
     // a shack (reuse the village house model)
     const shack = makeHouse();
     const hx = ox + 3.0, hz = oz + 3.0;
-    shack.position.set(hx, world.heightAt(hx, hz), hz); shack.rotation.y = U.rand(0, 6.28); grp.add(shack);
-    world.colliders.push({ x: hx, z: hz, r: Math.max(shack.userData.Wd, shack.userData.Dp) * 0.6 });
+    const sry = U.rand(0, 6.28);
+    shack.position.set(hx, world.heightAt(hx, hz), hz); shack.rotation.y = sry; grp.add(shack);
+    const scs = Math.cos(sry), ssn = Math.sin(sry);
+    for (const lp of shack.userData.wallCols) {
+      world.colliders.push({ x: hx + lp.x * scs + lp.z * ssn, z: hz - lp.x * ssn + lp.z * scs, r: shack.userData.wallR, ref: shack });
+    }
 
     // their campfire (decorative, flickers — not a haven)
     const fire = makeOutpostFire();
