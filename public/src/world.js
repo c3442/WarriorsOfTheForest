@@ -1035,11 +1035,13 @@
     } while (world.heightAt(vx, vz) <= C.WATER_LEVEL + 0.6 && guard++ < 20);
     world.villagePos = { x: vx, z: vz };
 
-    // houses ringed around a plaza, each facing inward
-    const n = U.randInt(7, 10);
+    // houses on two EVENLY-SPACED rings so they never overlap; each faces inward
+    const n = U.randInt(18, 24);
+    world.bedZones = world.bedZones || [];
+    let outerR = 30;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + U.rand(-0.18, 0.18);
-      const rr = U.rand(7, 12);
+      const a = (i / n) * Math.PI * 2 + U.rand(-0.04, 0.04);
+      const rr = (i % 2 === 0) ? 16 + U.rand(-1, 1) : (outerR = 30) + U.rand(-1, 1);   // fixed inner/outer ring radii
       const hx = vx + Math.cos(a) * rr, hz = vz + Math.sin(a) * rr;
       const h = makeHouse();
       const hy = world.heightAt(hx, hz);
@@ -1051,6 +1053,38 @@
       for (const lp of h.userData.wallCols) {     // hollow walls, doorway left open
         world.colliders.push({ x: hx + lp.x * cs + lp.z * sn, z: hz - lp.x * sn + lp.z * cs, r: h.userData.wallR, ref: h });
       }
+      world.bedZones.push({ x: hx, z: hz, r: Math.max(h.userData.Wd, h.userData.Dp) * 0.6 + 0.6 });  // sleep in this house's bed
+    }
+
+    // --- village details: lampposts (glow at night), barrels, hay bales, crates ---
+    const darkW = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 1, flatShading: true });
+    const woodD = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+    const hayMat = new THREE.MeshStandardMaterial({ color: 0xc8a84e, roughness: 1, flatShading: true });
+    world._villageLamps = world._villageLamps || [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.4;
+      const lx = vx + Math.cos(a) * 22, lz = vz + Math.sin(a) * 22;
+      const lamp = new THREE.Group();
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.5, 6), darkW); post.position.y = 1.25; post.castShadow = true; lamp.add(post);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.06), darkW); arm.position.set(0.22, 2.4, 0); lamp.add(arm);
+      const glassMat = new THREE.MeshStandardMaterial({ color: 0xffd27a, emissive: 0xffae33, emissiveIntensity: 1.4 });
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.3, 0.22), glassMat); glass.position.set(0.44, 2.3, 0); lamp.add(glass);
+      lamp.position.set(lx, world.heightAt(lx, lz), lz);
+      scene.add(lamp);
+      world._villageLamps.push(glassMat);
+      world.colliders.push({ x: lx, z: lz, r: 0.2 });
+    }
+    for (let i = 0; i < 14; i++) {
+      const a = U.rand(0, Math.PI * 2), r = U.rand(2.6, 24);
+      const px = vx + Math.cos(a) * r, pz = vz + Math.sin(a) * r;
+      const roll = U.random();
+      let prop, cr, by;
+      if (roll < 0.4) { prop = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.72, 10), woodD); by = 0.36; cr = 0.36; }
+      else if (roll < 0.7) { prop = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.55, 8), hayMat); prop.rotation.z = Math.PI / 2; by = 0.42; cr = 0.45; }
+      else { prop = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), woodD); by = 0.3; cr = 0.4; prop.rotation.y = U.rand(0, 6.28); }
+      prop.position.set(px, world.heightAt(px, pz) + by, pz);
+      prop.castShadow = true; scene.add(prop);
+      world.colliders.push({ x: px, z: pz, r: cr });
     }
 
     // a stone well at the centre
@@ -1091,9 +1125,9 @@
   }
   function buildVillagers(scene, vx, vz) {
     world.villagers = [];
-    const n = U.randInt(9, 13);
+    const n = U.randInt(18, 26);
     for (let i = 0; i < n; i++) {
-      const a = U.rand(0, Math.PI * 2), r = U.rand(2, 13);
+      const a = U.rand(0, Math.PI * 2), r = U.rand(2, 26);
       const x = vx + Math.cos(a) * r, z = vz + Math.sin(a) * r;
       const v = makeVillager();
       v.position.set(x, world.heightAt(x, z), z); v.rotation.y = U.rand(0, 6.28);
@@ -2520,18 +2554,38 @@
     return best;
   };
 
-  world.resolveCollision = function (pos, radius, feetY) {
+  // Spatial hash grid over the colliders so each query only checks nearby ones
+  // (was O(all colliders) per call — costly with thousands of hotel/house walls
+  // and many enemies each resolving every frame). Rebuilds when the count changes.
+  const GRID_CELL = 8;
+  function buildColliderGrid() {
+    const grid = new Map();
     for (const c of world.colliders) {
-      if (c.top !== undefined && feetY !== undefined && feetY > c.top) continue;
-      if (c.minY !== undefined && feetY !== undefined && feetY < c.minY) continue;
-      const dx = pos.x - c.x;
-      const dz = pos.z - c.z;
-      const d = Math.hypot(dx, dz);
-      const min = radius + c.r;
-      if (d < min && d > 0.0001) {
-        const push = (min - d);
-        pos.x += (dx / d) * push;
-        pos.z += (dz / d) * push;
+      const key = Math.floor(c.x / GRID_CELL) + ',' + Math.floor(c.z / GRID_CELL);
+      let a = grid.get(key); if (!a) grid.set(key, a = []); a.push(c);
+    }
+    world._cgrid = grid; world._cgridLen = world.colliders.length;
+  }
+  world.resolveCollision = function (pos, radius, feetY) {
+    if (!world._cgrid || world.colliders.length !== world._cgridLen) buildColliderGrid();
+    const grid = world._cgrid;
+    const pcx = Math.floor(pos.x / GRID_CELL), pcz = Math.floor(pos.z / GRID_CELL);
+    for (let gx = pcx - 1; gx <= pcx + 1; gx++) {
+      for (let gz = pcz - 1; gz <= pcz + 1; gz++) {
+        const arr = grid.get(gx + ',' + gz);
+        if (!arr) continue;
+        for (let i = 0; i < arr.length; i++) {
+          const c = arr[i];
+          if (c.top !== undefined && feetY !== undefined && feetY > c.top) continue;
+          if (c.minY !== undefined && feetY !== undefined && feetY < c.minY) continue;
+          const dx = pos.x - c.x, dz = pos.z - c.z;
+          const d = Math.hypot(dx, dz), min = radius + c.r;
+          if (d < min && d > 0.0001) {
+            const push = (min - d);
+            pos.x += (dx / d) * push;
+            pos.z += (dz / d) * push;
+          }
+        }
       }
     }
   };

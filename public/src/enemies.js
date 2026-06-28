@@ -517,13 +517,13 @@
 
   enemies.spawnVillageArchers = function () {
     const vp = W.world.villagePos; if (!vp || !enemies.scene) return;
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2, r = 11;
+    for (let i = 0; i < 10; i++) {                      // 10 guards ringing the bigger village
+      const a = (i / 10) * Math.PI * 2, r = 20;
       const x = vp.x + Math.cos(a) * r, z = vp.z + Math.sin(a) * r;
       const g = makeArcher();
       g.position.set(x, W.world.heightAt(x, z), z);
       enemies.scene.add(g);
-      enemies.archers.push({ group: g, x, z, cd: U.rand(0, 1.6) });
+      enemies.archers.push({ group: g, x, z, cd: U.rand(0, 1.0) });
     }
     enemies._archersSpawned = true;
   };
@@ -538,7 +538,7 @@
     arrow.position.set(ar.x, sy, ar.z);
     arrow.quaternion.setFromUnitVectors(A_FWD, dir.clone());
     enemies.scene.add(arrow);
-    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(46), life: 0, dmg: 7 });
+    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(78), life: 0, dmg: 14 });  // fast, flat, hard-hitting
   }
 
   function updateArchers(dt) {
@@ -546,23 +546,23 @@
     const host = !(W.net && W.net.role === 'client');
     for (const ar of enemies.archers) {
       ar.cd -= dt;
-      let best = null, bd = 48 * 48;
+      let best = null, bd = 58 * 58;                   // spot foes from further off
       for (const e of enemies.list) { if (!e.alive) continue; const dx = e.group.position.x - ar.x, dz = e.group.position.z - ar.z; const d = dx * dx + dz * dz; if (d < bd) { bd = d; best = e; } }
       if (best) {
         ar.group.rotation.y = Math.atan2(best.group.position.x - ar.x, best.group.position.z - ar.z);
-        if (ar.cd <= 0) { ar.cd = U.rand(0.9, 1.7); archerShoot(ar, best); }
+        if (ar.cd <= 0) { ar.cd = U.rand(0.45, 0.95); archerShoot(ar, best); }   // fire faster
       }
     }
     for (let i = enemies.archerArrows.length - 1; i >= 0; i--) {
       const a = enemies.archerArrows[i]; a.life += dt;
-      a.vel.y -= 9.8 * dt * 0.3;
+      a.vel.y -= 9.8 * dt * 0.12;                       // flatter trajectory = better aim
       a.mesh.position.addScaledVector(a.vel, dt);
       a.mesh.quaternion.setFromUnitVectors(A_FWD, a.vel.clone().normalize());
       let done = false;
       for (const e of enemies.list) {
         if (!e.alive) continue;
         const ep = e.group.position;
-        if (Math.hypot(a.mesh.position.x - ep.x, a.mesh.position.z - ep.z) < 1.1 && a.mesh.position.y > ep.y - 0.2 && a.mesh.position.y < ep.y + 2.4) {
+        if (Math.hypot(a.mesh.position.x - ep.x, a.mesh.position.z - ep.z) < 1.4 && a.mesh.position.y > ep.y - 0.3 && a.mesh.position.y < ep.y + 2.6) {
           if (host) enemies.damage(e.group, a.dmg, { x: a.mesh.position.x, z: a.mesh.position.z });
           done = true; break;
         }
