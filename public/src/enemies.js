@@ -589,12 +589,14 @@
       if (W.world.villagePos) for (let i = 0; i < wave; i++) enemies.spawnRaider(dayNum, W.world.villagePos); // and the village (archers defend it)
       if (W.hud && W.hud.banner) W.hud.banner('⚔ BANDIT RAID', 'Bandits are storming the camp & village!', '#ff6a4a');
     }
-    // roaming bandit patrols prowl the wilds, day & night
+    // roaming bandit patrols prowl the wilds — and converge on the village when you're there
     enemies.patrolTimer = (enemies.patrolTimer || 0) - dt;
     const patrolBandits = enemies.list.filter((e) => e.kind === 'outlaw' && e.patrol && e.alive).length;
-    if (patrolBandits < 6 && enemies.patrolTimer <= 0) {
-      enemies.spawnPatrol(center, dayNum);
-      enemies.patrolTimer = U.rand(16, 30);
+    const vp = W.world.villagePos;
+    const atVillage = vp && Math.hypot(center.x - vp.x, center.z - vp.z) < 75;
+    if (patrolBandits < (atVillage ? 10 : 6) && enemies.patrolTimer <= 0) {
+      enemies.spawnPatrol(atVillage ? vp : center, dayNum);     // attack the village when you're defending it
+      enemies.patrolTimer = atVillage ? U.rand(5, 11) : U.rand(16, 30);
     }
     // keep exactly one bandit boss prowling the map (respawns a while after death)
     if (!enemies.boss || !enemies.boss.alive) {
