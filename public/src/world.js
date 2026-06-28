@@ -1193,6 +1193,17 @@
     return null;
   };
 
+  // You can sleep inside a tent OR inside one of the lake hotels.
+  world.canSleep = function (pos) {
+    if (world.insideTent(pos)) return true;
+    if (world.hotelZones) {
+      for (const z of world.hotelZones) {
+        if (U.dist2(pos.x, pos.z, z.x, z.z) < z.r) return true;
+      }
+    }
+    return false;
+  };
+
   // --- Stuffies: enemies that get inside a tent smash them ---------------------
   world.intactStuffies = function () { return world.stuffies.reduce((n, s) => n + (s.alive ? 1 : 0), 0); };
 
@@ -1633,6 +1644,7 @@
   // Drop a few tiny luxury hotels on lake shores, facing the water.
   function buildLakeHotels(scene) {
     const HD = 7.5, MIN_SP = 50;                                  // hotel half-depth + min spacing
+    world.hotelZones = [];                                        // areas where you can sleep in a hotel bed
     const spots = [];
     let placed = 0, tries = 0;
     while (placed < 24 && tries++ < 14000) {
@@ -1660,6 +1672,7 @@
       let clash = false; for (const s of spots) { if (U.dist2(hx, hz, s.x, s.z) < MIN_SP) { clash = true; break; } }
       if (clash) continue;                                         // keep them spread out
       spots.push({ x: hx, z: hz });
+      world.hotelZones.push({ x: hx, z: hz, r: HD });            // sleep here in a hotel bed
       const hotel = makeLuxuryHotel();
       hotel.position.set(hx, world.heightAt(hx, hz) - 0.05, hz);
       const ry = Math.atan2(wx, wz);                              // front (+Z) faces the lake

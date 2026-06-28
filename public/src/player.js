@@ -989,7 +989,7 @@
   player.sleep = function () {
     if (!player.alive || player.downed || !player.active) return;
     if (player.sleeping) { player.wake(true); return; }   // press again to get up early
-    if (!W.world.insideTent(player.pos)) { W.hud.toast('Get in a tent to sleep 🛏️'); return; }
+    if (!W.world.canSleep(player.pos)) { W.hud.toast('Get in a tent or hotel to sleep 🛏️'); return; }
     if (W.world.stuffiesBroken) {
       const left = 5 - (W.world._dayCount - W.world._stuffieBreakDay);
       W.hud.toast('🧸 Your stuffies are wrecked — no sleep for ' + left + ' more day' + (left === 1 ? '' : 's'));
@@ -1171,9 +1171,9 @@
     if (player.hunger > 40 && player.thirst > 25 && player._t - player.lastHurt > 4) {
       player.health = U.clamp(player.health + 1.6 * dt, 0, 100);
     }
-    // resting at the base heals you fast (5x)
+    // resting at the base / village heals you very fast (2x the old rate)
     if (atBase && player._t - player.lastHurt > 1.5) {
-      player.health = U.clamp(player.health + 35 * dt, 0, 100);
+      player.health = U.clamp(player.health + 70 * dt, 0, 100);
     }
 
     // --- apply to camera ---
