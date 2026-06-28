@@ -1242,6 +1242,17 @@
   }
 
   function buildBanditOutposts(scene) {
+    // every village has a bandit outpost lurking just outside it
+    if (world.villagePos) {
+      const vp = world.villagePos;
+      for (let t = 0; t < 40; t++) {
+        const a = U.rand(0, Math.PI * 2), r = U.rand(75, 110);
+        const x = vp.x + Math.cos(a) * r, z = vp.z + Math.sin(a) * r;
+        if (world.heightAt(x, z) <= C.WATER_LEVEL + 0.8) continue;
+        buildOutpost(scene, x, z);
+        break;
+      }
+    }
     let tries = 0;
     while (world.outposts.length < 5 && tries < 160) {           // a few more, spread across the big map
       tries++;
@@ -1283,11 +1294,12 @@
     return null;
   };
 
-  // You can sleep inside a tent OR inside one of the lake hotels.
+  // You can sleep in a bed: inside a tent, a lake hotel, or a village house.
   world.canSleep = function (pos) {
     if (world.insideTent(pos)) return true;
-    if (world.hotelZones) {
-      for (const z of world.hotelZones) {
+    for (const list of [world.hotelZones, world.bedZones]) {
+      if (!list) continue;
+      for (const z of list) {
         if (U.dist2(pos.x, pos.z, z.x, z.z) < z.r) return true;
       }
     }
@@ -2095,6 +2107,11 @@
       }
     }
 
+    // village lampposts glow as night falls
+    if (world._villageLamps) {
+      const glow = 0.25 + (1 - world.daylight) * 1.9;
+      for (const m of world._villageLamps) m.emissiveIntensity = glow;
+    }
     // villagers stroll around the plaza
     if (world.villagers) {
       for (const vv of world.villagers) {

@@ -362,6 +362,14 @@
       dmg: rifle ? 9 : 13, lastAttack: -99, t: U.rand(0, 5), raider: true, rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
   };
 
+  // A HUGE raid on the village — a horde of bandits descends all at once.
+  enemies.summonVillageRaid = function (dayNum) {
+    const vp = W.world.villagePos; if (!vp) return;
+    const n = 18 + dayNum * 2;
+    for (let i = 0; i < n; i++) enemies.spawnRaider(dayNum, vp);
+    if (W.hud && W.hud.banner) W.hud.banner('⚔ HUGE BANDIT RAID!', 'A horde descends on the village — hold the line!', '#ff3a2a');
+  };
+
   // A roaming bandit patrol: a small armed group that prowls the wilds day & night.
   enemies.spawnPatrol = function (center, dayNum) {
     const a = U.rand(0, Math.PI * 2), r = U.rand(55, 90);
@@ -447,6 +455,10 @@
   }
 
   // Damage by mesh root (the local player's swing). Returns true if it died.
+  // Approx head height (above the enemy's feet) per kind — for headshots.
+  const HEAD_Y = { wolf: 0.85, werewolf: 2.4, zombie: 1.72, bandit: 2.62, outlaw: 1.86, bear: 1.2 };
+  enemies.headY = function (e) { return HEAD_Y[e && e.kind] || 1.7; };
+
   enemies.damage = function (rootGroup, amount, fromPos) {
     const e = enemies.list.find((x) => x.group === rootGroup);
     if (!e || !e.alive) return false;
@@ -597,6 +609,14 @@
     if (patrolBandits < (atVillage ? 10 : 6) && enemies.patrolTimer <= 0) {
       enemies.spawnPatrol(atVillage ? vp : center, dayNum);     // attack the village when you're defending it
       enemies.patrolTimer = atVillage ? U.rand(5, 11) : U.rand(16, 30);
+    }
+    // linger at the village a full day & night and the bandits muster a HUGE raid
+    const DAYLEN = (W.CONFIG && W.CONFIG.DAY_LENGTH) || 420;
+    if (atVillage) {
+      enemies._villageStay = (enemies._villageStay || 0) + dt;
+      if (enemies._villageStay >= DAYLEN) { enemies._villageStay = 0; enemies.summonVillageRaid(dayNum); }
+    } else {
+      enemies._villageStay = 0;                                 // leaving resets the buildup
     }
     // keep exactly one bandit boss prowling the map (respawns a while after death)
     if (!enemies.boss || !enemies.boss.alive) {

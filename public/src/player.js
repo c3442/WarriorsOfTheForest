@@ -429,13 +429,18 @@
     if (root.userData.type === 'enemy') {
       // can't strike a wolf through a tent wall (same cover rule as their bite)
       if (W.world.wallBetween(player.pos.x, player.pos.z, root.position.x, root.position.z)) return;
+      const e = W.enemies.list.find((x) => x.group === root);
+      const headY = root.position.y + (W.enemies.headY ? W.enemies.headY(e) : 1.7);
+      const head = Math.abs(hits[0].point.y - headY) < 0.45;          // struck the head
+      let dmg = player.attackDmg; if (head) dmg = Math.round(dmg * 2.2);
       if (W.net && W.net.role === 'client') {
-        W.net.sendHit(root.userData.id, player.attackDmg);  // host resolves the damage
+        W.net.sendHit(root.userData.id, dmg);  // host resolves the damage
       } else {
-        const killed = W.enemies.damage(root, player.attackDmg, player.pos);
+        const killed = W.enemies.damage(root, dmg, player.pos);
         if (killed) player.creditKill(root.userData.kind);
       }
-      player.popDamage(root.position, player.attackDmg);
+      player.popDamage(root.position, dmg, head);
+      if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
     } else if (root.userData.type === 'tree') {
       const dmg = 10 + player.axeLevel * 5;                 // sharper axe = bigger chips
       const wood = W.world.chopTree(root, dmg);
@@ -547,12 +552,14 @@
     const speed = 32 + c * 32;                         // fuller draw → faster, flatter arrow
     player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(speed), life: 0, pow: c });
   }
-  function applyArrow(root, pow) {
+  function applyArrow(root, pow, head) {
     const c = pow == null ? 1 : pow;
-    const dmg = Math.round(4 + c * 8) + (player.bowDmgBonus || 0);   // fuller draw hits harder
+    let dmg = Math.round(4 + c * 8) + (player.bowDmgBonus || 0);     // fuller draw hits harder
+    if (head) dmg = Math.round(dmg * 2.2);                           // headshot!
     if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
     else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
-    player.popDamage(root.position, dmg);
+    player.popDamage(root.position, dmg, head);
+    if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
   }
 
   // --- Floating damage numbers (Fortnite-style) -------------------------------
@@ -568,11 +575,11 @@
     spr.renderOrder = 998;
     return spr;
   }
-  player.popDamage = function (pos, amount) {
+  player.popDamage = function (pos, amount, head) {
     if (!player._dmgNums) player._dmgNums = [];
-    const big = amount >= 9;
-    const spr = makeDamageSprite(Math.round(amount), big ? '#ffd23a' : '#ffffff');
-    spr.position.set(pos.x + (Math.random() - 0.5) * 0.7, pos.y + 1.9, pos.z + (Math.random() - 0.5) * 0.7);
+    const big = head || amount >= 9;
+    const spr = makeDamageSprite(Math.round(amount), head ? '#ff5a5a' : (big ? '#ffd23a' : '#ffffff'));
+    spr.position.set(pos.x + (Math.random() - 0.5) * 0.7, pos.y + (head ? 2.4 : 1.9), pos.z + (Math.random() - 0.5) * 0.7);
     player.scene.add(spr);
     player._dmgNums.push({ spr, t: 0, vx: (Math.random() - 0.5) * 0.8, vy: 1.5, big });
   };
@@ -606,7 +613,11 @@
         if (!e.alive) continue;
         const ep = e.group.position;
         const hd = Math.hypot(a.mesh.position.x - ep.x, a.mesh.position.z - ep.z);
-        if (hd < 1.0 && a.mesh.position.y > ep.y - 0.2 && a.mesh.position.y < ep.y + 2.3) { applyArrow(e.group, a.pow); done = true; break; }
+        if (hd < 1.0 && a.mesh.position.y > ep.y - 0.2 && a.mesh.position.y < ep.y + 2.9) {
+          const headY = ep.y + (W.enemies.headY ? W.enemies.headY(e) : 1.7);
+          const head = Math.abs(a.mesh.position.y - headY) < 0.42;     // arrow struck the head
+          applyArrow(e.group, a.pow, head); done = true; break;
+        }
       }
       const groundY = W.world.heightAt(a.mesh.position.x, a.mesh.position.z);
       if (done || a.life > 3.5 || a.mesh.position.y < groundY - 0.1) {
