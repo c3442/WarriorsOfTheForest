@@ -23,6 +23,11 @@
   #minimap{position:fixed;left:16px;top:14px;width:150px;height:150px;border-radius:50%;
     border:2px solid rgba(130,170,95,.6);box-shadow:0 2px 12px rgba(0,0,0,.5);
     background:rgba(18,30,14,.35);z-index:4;pointer-events:none;}
+  #tpVillage{position:fixed;left:16px;top:172px;z-index:5;background:var(--panel);color:#e9e4d6;
+    border:2px solid #3c5a2c;border-radius:9px;padding:7px 12px;font:bold 13px 'Trebuchet MS',sans-serif;
+    cursor:pointer;letter-spacing:.5px;}
+  #tpVillage:hover{background:#3c7a2c;border-color:#8fd36a;color:#fff;}
+  #tpVillage:active{transform:scale(.95);}
 
   /* Stat bars */
   #stats{position:fixed;left:16px;bottom:16px;width:220px;display:flex;flex-direction:column;gap:7px;
@@ -184,6 +189,7 @@
 <div id="vignette"></div>
 <div id="flash"></div>
 <canvas id="minimap" width="150" height="150"></canvas>
+<button id="tpVillage" title="Teleport to the village (V)">🏹 Village</button>
 
 <div id="stats">
   <div class="bar" id="hp"><i></i><span>HEALTH</span></div>
@@ -341,16 +347,16 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.137.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="src/utils.js?v=53"></script>
-<script src="src/world.js?v=53"></script>
-<script src="src/player.js?v=53"></script>
-<script src="src/enemies.js?v=53"></script>
-<script src="src/critters.js?v=53"></script>
-<script src="src/net.js?v=53"></script>
-<script src="src/hud.js?v=53"></script>
-<script src="src/main.js?v=53"></script>
-<script src="src/mobile.js?v=53"></script>
-<script src="src/upgrades.js?v=53"></script>
-<script src="src/autoshoot.js?v=53"></script>
+<script src="src/utils.js?v=54"></script>
+<script src="src/world.js?v=54"></script>
+<script src="src/player.js?v=54"></script>
+<script src="src/enemies.js?v=54"></script>
+<script src="src/critters.js?v=54"></script>
+<script src="src/net.js?v=54"></script>
+<script src="src/hud.js?v=54"></script>
+<script src="src/main.js?v=54"></script>
+<script src="src/mobile.js?v=54"></script>
+<script src="src/upgrades.js?v=54"></script>
+<script src="src/autoshoot.js?v=54"></script>
 </body>
 </html>

@@ -51,6 +51,13 @@
     W.onDeath = onDeath;
     wireMenu();
 
+    // tappable "Village" teleport button (works on mobile + while paused)
+    const tpBtn = document.getElementById('tpVillage');
+    if (tpBtn) tpBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (started && W.player && W.player.teleportVillage) W.player.teleportVillage();
+    });
+
     // Pointer-capture drives play/pause: captured = playing, released (Esc) = paused.
     document.addEventListener('pointerlockchange', () => {
       if (!started || !W.player.alive) return;
