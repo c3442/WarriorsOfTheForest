@@ -105,8 +105,8 @@
         el.appendChild(sw);
       });
     };
-    const WOODS = [['#7a4a24', 0x7a4a24], ['#5a3a22', 0x5a3a22], ['#b5853f', 0xb5853f], ['#e5352b', 0xe5352b], ['#3a6fd0', 0x3a6fd0], ['#4e9c3a', 0x4e9c3a], ['#9b4dca', 0x9b4dca], ['#202428', 0x202428], ['#f2f2f2', 0xf2f2f2]];
-    const SHAFTS = [['#e6c54a', 0xe6c54a], ['#f2f2f2', 0xf2f2f2], ['#e5352b', 0xe5352b], ['#25cdd6', 0x25cdd6], ['#9b4dca', 0x9b4dca], ['#4e9c3a', 0x4e9c3a], ['#3a6fd0', 0x3a6fd0], ['#ff8c1a', 0xff8c1a], ['#202428', 0x202428]];
+    const WOODS = [['#7a4a24', 0x7a4a24], ['#5a3a22', 0x5a3a22], ['#b5853f', 0xb5853f], ['#e5352b', 0xe5352b], ['#3a6fd0', 0x3a6fd0], ['#4e9c3a', 0x4e9c3a], ['#9b4dca', 0x9b4dca], ['#f266b0', 0xf266b0], ['#202428', 0x202428], ['#f2f2f2', 0xf2f2f2]];
+    const SHAFTS = [['#e6c54a', 0xe6c54a], ['#f2f2f2', 0xf2f2f2], ['#e5352b', 0xe5352b], ['#25cdd6', 0x25cdd6], ['#9b4dca', 0x9b4dca], ['#4e9c3a', 0x4e9c3a], ['#3a6fd0', 0x3a6fd0], ['#f266b0', 0xf266b0], ['#ff8c1a', 0xff8c1a], ['#202428', 0x202428]];
     mkPick('bowPick', WOODS, W.player.bowColor, (h) => { W.player.bowColor = h; });
     mkPick('arrowPick', SHAFTS, W.player.arrowColor, (h) => { W.player.arrowColor = h; });
 

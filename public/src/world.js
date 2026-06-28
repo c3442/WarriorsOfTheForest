@@ -999,7 +999,7 @@
     const wall = new THREE.MeshStandardMaterial({ color: palette[U.randInt(0, palette.length - 1)], roughness: 1, flatShading: true });
     const roofMat = new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0x7a3b2a : 0x5a4030, roughness: 1, flatShading: true });
     const Wd = U.rand(3.8, 5.2), Dp = U.rand(3.8, 5.2), H = U.rand(2.6, 3.2);
-    const hw = Wd / 2, hd = Dp / 2, TH = 0.16, doorHalf = 0.72, DOOR_H = 2.0;
+    const hw = Wd / 2, hd = Dp / 2, TH = 0.16, doorHalf = 0.95, DOOR_H = 2.0;
 
     const floor = new THREE.Mesh(new THREE.BoxGeometry(Wd, 0.1, Dp), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 }));
     floor.position.y = 0.05; floor.receiveShadow = true; g.add(floor);
@@ -1066,6 +1066,40 @@
 
     // a campfire just off the plaza makes the village a rest-stop haven
     world.placeCampfire(vx + 3.2, vz + 3.2);
+
+    buildVillagers(scene, vx, vz);                 // townsfolk milling about
+  }
+
+  // A simple villager NPC (varied clothes/skin/hair) that wanders the plaza.
+  const VILLAGER_TOPS = [0x8a4a4a, 0x4a6a8a, 0x5f8a4a, 0x8a7a4a, 0x7a5a8a, 0xb5853f, 0xb0b0b8, 0x9a5a8a];
+  const SKINS = [0xe2b48c, 0xc9966a, 0x8a5a3a, 0xf0c9a0];
+  const HAIRS = [0x2a1c10, 0x5a3a1a, 0x8a8a90, 0x3a2a16, 0xc0a050];
+  function makeVillager() {
+    const g = new THREE.Group();
+    const top = new THREE.MeshStandardMaterial({ color: VILLAGER_TOPS[U.randInt(0, VILLAGER_TOPS.length - 1)], roughness: 1, flatShading: true });
+    const pants = new THREE.MeshStandardMaterial({ color: U.chance(0.5) ? 0x3a3528 : 0x46362a, roughness: 1, flatShading: true });
+    const skin = new THREE.MeshStandardMaterial({ color: SKINS[U.randInt(0, SKINS.length - 1)], roughness: 1 });
+    const hair = new THREE.MeshStandardMaterial({ color: HAIRS[U.randInt(0, HAIRS.length - 1)], roughness: 1, flatShading: true });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.66, 0.28), top); torso.position.y = 1.02; torso.castShadow = true; g.add(torso);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), skin); head.position.y = 1.55; head.castShadow = true; g.add(head);
+    const hairM = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.36), hair); hairM.position.y = 1.66; g.add(hairM);
+    const legs = [];
+    for (const sx of [-0.12, 0.12]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.66, 0.16), pants); leg.position.set(sx, 0.33, 0); leg.castShadow = true; g.add(leg); legs.push(leg); }
+    for (const sx of [-0.3, 0.3]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.56, 0.13), top); arm.position.set(sx, 1.02, 0); g.add(arm); legs.push(arm); }
+    g.userData = { type: 'villager', legs };
+    return g;
+  }
+  function buildVillagers(scene, vx, vz) {
+    world.villagers = [];
+    const n = U.randInt(9, 13);
+    for (let i = 0; i < n; i++) {
+      const a = U.rand(0, Math.PI * 2), r = U.rand(2, 13);
+      const x = vx + Math.cos(a) * r, z = vz + Math.sin(a) * r;
+      const v = makeVillager();
+      v.position.set(x, world.heightAt(x, z), z); v.rotation.y = U.rand(0, 6.28);
+      scene.add(v);
+      world.villagers.push({ group: v, hx: vx, hz: vz, heading: U.rand(0, 6.28), t: U.rand(0, 6), next: 0, moving: U.chance(0.6), legs: v.userData.legs });
+    }
   }
 
   // --- Bandit outposts: fortified camps, guarded by bandits -------------------
@@ -2024,6 +2058,27 @@
         b.rotation.y = tt * u.sp + u.ph;
         const flap = Math.sin(tt * 14 + u.ph) * 1.1;
         u.wings[0].rotation.y = flap; u.wings[1].rotation.y = -flap;
+      }
+    }
+
+    // villagers stroll around the plaza
+    if (world.villagers) {
+      for (const vv of world.villagers) {
+        vv.t += dt;
+        const g = vv.group;
+        if (vv.t > vv.next) { vv.next = vv.t + U.rand(2, 5); vv.heading = U.rand(0, Math.PI * 2); vv.moving = U.chance(0.7); }
+        if (vv.moving) {
+          const nx = g.position.x + Math.sin(vv.heading) * 1.15 * dt;
+          const nz = g.position.z + Math.cos(vv.heading) * 1.15 * dt;
+          if (U.dist2(nx, nz, vv.hx, vv.hz) > 14) vv.heading += Math.PI;   // turn back toward the plaza
+          else { g.position.x = nx; g.position.z = nz; g.rotation.y = vv.heading; }
+          const sw = Math.sin(vv.t * 8) * 0.5;
+          vv.legs[0].rotation.x = sw; vv.legs[3].rotation.x = sw;
+          vv.legs[1].rotation.x = -sw; vv.legs[2].rotation.x = -sw;
+        } else {
+          for (const l of vv.legs) l.rotation.x *= 0.85;
+        }
+        g.position.y = world.heightAt(g.position.x, g.position.z);
       }
     }
 

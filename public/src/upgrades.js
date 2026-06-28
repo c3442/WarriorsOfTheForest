@@ -16,12 +16,14 @@
     pack: { name: 'Big Pack', emoji: '🎒', max: 4, cost: (l) => 18 + l * 12, blurb: '+3 berry & water' },
     sharp: { name: 'Sharp Arrows', emoji: '🏹', max: 6, cost: (l) => 14 + l * 9, blurb: '+2 arrow damage' },
     foxfight: { name: 'Fox Fighters', emoji: '🦊', max: 5, cost: (l) => 25 + l * 18, blurb: 'tamed foxes maul harder & faster' },
+    aura: { name: 'Ember Aura', emoji: '🔥', max: 5, cost: (l) => 30 + l * 20, blurb: 'burns foes that get near you' },
   };
-  const ORDER = ['vitality', 'swift', 'tough', 'pack', 'sharp', 'foxfight'];   // 1..6, turret = 7
+  const ORDER = ['vitality', 'swift', 'tough', 'pack', 'sharp', 'foxfight', 'aura'];   // 1..7, turret = 8
 
   function ensure() {
     const p = P(); if (!p) return null;
-    if (!p.up) { p.up = { vitality: 0, swift: 0, tough: 0, pack: 0, sharp: 0, foxfight: 0 }; }
+    if (!p.up) { p.up = { vitality: 0, swift: 0, tough: 0, pack: 0, sharp: 0, foxfight: 0, aura: 0 }; }
+    if (p.up.aura == null) p.up.aura = 0;
     return p;
   }
 
@@ -82,6 +84,7 @@
 
   // a quick fading tracer line from a -> b
   const tracers = [];
+  let auraRing = null;   // glowing Ember Aura ring under the player
   function tracer(ax, ay, az, bx, by, bz, color) {
     const dir = new THREE.Vector3(bx - ax, by - ay, bz - az); const len = dir.length();
     const m = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, len, 4),
@@ -140,6 +143,33 @@
           }
         }
       }
+      // Ember Aura: burns foes that get near you (scales with level)
+      const alvl = (p.up && p.up.aura) || 0;
+      if (alvl > 0) {
+        const arange = 3.2 + alvl * 0.6;
+        if (!auraRing) {
+          auraRing = new THREE.Mesh(new THREE.RingGeometry(0.78, 1.0, 32),
+            new THREE.MeshBasicMaterial({ color: 0xff5a16, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false, fog: false }));
+          auraRing.rotation.x = -Math.PI / 2; auraRing.renderOrder = 1; W.world.scene.add(auraRing);
+        }
+        auraRing.visible = true;
+        auraRing.position.set(p.pos.x, W.world.heightAt(p.pos.x, p.pos.z) + 0.06, p.pos.z);
+        auraRing.scale.setScalar(arange);
+        auraRing.material.opacity = 0.26 + Math.sin(p._t * 6) * 0.08;
+        p._auraT = (p._auraT || 0) - dt;
+        if (p._auraT <= 0) {
+          p._auraT = 0.5;                        // burns every half-second
+          const admg = 2 + alvl * 2;             // Lv1=4 … Lv5=12 per tick
+          for (const e of foes) {
+            if (!e.alive) continue;
+            if (Math.hypot(e.group.position.x - p.pos.x, e.group.position.z - p.pos.z) < arange) {
+              const killed = W.enemies.damage(e.group, admg, { x: p.pos.x, z: p.pos.z });
+              if (p.popDamage) p.popDamage(e.group.position, admg);
+              if (killed && p.creditKill) p.creditKill(e.kind);
+            }
+          }
+        }
+      } else if (auraRing) { auraRing.visible = false; }
     }
     // fade tracers
     for (let i = tracers.length - 1; i >= 0; i--) {
@@ -184,7 +214,7 @@
         '<span class="un">' + def.name + '<small>' + def.blurb + '</small></span>' +
         '<span class="ulv">Lv ' + lvl + '/' + def.max + '</span><span class="uc">' + cost + '</span></div>';
     });
-    html += '<div class="urow" data-key="turret"><span class="uk">7</span><span class="ue">🗼</span>' +
+    html += '<div class="urow" data-key="turret"><span class="uk">8</span><span class="ue">🗼</span>' +
       '<span class="un">Arrow Turret<small>auto-fires at foes nearby</small></span><span class="uc">40 wood</span></div>';
     html += '<div class="uhint">press a number (or tap) to buy &nbsp;·&nbsp; <b>O</b> to close</div>';
     return html;
@@ -208,9 +238,9 @@
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyO') { toggle(); return; }
-    if (open && /^Digit[1-7]$/.test(e.code)) {
+    if (open && /^Digit[1-8]$/.test(e.code)) {
       const n = +e.code.slice(5);
-      if (n === 7) buyTurret(); else buy(ORDER[n - 1]);
+      if (n === 8) buyTurret(); else buy(ORDER[n - 1]);
     }
   });
 

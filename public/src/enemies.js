@@ -348,18 +348,37 @@
   };
 
   // A raider that storms the home camp (day 8+ nightly raids).
-  enemies.spawnRaider = function (dayNum) {
-    const cp = W.world.campPos || { x: 0, z: 0 };
+  enemies.spawnRaider = function (dayNum, target) {
+    const cp = target || W.world.campPos || { x: 0, z: 0 };
     const a = U.rand(0, Math.PI * 2), r = U.rand(16, 30);
     const x = cp.x + Math.cos(a) * r, z = cp.z + Math.sin(a) * r;
     const g = buildModel('outlaw');
     const rifle = U.chance(0.35);
     if (rifle) giveRifle(g); else giveSword(g);
-    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a + Math.PI;   // face the camp
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a + Math.PI;   // face the target
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
     enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 12 + dayNum, speed: 3.2,
       dmg: rifle ? 9 : 13, lastAttack: -99, t: U.rand(0, 5), raider: true, rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
+  };
+
+  // A roaming bandit patrol: a small armed group that prowls the wilds day & night.
+  enemies.spawnPatrol = function (center, dayNum) {
+    const a = U.rand(0, Math.PI * 2), r = U.rand(55, 90);
+    const bx = center.x + Math.cos(a) * r, bz = center.z + Math.sin(a) * r;
+    if (!farFromCamp(bx, bz)) return;                       // not right on the home camp
+    const n = U.randInt(2, 4);
+    for (let i = 0; i < n; i++) {
+      const ox = bx + U.rand(-4, 4), oz = bz + U.rand(-4, 4);
+      const g = buildModel('outlaw');
+      const rifle = U.chance(0.4);
+      if (rifle) giveRifle(g); else giveSword(g);
+      g.position.set(ox, W.world.heightAt(ox, oz), oz); g.rotation.y = U.rand(0, 6.28);
+      enemies.scene.add(g);
+      const id = _nextId++; g.userData.id = id;
+      enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 11 + dayNum, speed: 3.1,
+        dmg: rifle ? 8 : 12, lastAttack: -99, t: U.rand(0, 5), patrol: true, rifle, sword: !rifle, shootCD: U.rand(1.5, 3) });
+    }
   };
 
   // An outlaw that defends a bandit outpost (spawns when you get close).
@@ -566,8 +585,16 @@
     if (dayNum >= 8 && isNight && enemies._lastRaidDay !== dayNum) {
       enemies._lastRaidDay = dayNum;
       const wave = 3 + Math.floor((dayNum - 8) / 2);
-      for (let i = 0; i < wave; i++) enemies.spawnRaider(dayNum);
-      if (W.hud && W.hud.banner) W.hud.banner('⚔ BANDIT RAID', 'Bandits are storming the camp — defend it!', '#ff6a4a');
+      for (let i = 0; i < wave; i++) enemies.spawnRaider(dayNum, W.world.campPos);          // raid the home camp
+      if (W.world.villagePos) for (let i = 0; i < wave; i++) enemies.spawnRaider(dayNum, W.world.villagePos); // and the village (archers defend it)
+      if (W.hud && W.hud.banner) W.hud.banner('⚔ BANDIT RAID', 'Bandits are storming the camp & village!', '#ff6a4a');
+    }
+    // roaming bandit patrols prowl the wilds, day & night
+    enemies.patrolTimer = (enemies.patrolTimer || 0) - dt;
+    const patrolBandits = enemies.list.filter((e) => e.kind === 'outlaw' && e.patrol && e.alive).length;
+    if (patrolBandits < 6 && enemies.patrolTimer <= 0) {
+      enemies.spawnPatrol(center, dayNum);
+      enemies.patrolTimer = U.rand(16, 30);
     }
     // keep exactly one bandit boss prowling the map (respawns a while after death)
     if (!enemies.boss || !enemies.boss.alive) {

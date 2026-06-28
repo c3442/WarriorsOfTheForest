@@ -71,6 +71,7 @@
       if (e.code === 'KeyU') player.plant();
       if (e.code === 'KeyM') player.toggleMount();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
+      if (e.code === 'KeyV') player.teleportVillage();
       if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
       if (e.code === 'KeyI') player.toggleInventory();
       if (e.code === 'KeyC') {
@@ -613,6 +614,18 @@
       }
     }
   }
+
+  // Teleport to the village (press V) — handy for visiting the archers & houses.
+  player.teleportVillage = function () {
+    const vp = W.world.villagePos;
+    if (!vp) { if (W.hud && W.hud.toast) W.hud.toast('No village on this map'); return; }
+    const gx = vp.x, gz = vp.z + 15;                          // arrive just outside the plaza
+    if (player._mount) player.toggleMount && player.toggleMount();
+    player.pos.set(gx, W.world.heightAt(gx, gz) + C.EYE_HEIGHT, gz);
+    player.vy = 0; player.grounded = true;
+    if (W.hud && W.hud.toast) W.hud.toast('🏹 Teleported to the village');
+    if (W.hud && W.hud.banner) W.hud.banner('THE VILLAGE', 'Guarded by archers', '#cfe8b6');
+  };
 
   // Reward for a kill (used locally, and by net for remote-credited kills).
   player.creditKill = function (kind) {
