@@ -1306,6 +1306,18 @@
     return false;
   };
 
+  // Crafting is only allowed near a workbench, a village house, or a hotel.
+  world.canCraftHere = function (pos) {
+    if (world.nearCraftTable(pos, 3.6)) return true;
+    for (const list of [world.hotelZones, world.bedZones]) {
+      if (!list) continue;
+      for (const z of list) {
+        if (U.dist2(pos.x, pos.z, z.x, z.z) < z.r + 1.5) return true;
+      }
+    }
+    return false;
+  };
+
   // --- Stuffies: enemies that get inside a tent smash them ---------------------
   world.intactStuffies = function () { return world.stuffies.reduce((n, s) => n + (s.alive ? 1 : 0), 0); };
 
@@ -1398,7 +1410,7 @@
       vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: 'uniform vec3 top; uniform vec3 bottom; uniform float exponent; varying vec3 vP; void main(){ float h = max(normalize(vP).y, 0.0); gl_FragColor = vec4(mix(bottom, top, pow(h, exponent)), 1.0); }',
     });
-    world.skyDome = new THREE.Mesh(new THREE.SphereGeometry(3000, 24, 16), mat);
+    world.skyDome = new THREE.Mesh(new THREE.SphereGeometry(700, 24, 16), mat);   // follows the player; small enough for a tight far plane
     world.skyDome.renderOrder = -1;
     scene.add(world.skyDome);
   }

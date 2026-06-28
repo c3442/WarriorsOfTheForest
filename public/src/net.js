@@ -212,6 +212,20 @@
   };
   net.sendRevive = function () { for (const c of net._conns) { if (c.open) c.send({ t: 'revive' }); } };
 
+  // Nearest living teammate's position (a ghost flies to one to revive).
+  net.nearestTeammate = function (pos) {
+    let best = null, bd = 1e9;
+    for (const id in net.remote) {
+      const r = net.remote[id];
+      if (!r.pose || r.pose.ghost) continue;            // can't revive on another ghost
+      const d = Math.hypot(r.pose.x - pos.x, r.pose.z - pos.z);
+      if (d < bd) { bd = d; best = { x: r.pose.x, z: r.pose.z }; }
+    }
+    return best;
+  };
+  // Ghost state rides along in the pose each tick; this is just a courtesy hook.
+  net.sendGhost = function () {};
+
   // True when every connected teammate is asleep (so the host can skip the night).
   net.allRemoteSleeping = function () {
     for (const c of net._conns) {
@@ -243,12 +257,12 @@
     net._acc = 0;
     if (net.role === 'host') {
       net.time = timeOfDay; net.day = day; // keep current so late joiners sync via init
-      const players = { host: Object.assign({ name: net.myName, skin: W.player.skin, down: !!W.player.downed, asleep: W.player.sleepReady() }, pose) };
+      const players = { host: Object.assign({ name: net.myName, skin: W.player.skin, down: !!W.player.downed, ghost: !!W.player.ghost, asleep: W.player.sleepReady() }, pose) };
       const snap = { t: 'snap', time: timeOfDay, day, e: W.enemies.serialize(), p: players };
       for (const conn of net._conns) { if (conn.open) conn.send(snap); }
     } else if (net.role === 'client') {
       const conn = net._conns[0];
-      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, skin: W.player.skin, down: !!W.player.downed, asleep: W.player.sleepReady() });
+      if (conn && conn.open) conn.send({ t: 'pose', x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw, name: net.myName, skin: W.player.skin, down: !!W.player.downed, ghost: !!W.player.ghost, asleep: W.player.sleepReady() });
     }
   };
 

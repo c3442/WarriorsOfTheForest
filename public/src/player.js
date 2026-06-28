@@ -7,7 +7,7 @@
   const player = {
     active: false,
     alive: true,
-    downed: false, bleedT: 0, bandaids: 0,
+    downed: false, bleedT: 0, bandaids: 0, ghost: false, ghostT: 0,
     sleeping: false, sleepT: 0, hugStuffie: null,
     building: null, invOpen: false,
     sitting: false, _seat: null, _seatHint: false,
@@ -76,6 +76,9 @@
       if (e.code === 'KeyI') player.toggleInventory();
       if (e.code === 'KeyC') {
         if (player.building) { player.cancelBuild(); return; }   // C also cancels a pending build
+        if (!player.craftOpen && !W.world.canCraftHere(player.pos)) {
+          W.hud.toast('Craft near a workbench, village house or hotel 🛠️'); return;
+        }
         player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft();
       }
       if (player.craftOpen) {
@@ -374,7 +377,7 @@
   // Press/release routing: the bow draws on hold & looses on release; everything
   // else swings/fires immediately on press.
   player.pressAttack = function () {
-    if (!player.alive || !player.active) return;
+    if (!player.alive || !player.active || player.ghost) return;   // ghosts can't attack
     if (player.currentWeapon === 'bow') player.startDraw();
     else player.attack();
   };
@@ -839,9 +842,9 @@
 
   player.craft = function (id) {
     if (!player.alive || !player.active) return;
-    // most recipes need a workbench nearby; base structures don't (build a camp anywhere)
-    if (!NO_TABLE_NEEDED[id] && !W.world.nearCraftTable(player.pos, 3.6)) {
-      W.hud.toast('Stand by a crafting table 🛠️');
+    // most recipes need a crafting spot (workbench / village house / hotel); base structures don't
+    if (!NO_TABLE_NEEDED[id] && !W.world.canCraftHere(player.pos)) {
+      W.hud.toast('Craft near a workbench, house or hotel 🛠️');
       return;
     }
     const pay = (c) => {
@@ -1058,7 +1061,7 @@
   };
 
   player.takeDamage = function (amount) {
-    if (!player.alive || player.downed) return;
+    if (!player.alive || player.downed || player.ghost) return;   // ghosts are invulnerable
     if (player.sleeping) player.wake(true);     // a hit jolts you awake
     amount *= player.armor;          // wooden armor reduces incoming damage
     player.health -= amount;
@@ -1067,9 +1070,8 @@
     if (player.health <= 0) {
       player.health = 0;
       if (W.net && W.net.role) {
-        // co-op: go DOWN instead of dying — a teammate can revive you
-        player.downed = true; player.bleedT = 0; player.active = false;
-        W.hud.banner('YOU ARE DOWN', 'Hold on — a teammate can revive you 🩹', '#ff7b7b');
+        // co-op: turn into a ghost — reach a teammate within 15s to revive
+        player.enterGhost();
       } else {
         player.alive = false;
         W.onDeath && W.onDeath();
@@ -1077,12 +1079,69 @@
     }
   };
 
+  // --- Ghost form (co-op death): float to a teammate within 15s to revive ----
+  const GHOST_TIME = 15;
+  player.enterGhost = function () {
+    player.ghost = true; player.ghostT = 0; player.health = 0; player.active = true;
+    if (W.net && W.net.sendGhost) W.net.sendGhost(true);
+    showGhostHud(true);
+    W.hud.banner('YOU DIED 👻', 'Ghost form — touch a teammate within 15s to revive!', '#bcd4ff');
+  };
+  player.reviveGhost = function () {
+    player.ghost = false; player.ghostT = 0; player.health = 50; player.alive = true; player.active = true;
+    if (W.net && W.net.sendGhost) W.net.sendGhost(false);
+    showGhostHud(false);
+    W.hud.banner('REVIVED! 👻➡️🧍', 'A teammate brought you back', '#8fd36a');
+  };
+  let ghostHud = null;
+  function showGhostHud(show) {
+    if (!ghostHud && show) {
+      ghostHud = document.createElement('div');
+      ghostHud.style.cssText = 'position:fixed;inset:0;z-index:8;pointer-events:none;display:flex;flex-direction:column;'
+        + 'align-items:center;justify-content:flex-start;padding-top:18%;text-align:center;'
+        + 'background:radial-gradient(circle at 50% 45%,rgba(120,160,220,.10),rgba(20,30,60,.45));'
+        + "font-family:'Trebuchet MS',sans-serif;text-shadow:0 2px 10px #000;";
+      ghostHud.innerHTML = '<div style="font-size:34px;font-weight:bold;letter-spacing:2px;color:#cfe0ff">👻 GHOST FORM</div>'
+        + '<div style="font-size:15px;color:#aac4ee;margin-top:4px">Reach a teammate to revive</div>'
+        + '<div class="gc" style="font-size:60px;font-weight:bold;color:#fff;margin-top:6px">15</div>';
+      document.body.appendChild(ghostHud);
+    }
+    if (ghostHud) ghostHud.style.display = show ? 'flex' : 'none';
+  }
+  function updateGhost(dt) {
+    player.ghostT += dt;
+    const k = player.keys;
+    // free-fly movement (no collisions), look with arrows + mouse as usual
+    if (k.ArrowLeft) player.yaw += 2.0 * dt;
+    if (k.ArrowRight) player.yaw -= 2.0 * dt;
+    if (k.ArrowUp) player.pitch = U.clamp(player.pitch + 2.0 * dt, -1.45, 1.45);
+    if (k.ArrowDown) player.pitch = U.clamp(player.pitch - 2.0 * dt, -1.45, 1.45);
+    let fwd = (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0);
+    let str = (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0);
+    const len = Math.hypot(fwd, str) || 1; fwd /= len; str /= len;
+    const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw), sp = 8.5;   // glide a bit faster
+    player.pos.x += ((-sin) * fwd + cos * str) * sp * dt;
+    player.pos.z += ((-cos) * fwd + (-sin) * str) * sp * dt;
+    const fly = W.world.heightAt(player.pos.x, player.pos.z) + C.EYE_HEIGHT + 0.7;
+    player.pos.y += (fly - player.pos.y) * Math.min(1, dt * 4);
+    player.camera.position.copy(player.pos);
+    player.camera.rotation.y = player.yaw; player.camera.rotation.x = player.pitch;
+    // countdown HUD
+    const remain = Math.max(0, GHOST_TIME - player.ghostT);
+    if (ghostHud) { const gc = ghostHud.querySelector('.gc'); if (gc) gc.textContent = Math.ceil(remain); }
+    // reach a teammate → revive
+    const tm = W.net && W.net.nearestTeammate && W.net.nearestTeammate(player.pos);
+    if (tm && Math.hypot(tm.x - player.pos.x, tm.z - player.pos.z) < 2.8) { player.reviveGhost(); return; }
+    if (player.ghostT >= GHOST_TIME) { player.ghost = false; showGhostHud(false); player.alive = false; W.onDeath && W.onDeath(); }
+  }
+
   player.update = function (dt) {
     player._t += dt;
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
     if (player._dmgNums && player._dmgNums.length) updateDamageNums(dt);
     if (player._treeBars && player._treeBars.length) updateTreeBars();
     if (!player.alive) return;
+    if (player.ghost) { updateGhost(dt); return; }
     if (player.downed) {
       player.bleedT += dt;
       player.camera.position.copy(player.pos); player.camera.position.y -= 0.95;
@@ -1327,7 +1386,7 @@
 
   player.reset = function () {
     Object.assign(player, {
-      alive: true, downed: false, bleedT: 0, bandaids: 0,
+      alive: true, downed: false, bleedT: 0, bandaids: 0, ghost: false, ghostT: 0,
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
       sitting: false, _seat: null, _seatHint: false,
       hasShotgun: false, shells: 0, hasBow: true, saplings: 0,

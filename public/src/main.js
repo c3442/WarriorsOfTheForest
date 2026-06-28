@@ -11,7 +11,7 @@
   function init() {
     const app = document.getElementById('app');
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));   // cap resolution to ease the GPU
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));   // sharper (the tight far plane buys back the GPU budget)
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -30,7 +30,7 @@
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color('#0a1230');
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 6500);
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 760);   // tight far plane: cull fully-fogged distant geometry
     scene.add(camera);
 
     // post-processing: a soft bloom on bright areas
@@ -42,8 +42,8 @@
     composer.addPass(bloom);
     // The composer bypasses the renderer's MSAA, so multisample its targets to smooth edges.
     if (composer.renderTarget1 && 'samples' in composer.renderTarget1) {
-      composer.renderTarget1.samples = 2;   // lighter MSAA (was 4)
-      composer.renderTarget2.samples = 2;
+      composer.renderTarget1.samples = 4;   // crisp edges (less pixely)
+      composer.renderTarget2.samples = 4;
     }
 
     W.hud.init();
