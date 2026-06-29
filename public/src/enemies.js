@@ -510,6 +510,7 @@
   const A_FWD = new THREE.Vector3(0, 0, -1);
   enemies.archers = [];
   enemies.archerArrows = [];
+  enemies.sniper = null;
 
   function makeArcher() {
     const g = new THREE.Group();
@@ -525,6 +526,43 @@
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.14), cloth); arm.position.set(0.3, 1.2, 0.12); g.add(arm);
     g.userData = { type: 'archer' };
     return g;
+  }
+
+  function makeSniper() {
+    const g = new THREE.Group();
+    const cloth = new THREE.MeshStandardMaterial({ color: 0x355a8a, roughness: 1, flatShading: true });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
+    const metal = new THREE.MeshStandardMaterial({ color: 0x3a3e44, roughness: 0.5, metalness: 0.4, flatShading: true });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.36), cloth); body.position.y = 0.5; body.castShadow = true; g.add(body);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), skin); head.position.set(0, 0.94, 0.05); head.castShadow = true; g.add(head);
+    const helm = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.14, 0.42), new THREE.MeshStandardMaterial({ color: 0x2a4a30, roughness: 1, flatShading: true })); helm.position.set(0, 1.1, 0.02); g.add(helm);
+    const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 1.5), metal); rifle.position.set(0.17, 0.78, 0.55); g.add(rifle);     // long barrel points +Z (forward)
+    const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.2, 6), metal); scope.rotation.z = Math.PI / 2; scope.position.set(0.17, 0.9, 0.28); g.add(scope);
+    g.userData = { type: 'sniper' };
+    return g;
+  }
+
+  enemies.spawnVillageSniper = function () {
+    const rp = W.world.villageRoof; if (!rp || !enemies.scene) return;
+    const g = makeSniper();
+    g.position.set(rp.x, rp.y, rp.z);
+    enemies.scene.add(g);
+    enemies.sniper = { group: g, x: rp.x, y: rp.y, z: rp.z, hp: 80, maxHp: 80, cd: U.rand(0, 0.6), alive: true };
+    enemies._sniperSpawned = true;
+  };
+
+  function sniperShoot(sn, target) {
+    const sy = sn.y + 0.8;
+    const tp = target.group.position;
+    const dir = new THREE.Vector3(tp.x - sn.x, (tp.y + 1.0) - sy, tp.z - sn.z).normalize();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.0, 5),
+      new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffaa22, emissiveIntensity: 0.7, roughness: 0.5 }));
+    shaft.rotation.x = Math.PI / 2;
+    const arrow = new THREE.Group(); arrow.add(shaft);
+    arrow.position.set(sn.x, sy, sn.z);
+    arrow.quaternion.setFromUnitVectors(A_FWD, dir.clone());
+    enemies.scene.add(arrow);
+    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(120), life: 0, dmg: 32 });   // sniper round: very fast, very flat, big hit
   }
 
   enemies.spawnVillageArchers = function () {
@@ -555,7 +593,32 @@
 
   function updateArchers(dt) {
     if (!enemies._archersSpawned && W.world.villagePos) enemies.spawnVillageArchers();
+    if (!enemies._sniperSpawned && W.world.villageRoof) enemies.spawnVillageSniper();
     const host = !(W.net && W.net.role === 'client');
+    // Rooftop sniper: picks off any foe at long range and fires fast — until it's overwhelmed and killed.
+    const sn = enemies.sniper;
+    if (sn && sn.alive) {
+      sn.cd -= dt;
+      let sbest = null, sbd = 95 * 95, swarm = 0;
+      for (const e of enemies.list) {
+        if (!e.alive) continue;
+        const dx = e.group.position.x - sn.x, dz = e.group.position.z - sn.z, d = dx * dx + dz * dz;
+        if (d < sbd) { sbd = d; sbest = e; }
+        if (d < 5.5 * 5.5) swarm += (e.dmg || 6);          // foes swarming the base chip the sniper's HP
+      }
+      if (sbest) {
+        sn.group.rotation.y = Math.atan2(sbest.group.position.x - sn.x, sbest.group.position.z - sn.z);
+        if (sn.cd <= 0) { sn.cd = U.rand(0.55, 0.9); sniperShoot(sn, sbest); }
+      }
+      if (swarm > 0) {
+        sn.hp -= swarm * 0.6 * dt;
+        if (sn.hp <= 0) {
+          sn.alive = false; sn.hp = 0;
+          sn.group.rotation.z = Math.PI / 2; sn.group.position.y -= 0.5;   // topples off the roof
+          if (W.hud && W.hud.toast) W.hud.toast('💀 The village sniper has fallen!');
+        }
+      }
+    }
     for (const ar of enemies.archers) {
       ar.cd -= dt;
       let best = null, bd = 58 * 58;                   // spot foes from further off
