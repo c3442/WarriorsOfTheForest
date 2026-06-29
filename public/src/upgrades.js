@@ -231,7 +231,14 @@
 
   let open = false;
   function toggle(show) {
-    open = (show == null) ? !open : show;
+    const wantOpen = (show == null) ? !open : show;
+    if (wantOpen && !open) {                          // only open near a workbench / house / hotel
+      const p = P();
+      if (p && W.world.canCraftHere && !W.world.canCraftHere(p.pos)) {
+        W.hud.toast('Upgrade near a workbench, house or hotel ⚙️'); return;
+      }
+    }
+    open = wantOpen;
     if (open) { if (P()) { P().craftOpen = false; W.hud.toggleCraft && W.hud.toggleCraft(false); } panel.innerHTML = rows(); wire(); }
     panel.classList.toggle('hidden', !open);
   }

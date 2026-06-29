@@ -1049,6 +1049,7 @@
       const ry = Math.atan2(vx - hx, vz - hz);   // door (+Z) faces the plaza
       h.rotation.y = ry;
       scene.add(h);
+      if (i === 0) world.villageRoof = { x: hx, z: hz, y: hy + 3.4 };   // rooftop sniper post
       const cs = Math.cos(ry), sn = Math.sin(ry);
       for (const lp of h.userData.wallCols) {     // hollow walls, doorway left open
         world.colliders.push({ x: hx + lp.x * cs + lp.z * sn, z: hz - lp.x * sn + lp.z * cs, r: h.userData.wallR, ref: h });
