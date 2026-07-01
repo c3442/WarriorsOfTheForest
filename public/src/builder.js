@@ -26,6 +26,7 @@
   const textures = [];           // dataURLs of uploaded pixel art (parallel to tex palette entries)
   const presetMats = {};         // id -> material for built-in (URL-loaded) textures
   const presetShape = {};        // id -> 3D shape name ('box'|'cylinder'|'rod'|'slab'|'sphere'|'prop')
+  const presetModel = {};        // id -> { make:()=>Object3D, h:number } for real built 3D models
   const blocks = new Map();      // "cx,cy,cz" -> { mesh, plat, desc }
   const ray = new THREE.Raycaster(); ray.far = REACH;
   const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
@@ -93,6 +94,35 @@
     return GEO;
   }
 
+  // Register a real built 3D model (a factory returning an Object3D whose base sits
+  // at y=0). Placing this preset spawns the model instead of a textured primitive.
+  function addModelPreset(id, url, makeFn, h) {
+    presetModel[id] = { make: makeFn, h: h || 1 };
+    if (!palette.some((p) => p.kind === 'preset' && p.id === id)) palette.push({ kind: 'preset', id, url, model: true });
+    blocks.forEach((b, key) => { if (b.desc === 'p:' + id) rebuildBlock(key); });   // upgrade any restored placeholders to the model
+    refreshBar();
+  }
+
+  // Build the Object3D for a block descriptor. Model presets -> the built model
+  // (base at cell floor); everything else -> a textured 1x1 primitive (centered).
+  function buildNode(desc, cx, cy, cz) {
+    if (desc[0] === 'p') {
+      const id = desc.slice(2), pm = presetModel[id];
+      if (pm) { const n = pm.make(); n.position.set(cx + 0.5, cy, cz + 0.5); n.userData.cell = [cx, cy, cz]; return { node: n, top: cy + pm.h }; }
+    }
+    const mesh = new THREE.Mesh(geoForDesc(desc), matForDesc(desc));
+    mesh.position.set(cx + 0.5, cy + 0.5, cz + 0.5);
+    mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.cell = [cx, cy, cz];
+    return { node: mesh, top: cy + 1 };
+  }
+  function rebuildBlock(key) {
+    const b = blocks.get(key); if (!b) return;
+    const [cx, cy, cz] = key.split(',').map(Number);
+    group.remove(b.mesh);
+    const built = buildNode(b.desc, cx, cy, cz);
+    group.add(built.node); b.mesh = built.node; b.plat.y = built.top;
+  }
+
   // ---- block storage --------------------------------------------------------
   const ck = (x, y, z) => x + ',' + y + ',' + z;
   function descOf(pi) {
@@ -110,15 +140,12 @@
     if (blocks.size >= MAX_BLOCKS) { if (W.hud) W.hud.toast('Block limit reached (' + MAX_BLOCKS + ')'); return; }
     const key = ck(cx, cy, cz);
     if (blocks.has(key)) removeKey(key);                  // overwrite
-    const mesh = new THREE.Mesh(geoForDesc(desc), matForDesc(desc));
-    mesh.position.set(cx + 0.5, cy + 0.5, cz + 0.5);
-    mesh.castShadow = true; mesh.receiveShadow = true;
-    mesh.userData.cell = [cx, cy, cz];
-    group.add(mesh);
+    const built = buildNode(desc, cx, cy, cz);
+    group.add(built.node);
     // register a 1x1 standable top so the player can walk on it
-    const plat = { cx: cx + 0.5, cz: cz + 0.5, cos: 1, sin: 0, x0: -0.5, x1: 0.5, z0: -0.5, z1: 0.5, y: cy + 1 };
+    const plat = { cx: cx + 0.5, cz: cz + 0.5, cos: 1, sin: 0, x0: -0.5, x1: 0.5, z0: -0.5, z1: 0.5, y: built.top };
     W.world.platforms.push(plat);
-    blocks.set(key, { mesh, plat, desc });
+    blocks.set(key, { mesh: built.node, plat, desc });
   }
   function removeKey(key) {
     const b = blocks.get(key); if (!b) return;
@@ -152,15 +179,20 @@
     const terrain = W.player.scene.getObjectByName('terrain');
     const objs = group.children.slice(); if (terrain) objs.push(terrain);
     ray.set(cam.getWorldPosition(tmpA), cam.getWorldDirection(tmpB));
-    const hit = ray.intersectObjects(objs, false)[0];
+    const hit = ray.intersectObjects(objs, true)[0];      // recursive: models are multi-mesh groups
     if (!hit) return null;
+    // walk up to the placed block node (a direct child of the builder group) to get its cell
+    let cell = null;
+    if (hit.object !== terrain) {
+      let nd = hit.object; while (nd && nd.parent !== group) nd = nd.parent;
+      if (nd && nd.userData && nd.userData.cell) cell = nd.userData.cell;
+    }
     const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
     const add = hit.point.clone().addScaledVector(n, 0.5);
-    const rem = hit.point.clone().addScaledVector(n, -0.5);
     return {
-      isBlock: hit.object !== terrain,
+      isBlock: !!cell,
+      cell: cell,                                          // exact cell of the block being aimed at (for delete)
       add: [Math.floor(add.x), Math.floor(add.y), Math.floor(add.z)],
-      rem: [Math.floor(rem.x), Math.floor(rem.y), Math.floor(rem.z)],
     };
   }
 
@@ -170,8 +202,8 @@
     const [x, y, z] = t.add; placeAt(x, y, z, descOf(sel)); save();
   }
   function doDelete() {
-    const t = target(); if (!t || !t.isBlock) return;
-    removeKey(ck(t.rem[0], t.rem[1], t.rem[2])); save();
+    const t = target(); if (!t || !t.cell) return;
+    removeKey(ck(t.cell[0], t.cell[1], t.cell[2])); save();
   }
   function clearAll() {
     if (!blocks.size) return;
@@ -191,7 +223,7 @@
     if (!on || !ghost) { if (ghost) ghost.visible = false; return; }
     const t = target();
     if (!t) { ghost.visible = false; return; }
-    const cell = (erase && t.isBlock) ? t.rem : t.add;
+    const cell = (erase && t.cell) ? t.cell : t.add;
     ghost.position.set(cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5);
     ghostMat.color.setHex(erase ? 0xff5544 : 0x66ff88);
     ghost.visible = true;
@@ -325,6 +357,7 @@
       remove: (cx, cy, cz) => { removeKey(ck(cx, cy, cz)); save(); },
       addArt: addTexFromURL,
       addPreset: addPreset,
+      addModelPreset: addModelPreset,
     };
   }
   const waitInit = setInterval(() => { init(); if (ready) clearInterval(waitInit); }, 400);
