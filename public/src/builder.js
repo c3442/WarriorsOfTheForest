@@ -22,8 +22,10 @@
 
   let on = false, erase = false, sel = 0, ready = false;
   let group = null, ghost = null, ghostMat = null;
-  const palette = [];            // { kind:'color'|'tex', hex?, url?, mat }
+  const palette = [];            // { kind:'color'|'tex'|'preset', hex?, url?, id?, mat }
   const textures = [];           // dataURLs of uploaded pixel art (parallel to tex palette entries)
+  const presetMats = {};         // id -> material for built-in (URL-loaded) textures
+  const presetShape = {};        // id -> 3D shape name ('box'|'cylinder'|'rod'|'slab'|'sphere'|'prop')
   const blocks = new Map();      // "cx,cy,cz" -> { mesh, plat, desc }
   const ray = new THREE.Raycaster(); ray.far = REACH;
   const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
@@ -55,19 +57,60 @@
       sel = palette.length - 1; erase = false; refreshBar(); save();
     });
   }
+  // built-in textures loaded by URL (e.g. owner asset pack). Referenced by a stable
+  // id ('p:<id>'), so they are NOT copied into localStorage — only the id is saved.
+  // Each preset can carry a 3D shape so props look like real objects, not flat cubes.
+  function addPreset(id, url, shape) {
+    presetShape[id] = shape || 'box';
+    if (presetMats[id]) return;                       // already loaded
+    makeTex(url, (tex) => {
+      const mat = texMat(tex);
+      presetMats[id] = mat;
+      palette.push({ kind: 'preset', id, url, mat, shape: presetShape[id] });
+      const g = geoForShape(presetShape[id]);
+      blocks.forEach((b) => { if (b.desc === 'p:' + id) { b.mesh.material = mat; if (b.mesh.geometry !== g) b.mesh.geometry = g; } });   // re-skin + re-shape restored blocks
+      refreshBar();
+    });
+  }
+
+  // shared geometries per shape (each ~1 unit so they fit the grid cell)
+  const shapeGeo = {};
+  function geoForShape(shape) {
+    if (shapeGeo[shape]) return shapeGeo[shape];
+    let g;
+    switch (shape) {
+      case 'cylinder': g = new THREE.CylinderGeometry(0.5, 0.5, 1, 18); break;      // barrel
+      case 'rod': g = new THREE.CylinderGeometry(0.14, 0.14, 1.5, 12); break;       // iron pole
+      case 'slab': g = new THREE.BoxGeometry(1, 1, 0.16); break;                    // door
+      case 'sphere': g = new THREE.SphereGeometry(0.5, 18, 14); break;              // grenade
+      case 'prop': g = new THREE.BoxGeometry(0.9, 0.5, 0.32); break;                // blaster
+      default: g = GEO;                                                             // box (surfaces)
+    }
+    shapeGeo[shape] = g; return g;
+  }
+  function geoForDesc(desc) {
+    if (desc[0] === 'p') return geoForShape(presetShape[desc.slice(2)] || 'box');
+    return GEO;
+  }
 
   // ---- block storage --------------------------------------------------------
   const ck = (x, y, z) => x + ',' + y + ',' + z;
-  function descOf(pi) { const p = palette[pi]; return p.kind === 'tex' ? ('t:' + p.ti) : ('c:' + p.hex); }
+  function descOf(pi) {
+    const p = palette[pi];
+    if (p.kind === 'tex') return 't:' + p.ti;
+    if (p.kind === 'preset') return 'p:' + p.id;
+    return 'c:' + p.hex;
+  }
   function matForDesc(desc) {
     if (desc[0] === 't') { const i = +desc.slice(2); const p = palette.find((q) => q.kind === 'tex' && q.ti === i); return p ? p.mat : palette[0].mat; }
+    if (desc[0] === 'p') { return presetMats[desc.slice(2)] || palette[0].mat; }
     const hex = desc.slice(2); const p = palette.find((q) => q.kind === 'color' && q.hex === hex); return p ? p.mat : colorMat(hex);
   }
   function placeAt(cx, cy, cz, desc) {
     if (blocks.size >= MAX_BLOCKS) { if (W.hud) W.hud.toast('Block limit reached (' + MAX_BLOCKS + ')'); return; }
     const key = ck(cx, cy, cz);
     if (blocks.has(key)) removeKey(key);                  // overwrite
-    const mesh = new THREE.Mesh(GEO, matForDesc(desc));
+    const mesh = new THREE.Mesh(geoForDesc(desc), matForDesc(desc));
     mesh.position.set(cx + 0.5, cy + 0.5, cz + 0.5);
     mesh.castShadow = true; mesh.receiveShadow = true;
     mesh.userData.cell = [cx, cy, cz];
@@ -183,7 +226,7 @@
     const er = document.createElement('div'); er.className = 'bldBtn'; er.id = 'bldErase'; er.textContent = '🗑️ Erase (F)';
     const clr = document.createElement('div'); clr.className = 'bldBtn'; clr.textContent = '🧹 Clear (X)';
     const close = document.createElement('div'); close.className = 'bldBtn'; close.textContent = '✕ Done (V)';
-    hint = document.createElement('span'); hint.id = 'bldHint'; hint.textContent = 'L-click place · R-click delete';
+    hint = document.createElement('span'); hint.id = 'bldHint'; hint.textContent = 'Z / L-click place · N / R-click delete';
 
     fileIn = document.createElement('input'); fileIn.type = 'file'; fileIn.accept = 'image/*'; fileIn.style.display = 'none';
     fileIn.addEventListener('change', (e) => {
@@ -208,7 +251,7 @@
     swatches.innerHTML = '';
     palette.forEach((p, i) => {
       const s = document.createElement('div'); s.className = 'bldS' + (i === sel && !erase ? ' sel' : '');
-      if (p.kind === 'tex') s.style.backgroundImage = 'url(' + p.url + ')'; else s.style.background = p.hex;
+      if (p.kind === 'tex' || p.kind === 'preset') s.style.backgroundImage = 'url(' + p.url + ')'; else s.style.background = p.hex;
       s.addEventListener('click', () => { sel = i; erase = false; refreshBar(); });
       s.addEventListener('touchstart', (ev) => { ev.preventDefault(); ev.stopPropagation(); sel = i; erase = false; refreshBar(); }, { passive: false });
       swatches.appendChild(s);
@@ -228,7 +271,9 @@
     if (e.code === 'KeyV' && !e.repeat) { e.stopImmediatePropagation(); toggle(); return; }
     if (!on) return;
     let used = true;
-    if (/^Digit[1-8]$/.test(e.code)) { const n = +e.code.slice(5) - 1; if (n < palette.length) { sel = n; erase = false; refreshBar(); } }
+    if (e.code === 'KeyZ') { doPlace(); }            // Z = place a block
+    else if (e.code === 'KeyN') { doDelete(); }      // N = delete the block you're aiming at
+    else if (/^Digit[1-8]$/.test(e.code)) { const n = +e.code.slice(5) - 1; if (n < palette.length) { sel = n; erase = false; refreshBar(); } }
     else if (e.code === 'KeyF') { erase = !erase; refreshBar(); }
     else if (e.code === 'KeyL') { if (fileIn) fileIn.click(); }
     else if (e.code === 'KeyX') { clearAll(); }
@@ -279,6 +324,7 @@
       place: (cx, cy, cz, i) => { const o = sel; if (i != null) sel = i; placeAt(cx, cy, cz, descOf(sel)); sel = o; save(); },
       remove: (cx, cy, cz) => { removeKey(ck(cx, cy, cz)); save(); },
       addArt: addTexFromURL,
+      addPreset: addPreset,
     };
   }
   const waitInit = setInterval(() => { init(); if (ready) clearInterval(waitInit); }, 400);
