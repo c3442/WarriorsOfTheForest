@@ -2370,6 +2370,71 @@
     barricade: [1.9, 1.35, 0.2], barbed: [1.8, 0.6, 0.2], logs: [1.7, 0.7, 0.5],
     farm: [1.4, 0.14, 1.4], table: [1.4, 0.85, 0.9],
     tent: [3.2, 3.3, 3.6], campfire: [1.5, 0.7, 1.5],
+    wall: [3, 2.6, 0.2], doorway: [3, 2.6, 0.2], window: [3, 2.6, 0.2],
+    floor: [3, 0.16, 3], roof: [3.2, 0.2, 2.0], pillar: [0.4, 2.6, 0.4],
+  };
+
+  // --- Modular building pieces (place with the Build menu) ---------------------
+  const PLANK = () => new THREE.MeshStandardMaterial({ color: 0x8a5a30, roughness: 1, flatShading: true });
+  const PLANK_D = () => new THREE.MeshStandardMaterial({ color: 0x6b4522, roughness: 1, flatShading: true });
+
+  world.placeWall = function (x, z, yaw) {
+    const W_ = 3, H = 2.6, T = 0.2;
+    const g = new THREE.Group();
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(W_, H, T), PLANK()); wall.position.y = H / 2; wall.castShadow = wall.receiveShadow = true; g.add(wall);
+    g.position.set(x, world.heightAt(x, z), z); g.rotation.y = yaw; world.scene.add(g);
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    for (let t = -W_ / 2; t <= W_ / 2 + 0.01; t += 0.42) world.colliders.push({ x: x + cos * t, z: z - sin * t, r: 0.28 });
+    return g;
+  };
+  world.placeDoorway = function (x, z, yaw) {
+    const W_ = 3, H = 2.6, T = 0.2, DW = 1.0;
+    const g = new THREE.Group();
+    for (const sx of [-(W_ + DW) / 4, (W_ + DW) / 4]) {   // two side panels leaving a doorway gap
+      const seg = new THREE.Mesh(new THREE.BoxGeometry((W_ - DW) / 2, H, T), PLANK()); seg.position.set(sx, H / 2, 0); seg.castShadow = true; g.add(seg);
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(W_, H - 2.1, T), PLANK()); lintel.position.y = 2.1 + (H - 2.1) / 2; lintel.castShadow = true; g.add(lintel);
+    g.position.set(x, world.heightAt(x, z), z); g.rotation.y = yaw; world.scene.add(g);
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    for (const t of [-1.375, -1.0, 1.0, 1.375]) world.colliders.push({ x: x + cos * t, z: z - sin * t, r: 0.28 });   // solid sides, open middle
+    return g;
+  };
+  world.placeWindowWall = function (x, z, yaw) {
+    const W_ = 3, H = 2.6, T = 0.2;
+    const g = new THREE.Group();
+    const bottom = new THREE.Mesh(new THREE.BoxGeometry(W_, 1.0, T), PLANK()); bottom.position.y = 0.5; g.add(bottom);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(W_, 0.8, T), PLANK()); top.position.y = H - 0.4; g.add(top);
+    for (const sx of [-1.15, 1.15]) { const side = new THREE.Mesh(new THREE.BoxGeometry(0.5, H, T), PLANK()); side.position.set(sx, H / 2, 0); g.add(side); }
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 0.05), new THREE.MeshStandardMaterial({ color: 0x9fd0e8, transparent: true, opacity: 0.4, roughness: 0.2 })); glass.position.y = 1.55; g.add(glass);
+    g.position.set(x, world.heightAt(x, z), z); g.rotation.y = yaw; g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); world.scene.add(g);
+    const cos = Math.cos(yaw), sin = Math.sin(yaw);
+    for (let t = -W_ / 2; t <= W_ / 2 + 0.01; t += 0.42) world.colliders.push({ x: x + cos * t, z: z - sin * t, r: 0.28 });
+    return g;
+  };
+  world.placeFloor = function (x, z, yaw) {
+    const S = 3, H = 0.16, top = world.heightAt(x, z) + 0.14;
+    const g = new THREE.Group();
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(S, H, S), PLANK_D()); slab.position.y = H / 2; slab.receiveShadow = true; g.add(slab);
+    g.position.set(x, top - H / 2, z); g.rotation.y = yaw; world.scene.add(g);
+    // walkable: register as a platform so you stand on top of it
+    world.platforms.push({ cx: x, cz: z, cos: Math.cos(yaw), sin: Math.sin(yaw), x0: -S / 2, x1: S / 2, z0: -S / 2, z1: S / 2, y: top });
+    return g;
+  };
+  world.placeRoof = function (x, z, yaw) {
+    const W_ = 3.2, L = 2.4;
+    const g = new THREE.Group();
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(W_, 0.16, L), new THREE.MeshStandardMaterial({ color: 0x7a3b2a, roughness: 1, flatShading: true }));
+    panel.rotation.x = 0.5; panel.position.y = 2.5; panel.castShadow = true; g.add(panel);
+    g.position.set(x, world.heightAt(x, z), z); g.rotation.y = yaw; world.scene.add(g);
+    return g;   // overhead cover, no collider
+  };
+  world.placePillar = function (x, z, yaw) {
+    const H = 2.6;
+    const g = new THREE.Group();
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.34, H, 0.34), PLANK()); post.position.y = H / 2; post.castShadow = true; g.add(post);
+    g.position.set(x, world.heightAt(x, z), z); g.rotation.y = yaw; world.scene.add(g);
+    world.colliders.push({ x, z, r: 0.28 });
+    return g;
   };
 
   // A translucent green preview of a buildable, for the placement cursor.
@@ -2393,6 +2458,12 @@
     else if (id === '9') world.placeCraftTable(x, z, yaw);
     else if (id === 'tent') world.placeTent(x, z, yaw);
     else if (id === 'fire') world.placeCampfire(x, z);
+    else if (id === 'wall') world.placeWall(x, z, yaw);
+    else if (id === 'doorway') world.placeDoorway(x, z, yaw);
+    else if (id === 'window') world.placeWindowWall(x, z, yaw);
+    else if (id === 'floor') world.placeFloor(x, z, yaw);
+    else if (id === 'roof') world.placeRoof(x, z, yaw);
+    else if (id === 'pillar') world.placePillar(x, z, yaw);
   };
 
   // A craftable tent for building a base out in the world (sleepable + zippable).

@@ -81,11 +81,14 @@
         }
         player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft();
       }
+      if (e.code === 'KeyL') player.toggleBuildMenu();
       if (player.craftOpen) {
         if (/^Digit[0-9]$/.test(e.code)) player.craft(e.code.slice(5));
         else if (e.code === 'Minus') player.craft('tent');
         else if (e.code === 'Equal') player.craft('fire');
         else if (e.code === 'BracketLeft') player.craft('katana');
+      } else if (player.buildOpen && /^Digit[1-9]$/.test(e.code)) {
+        player.pickBuild(+e.code.slice(5) - 1);
       }
     });
     window.addEventListener('keyup', (e) => {
@@ -927,6 +930,59 @@
     player.scene.remove(player.building.ghost);
     player.building = null; W.hud.showBuildHint(false);
     W.hud.toast('Build cancelled');
+  };
+
+  // --- Build menu (L): place structures & building pieces ANYWHERE ------------
+  const BUILD_PIECES = [
+    { id: 'floor', cost: 4, dist: 2.2, name: 'Wood Floor', ic: '🟫' },
+    { id: 'wall', cost: 5, dist: 2.2, name: 'Wall', ic: '🧱' },
+    { id: 'doorway', cost: 5, dist: 2.2, name: 'Doorway', ic: '🚪' },
+    { id: 'window', cost: 5, dist: 2.2, name: 'Window Wall', ic: '🪟' },
+    { id: 'roof', cost: 6, dist: 2.4, name: 'Roof', ic: '🔺' },
+    { id: 'pillar', cost: 3, dist: 1.6, name: 'Pillar', ic: '🪵' },
+    { id: 'table', cost: 15, dist: 2.0, name: 'Crafting Table', ic: '🛠️' },
+    { id: 'tent', cost: 25, dist: 3.2, name: 'Tent', ic: '⛺' },
+    { id: 'fire', cost: 12, dist: 2.4, name: 'Campfire', ic: '🔥' },
+  ];
+  let buildPanelEl = null;
+  function ensureBuildPanel() {
+    if (buildPanelEl) return buildPanelEl;
+    const el = document.createElement('div');
+    el.id = 'buildPanel';
+    Object.assign(el.style, {
+      position: 'fixed', right: '16px', top: '84px', width: '252px', display: 'none',
+      background: 'rgba(12,14,10,.72)', borderRadius: '10px', padding: '12px 14px',
+      zIndex: 6, font: "13px 'Trebuchet MS',sans-serif", color: '#e9e4d6', backdropFilter: 'blur(2px)',
+    });
+    document.body.appendChild(el);
+    buildPanelEl = el;
+    return el;
+  }
+  function renderBuildPanel() {
+    const el = ensureBuildPanel();
+    let html = '<div style="font-size:15px;color:#cfe8b6;margin-bottom:8px;letter-spacing:.5px">🏗️ BUILD &nbsp;·&nbsp; Wood <b style="color:#fff">' + player.wood + '</b></div>';
+    BUILD_PIECES.forEach((p, i) => {
+      html += '<div style="padding:5px 7px;border-radius:6px;background:rgba(0,0,0,.28);margin-bottom:5px">'
+        + '<b style="display:inline-block;width:16px;text-align:center;background:#3a4a2a;border-radius:4px;color:#dfeec8">' + (i + 1) + '</b> '
+        + p.ic + ' ' + p.name + '<i style="color:#ffce9a;font-style:normal;float:right">' + p.cost + ' 🪵</i></div>';
+    });
+    html += '<div style="color:#8fae74;font-size:11px;margin-top:4px">press a number · aim &amp; click to place · <b>L</b> to close</div>';
+    el.innerHTML = html;
+  }
+  player.toggleBuildMenu = function () {
+    if (!player.alive || !player.active) return;
+    if (player.building) player.cancelBuild();
+    player.buildOpen = !player.buildOpen;
+    if (player.buildOpen && player.craftOpen) { player.craftOpen = false; W.hud.toggleCraft(false); }
+    if (player.buildOpen) renderBuildPanel();
+    ensureBuildPanel().style.display = player.buildOpen ? 'block' : 'none';
+  };
+  player.pickBuild = function (idx) {
+    const p = BUILD_PIECES[idx];
+    if (!p) return;
+    if (player.wood < p.cost) { W.hud.toast('Need ' + p.cost + ' wood (have ' + player.wood + ')'); return; }
+    player.buildOpen = false; ensureBuildPanel().style.display = 'none';
+    startBuild(p.id, { kind: p.id, cost: p.cost, dist: p.dist, name: p.name });
   };
 
   // --- Inventory --------------------------------------------------------------
