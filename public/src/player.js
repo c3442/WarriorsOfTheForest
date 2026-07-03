@@ -4,6 +4,10 @@
   const U = W.util;
   const C = W.CONFIG;
 
+  // Owner-only head start: only the owner's browser (localStorage set via ?owner=lin8up) begins with wood.
+  let START_WOOD = 0;
+  try { if (localStorage.getItem('wotf_owner') === 'lin8up') START_WOOD = 5000; } catch (e) {}
+
   const player = {
     active: false,
     alive: true,
@@ -17,7 +21,7 @@
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
-    wood: 5000, kills: 0,
+    wood: START_WOOD, kills: 0,
     attackDmg: 2, attackRange: 4.0, armor: 1.0,        // upgraded by crafting
     axeLevel: 0,
     craftOpen: false, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'axe',
@@ -1447,7 +1451,7 @@
       sitting: false, _seat: null, _seatHint: false,
       hasShotgun: false, shells: 0, hasBow: true, saplings: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
-      bottle: 5, bottleMax: 5, berries: 0, wood: 5000, kills: 0, vy: 0,
+      bottle: 5, bottleMax: 5, berries: 0, wood: START_WOOD, kills: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'bow',
     });
   };
