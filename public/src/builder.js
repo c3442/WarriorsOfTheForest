@@ -44,7 +44,8 @@
   let pin = null;                               // Roblox-style: a tapped/held ghost spot (else follow crosshair)
 
   // ---- palette --------------------------------------------------------------
-  function colorMat(hex) { return new THREE.MeshStandardMaterial({ color: hex, roughness: 1, flatShading: true }); }
+  // satin finish + smooth shading so round shapes read as solid, not faceted
+  function colorMat(hex) { return new THREE.MeshStandardMaterial({ color: hex, roughness: 0.42, metalness: 0.05, flatShading: false }); }
   function texMat(tex) { return new THREE.MeshStandardMaterial({ map: tex, roughness: 1, flatShading: true }); }
   function makeTex(dataURL, cb) {
     const img = new Image();
@@ -114,10 +115,10 @@
     if (baseGeo[sh]) return baseGeo[sh];
     let g;
     switch (sh) {
-      case 'cylinder': g = new THREE.CylinderGeometry(0.5, 0.5, 1, 20); break;
-      case 'sphere': g = new THREE.SphereGeometry(0.5, 20, 14); break;
-      case 'cone': g = new THREE.ConeGeometry(0.5, 1, 20); break;
-      case 'pyramid': g = new THREE.ConeGeometry(0.72, 1, 4); g.rotateY(Math.PI / 4); break;
+      case 'cylinder': g = new THREE.CylinderGeometry(0.5, 0.5, 1, 30); break;
+      case 'sphere': g = new THREE.SphereGeometry(0.5, 28, 20); break;
+      case 'cone': g = new THREE.ConeGeometry(0.5, 1, 30); break;
+      case 'pyramid': g = new THREE.ConeGeometry(0.72, 1, 4).toNonIndexed(); g.rotateY(Math.PI / 4); g.computeVertexNormals(); break;  // crisp flat faces
       case 'ramp': g = makeWedgeGeo(); break;
       default: g = GEO;                          // box
     }
