@@ -31,6 +31,7 @@
 
   let on = false, erase = false, sel = 0, ready = false;
   let rot = 0, flip = false;                    // orientation of the next placement (R rotates, G flips)
+  let shape = 'box';                            // 3D shape for colour/art blocks (box|ramp|cylinder|sphere|cone|pyramid)
   let group = null, ghost = null, ghostMat = null, ghostModel = null, ghostKey = '';
   const palette = [];            // { kind:'color'|'tex'|'preset', hex?, url?, id?, mat }
   const textures = [];           // dataURLs of uploaded pixel art (parallel to tex palette entries)
@@ -100,8 +101,31 @@
     }
     shapeGeo[shape] = g; return g;
   }
+  // base 3D shapes for colour/art blocks (each ~1 unit, centred on the origin)
+  const baseGeo = {};
+  function makeWedgeGeo() {
+    // a right-triangular prism (ramp): full height at -x, sloping to 0 at +x
+    const s = new THREE.Shape();
+    s.moveTo(-0.5, -0.5); s.lineTo(0.5, -0.5); s.lineTo(-0.5, 0.5); s.lineTo(-0.5, -0.5);
+    const g = new THREE.ExtrudeGeometry(s, { depth: 1, bevelEnabled: false });
+    g.translate(0, 0, -0.5); g.computeVertexNormals(); return g;
+  }
+  function geoForBaseShape(sh) {
+    if (baseGeo[sh]) return baseGeo[sh];
+    let g;
+    switch (sh) {
+      case 'cylinder': g = new THREE.CylinderGeometry(0.5, 0.5, 1, 20); break;
+      case 'sphere': g = new THREE.SphereGeometry(0.5, 20, 14); break;
+      case 'cone': g = new THREE.ConeGeometry(0.5, 1, 20); break;
+      case 'pyramid': g = new THREE.ConeGeometry(0.72, 1, 4); g.rotateY(Math.PI / 4); break;
+      case 'ramp': g = makeWedgeGeo(); break;
+      default: g = GEO;                          // box
+    }
+    baseGeo[sh] = g; return g;
+  }
   function geoForDesc(desc) {
     if (desc[0] === 'p') return geoForShape(presetShape[desc.slice(2)] || 'box');
+    if (desc[0] === 'c' || desc[0] === 't') { const sh = desc.split(':')[2]; return geoForBaseShape(sh || 'box'); }
     return GEO;
   }
 
@@ -145,9 +169,17 @@
     return 'c:' + p.hex;
   }
   function matForDesc(desc) {
-    if (desc[0] === 't') { const i = +desc.slice(2); const p = palette.find((q) => q.kind === 'tex' && q.ti === i); return p ? p.mat : palette[0].mat; }
+    const parts = desc.split(':');                 // 'c:#hex[:shape]' / 't:ti[:shape]' / 'p:id'
+    if (desc[0] === 't') { const i = +parts[1]; const p = palette.find((q) => q.kind === 'tex' && q.ti === i); return p ? p.mat : palette[0].mat; }
     if (desc[0] === 'p') { return presetMats[desc.slice(2)] || palette[0].mat; }
-    const hex = desc.slice(2); const p = palette.find((q) => q.kind === 'color' && q.hex === hex); return p ? p.mat : colorMat(hex);
+    const hex = parts[1]; const p = palette.find((q) => q.kind === 'color' && q.hex === hex); return p ? p.mat : colorMat(hex);
+  }
+  // The descriptor to place now — colour/art blocks carry the chosen 3D shape.
+  function currentDesc() {
+    const p = palette[sel]; if (!p) return descOf(sel);
+    if (p.kind === 'color') return 'c:' + p.hex + (shape !== 'box' ? ':' + shape : '');
+    if (p.kind === 'tex') return 't:' + p.ti + (shape !== 'box' ? ':' + shape : '');
+    return 'p:' + p.id;
   }
   function placeAt(cx, cy, cz, desc, r, fl) {
     if (blocks.size >= MAX_BLOCKS) { if (W.hud) W.hud.toast('Block limit reached (' + MAX_BLOCKS + ')'); return; }
@@ -216,7 +248,7 @@
   // ---- actions --------------------------------------------------------------
   function doPlace() {
     const t = target(); if (!t) return;
-    const [x, y, z] = t.add; placeAt(x, y, z, descOf(sel), rot, flip); save();
+    const [x, y, z] = t.add; placeAt(x, y, z, currentDesc(), rot, flip); save();
   }
   function doDelete() {
     const t = target(); if (!t || !t.cell) return;
@@ -261,6 +293,9 @@
       ghostModel.position.set(cell[0] + 0.5, cell[1], cell[2] + 0.5);
     } else {
       if (ghostModel) ghostModel.visible = false;
+      const pp = palette[sel];
+      const shp = (!erase && pp && (pp.kind === 'color' || pp.kind === 'tex')) ? shape : 'box';
+      const g = geoForBaseShape(shp); if (ghost.geometry !== g) ghost.geometry = g;
       ghost.position.set(cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5);
       ghost.rotation.y = rot * Math.PI / 2;
       ghostMat.color.setHex(erase ? 0xff5544 : 0x66ff88);
@@ -269,21 +304,27 @@
   }
 
   // ---- toolbar (HUD strip; also tappable on mobile) -------------------------
-  let bar = null, swatches = null, hint = null, fileIn = null;
+  let bar = null, swatches = null, shapesEl = null, hint = null, fileIn = null;
+  const SHAPES = [['box', '🧊'], ['ramp', '📐'], ['cylinder', '🥫'], ['sphere', '🔵'], ['cone', '🔺'], ['pyramid', '🔻']];
   function buildBar() {
     const css = document.createElement('style');
     css.textContent = `
       /* thin single-row strip pinned to the top edge — leaves the play area clear */
+      /* thin single-row strip pinned to the top edge — the whole strip scrolls sideways */
       #bldBar{position:fixed;left:50%;top:6px;transform:translateX(-50%);z-index:30;display:none;
         align-items:center;gap:6px;padding:5px 8px;border-radius:11px;background:rgba(14,18,12,.55);
         border:1px solid rgba(150,180,110,.4);color:#fff;font:bold 12px 'Trebuchet MS',system-ui,sans-serif;
-        text-shadow:0 1px 2px #000;backdrop-filter:blur(2px);max-width:97vw;white-space:nowrap;}
+        text-shadow:0 1px 2px #000;backdrop-filter:blur(2px);max-width:97vw;white-space:nowrap;overflow-x:auto;overflow-y:hidden;}
       #bldBar.on{display:flex;}
-      #bldSw{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;max-width:48vw;padding-bottom:2px;}
-      #bldSw::-webkit-scrollbar{height:4px;} #bldSw::-webkit-scrollbar-thumb{background:rgba(150,180,110,.5);border-radius:2px;}
+      #bldBar::-webkit-scrollbar{height:4px;} #bldBar::-webkit-scrollbar-thumb{background:rgba(150,180,110,.5);border-radius:2px;}
+      #bldSw,#bldShapes{display:flex;gap:4px;flex-wrap:nowrap;flex:0 0 auto;}
+      #bldShapes{padding-left:6px;margin-left:2px;border-left:1px solid rgba(150,180,110,.35);}
       .bldS{flex:0 0 auto;width:28px;height:28px;border-radius:6px;border:2px solid rgba(255,255,255,.4);cursor:pointer;
         background-size:cover;background-position:center;image-rendering:pixelated;}
       .bldS.sel{border-color:#fff;box-shadow:0 0 0 2px #6f6,0 0 8px #6f6;}
+      .bldShp{flex:0 0 auto;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:17px;
+        border-radius:8px;border:2px solid rgba(255,255,255,.35);cursor:pointer;background:rgba(30,38,24,.6);color:#fff;}
+      .bldShp.sel{border-color:#9f6;box-shadow:0 0 0 2px #6f6;}
       .bldBtn{flex:0 0 auto;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:17px;
         border-radius:9px;border:2px solid rgba(255,255,255,.4);cursor:pointer;background:rgba(30,38,24,.7);color:#fff;}
       .bldBtn:active{background:rgba(120,160,90,.8);}
@@ -312,11 +353,23 @@
     tap(clr, clearAll);
     tap(close, () => toggle());
 
-    bar.appendChild(title); bar.appendChild(swatches);
+    // 3D shape picker (applies to colour + pixel-art blocks) — Roblox-style parts
+    shapesEl = document.createElement('div'); shapesEl.id = 'bldShapes';
+    SHAPES.forEach(([sh, ic]) => {
+      const d = document.createElement('div'); d.className = 'bldShp' + (sh === shape ? ' sel' : ''); d.dataset.sh = sh; d.title = sh; d.textContent = ic;
+      tap(d, () => { shape = sh; erase = false; refreshShapes(); refreshBar(); });
+      shapesEl.appendChild(d);
+    });
+
+    bar.appendChild(title); bar.appendChild(shapesEl); bar.appendChild(swatches);
     bar.appendChild(load); bar.appendChild(er); bar.appendChild(clr); bar.appendChild(close); bar.appendChild(hint);
     bar.appendChild(fileIn);
     document.body.appendChild(bar);
     refreshBar();
+  }
+  function refreshShapes() {
+    if (!shapesEl) return;
+    [...shapesEl.children].forEach((d) => d.classList.toggle('sel', d.dataset.sh === shape));
   }
   function refreshBar() {
     if (!swatches) return;
@@ -368,7 +421,7 @@
 
   // ---- mode toggle ----------------------------------------------------------
   function toggle() {
-    on = !on; if (bar) bar.classList.toggle('on', on); if (dock) dock.classList.toggle('on', on);
+    on = !on; if (bar) { bar.classList.toggle('on', on); if (on) bar.scrollLeft = 0; } if (dock) dock.classList.toggle('on', on);
     if (!on) pin = null;
     if (W.hud) W.hud.toast(on ? '🧱 Build Mode — tap to aim, then ✓ place · 🔄 rotate · 🗑️ delete' : 'Build Mode off');
     if (!on) { if (ghost) ghost.visible = false; if (ghostModel) ghostModel.visible = false; }
