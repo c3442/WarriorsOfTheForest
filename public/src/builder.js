@@ -192,7 +192,8 @@
   function pick(nx, ny) {
     const cam = W.player && W.player.camera; if (!cam) return null;
     const terrain = W.player.scene.getObjectByName('terrain');
-    const objs = group.children.slice(); if (terrain) objs.push(terrain);
+    const objs = group.children.filter((c) => c !== ghost && c !== ghostModel);   // never raycast the hologram itself
+    if (terrain) objs.push(terrain);
     ray.setFromCamera(_ndc.set(nx, ny), cam); ray.far = REACH;
     const hit = ray.intersectObjects(objs, true)[0];      // recursive: models are multi-mesh groups
     if (!hit) return null;
@@ -338,8 +339,8 @@
   function buildDock() {
     const css = document.createElement('style');
     css.textContent = `
-      #bldDock{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:31;display:none;
-        gap:16px;align-items:center;pointer-events:auto;}
+      #bldDock{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);z-index:31;display:none;
+        gap:18px;align-items:center;pointer-events:auto;}
       #bldDock.on{display:flex;}
       .bldD{width:66px;height:66px;border-radius:50%;border:3px solid rgba(255,255,255,.55);
         display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;user-select:none;
