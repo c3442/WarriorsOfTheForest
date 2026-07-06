@@ -4,7 +4,7 @@
    nothing and never even downloads these assets.
 
    Unlocks:
-     • all 11 custom images as built-in Build Mode (V) block textures
+     • all 11 custom images as real built 3D Build Mode (V) props
      • a futuristic BLASTER — press P to fire fast energy bolts
      • THROWABLE GRENADES — press Y to lob one; it arcs, fuses, and explodes (AoE)
    Fully self-contained: its own loops, key handlers and HUD. Reuses the public
@@ -24,15 +24,27 @@
   if (!OWNER) return;                              // not the owner -> do nothing at all
 
   const BASE = 'assets/custom/';
-  // [build-palette id, file, 3D shape] — all 11 become placeable 3D props; some double as gadgets
-  // Flat wall/floor art stays a textured panel (that IS its realistic form);
-  // the object-like images become real built 3D models (see MODELS below).
-  const SURFACES = [
-    ['brick', 'brick.png'], ['jap-floor', 'jap-floor.png'], ['room', 'room.png'],
-  ];
+  // Every custom image is now a real built 3D model (see MODELS below) — the
+  // wall/floor/room art wraps actual geometry instead of a flat cube.
+  const SURFACES = [];
 
   // ---- real 3D models (procedural, flat-shaded — the game's low-poly style) ---
   const M = (color, o) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.85, flatShading: true }, o || {}));
+
+  // Cached, texture-mapped material from a custom PNG (repeats optional) — lets the
+  // wall/floor/room art wrap real 3D geometry instead of sitting on a flat cube.
+  const _texLoader = new THREE.TextureLoader();
+  const _texMats = {};
+  function texMat(file, rx, ry, o) {
+    const key = file + ':' + (rx || 1) + 'x' + (ry || 1);
+    if (_texMats[key]) return _texMats[key];
+    const tex = _texLoader.load(BASE + file);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(rx || 1, ry || 1);
+    if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = 4;
+    const mat = new THREE.MeshStandardMaterial(Object.assign({ map: tex, roughness: 0.9 }, o || {}));
+    _texMats[key] = mat; return mat;
+  }
 
   function makeBarrel() {
     const g = new THREE.Group();
@@ -202,8 +214,62 @@
     return g;
   }
 
+  // A real brick wall: a textured slab with a few courses of protruding bricks so it
+  // reads as 3D masonry rather than a flat photo.
+  function makeBrickWall() {
+    const g = new THREE.Group();
+    const Wd = 2.0, Ht = 2.4, Dp = 0.28;
+    const face = texMat('brick.png', 2, 2);
+    const side = M(0x7a4632, { roughness: 0.95 });
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(Wd, Ht, Dp), [side, side, side, side, face, face]);
+    wall.position.y = Ht / 2; wall.castShadow = true; wall.receiveShadow = true; g.add(wall);
+    // raised individual bricks for relief, brick-coloured to match the art
+    const brickM = M(0x9a4d34, { roughness: 0.95 });
+    const bw = 0.34, bh = 0.14, gap = 0.04;
+    for (let row = 0; row < 5; row++) {
+      const y = 0.28 + row * (bh + 0.12);
+      const off = (row % 2) ? (bw + gap) / 2 : 0;
+      for (let x = -Wd / 2 + 0.2 + off; x < Wd / 2 - 0.2; x += bw + gap) {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.06), brickM);
+        b.position.set(x, y, Dp / 2 + 0.03); b.castShadow = true; g.add(b);
+      }
+    }
+    return g;
+  }
+
+  // A tatami floor: the jap-floor art on a low slab, framed by a raised wooden border.
+  function makeJapFloor() {
+    const g = new THREE.Group();
+    const S = 2.2, H = 0.16, edge = 0.1;
+    const wood = M(0x6b4a2a, { roughness: 0.85 });
+    const mat = texMat('jap-floor.png', 1, 1);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(S, H, S), [wood, wood, mat, wood, wood, wood]);
+    slab.position.y = H / 2; slab.receiveShadow = true; g.add(slab);
+    for (const [dx, dz, w, d] of [[0, S / 2, S + edge * 2, edge], [0, -S / 2, S + edge * 2, edge], [S / 2, 0, edge, S], [-S / 2, 0, edge, S]]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, H + 0.06, d), wood);
+      b.position.set(dx, (H + 0.06) / 2, dz); b.castShadow = true; g.add(b);
+    }
+    return g;
+  }
+
+  // A small room shell: floor + three textured walls (open front) you can stand inside.
+  function makeRoom() {
+    const g = new THREE.Group();
+    const S = 3.0, Ht = 2.6, T = 0.16;
+    const wallM = texMat('room.png', 2, 1);
+    const floorM = M(0x5a4636, { roughness: 0.9 }), roofM = M(0x3a3d42, { roughness: 0.8 });
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(S, T, S), floorM); floor.position.y = T / 2; floor.receiveShadow = true; g.add(floor);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(S, Ht, T), wallM); back.position.set(0, Ht / 2, -S / 2 + T / 2); back.castShadow = true; g.add(back);
+    for (const sx of [-1, 1]) {
+      const w = new THREE.Mesh(new THREE.BoxGeometry(T, Ht, S), wallM); w.position.set(sx * (S / 2 - T / 2), Ht / 2, 0); w.castShadow = true; g.add(w);
+    }
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(S, T, S), roofM); roof.position.y = Ht - T / 2; roof.castShadow = true; g.add(roof);
+    return g;
+  }
+
   // [id, file, factory, height] — objects placed as real 3D models
   const MODELS = [
+    ['brick', 'brick.png', makeBrickWall, 2.4], ['jap-floor', 'jap-floor.png', makeJapFloor, 0.22], ['room', 'room.png', makeRoom, 2.6],
     ['barrel', 'barrel.png', makeBarrel, 0.9], ['iron-pole', 'iron-pole.png', makePole, 1.55],
     ['cool-door', 'cool-door.png', makeDoor, 2.0], ['blaster', 'blaster.png', makeBlaster, 0.9],
     ['grenade-2', 'grenade-2.png', makeGrenadePineapple, 0.55], ['grenade-1', 'grenade-1.png', makeGrenadeFuturistic, 0.55],

@@ -54,6 +54,7 @@
   // a quick screen-tap: bow fires a medium-charge shot, other weapons swing
   function tapAttack() {
     const p = P(); if (!p) return;
+    if (W.builder && W.builder.isOn && W.builder.isOn()) return;   // in Build Mode a tap positions the hologram, not an attack
     if (p.building) { p.placeBuild(); return; }
     if (p.currentWeapon === 'bow' && p.startDraw) { p.startDraw(); p._bowCharge = 0.55; p.releaseDraw(); }
     else p.attack();

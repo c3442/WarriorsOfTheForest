@@ -11,6 +11,15 @@
 (function () {
   const W = window.WOTF;
   if (!W) return;
+
+  // ---- owner gate: Build Mode is ONLY for the owner's browser ----------------
+  // Visit once with ?owner=lin8up (remembered on this device); everyone else gets
+  // no builder at all — V does nothing, no spectator fly, no palette.
+  try { const code = new URLSearchParams(location.search).get('owner'); if (code) localStorage.setItem('wotf_owner', code); } catch (e) {}
+  let OWNER = false;
+  try { OWNER = localStorage.getItem('wotf_owner') === 'lin8up'; } catch (e) {}
+  if (!OWNER) return;
+
   const KEY = 'wotf_build_v1';
   const REACH = 60;        // how far you can place/delete
   const MAX_BLOCKS = 2000; // safety cap (platforms are scanned every frame)
@@ -21,7 +30,8 @@
                   '#3b7fd1', '#e8d44d', '#e08fd0', '#222428', '#f4f4f4'];
 
   let on = false, erase = false, sel = 0, ready = false;
-  let group = null, ghost = null, ghostMat = null;
+  let rot = 0, flip = false;                    // orientation of the next placement (R rotates, G flips)
+  let group = null, ghost = null, ghostMat = null, ghostModel = null, ghostKey = '';
   const palette = [];            // { kind:'color'|'tex'|'preset', hex?, url?, id?, mat }
   const textures = [];           // dataURLs of uploaded pixel art (parallel to tex palette entries)
   const presetMats = {};         // id -> material for built-in (URL-loaded) textures
@@ -29,7 +39,8 @@
   const presetModel = {};        // id -> { make:()=>Object3D, h:number } for real built 3D models
   const blocks = new Map();      // "cx,cy,cz" -> { mesh, plat, desc }
   const ray = new THREE.Raycaster(); ray.far = REACH;
-  const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+  const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), _ndc = new THREE.Vector2();
+  let pin = null;                               // Roblox-style: a tapped/held ghost spot (else follow crosshair)
 
   // ---- palette --------------------------------------------------------------
   function colorMat(hex) { return new THREE.MeshStandardMaterial({ color: hex, roughness: 1, flatShading: true }); }
@@ -105,13 +116,15 @@
 
   // Build the Object3D for a block descriptor. Model presets -> the built model
   // (base at cell floor); everything else -> a textured 1x1 primitive (centered).
-  function buildNode(desc, cx, cy, cz) {
+  function buildNode(desc, cx, cy, cz, r, fl) {
+    r = r || 0; fl = !!fl;
     if (desc[0] === 'p') {
       const id = desc.slice(2), pm = presetModel[id];
-      if (pm) { const n = pm.make(); n.position.set(cx + 0.5, cy, cz + 0.5); n.userData.cell = [cx, cy, cz]; return { node: n, top: cy + pm.h }; }
+      if (pm) { const n = pm.make(); n.position.set(cx + 0.5, cy, cz + 0.5); n.rotation.y = r * Math.PI / 2; if (fl) n.scale.x = -1; n.userData.cell = [cx, cy, cz]; return { node: n, top: cy + pm.h }; }
     }
     const mesh = new THREE.Mesh(geoForDesc(desc), matForDesc(desc));
     mesh.position.set(cx + 0.5, cy + 0.5, cz + 0.5);
+    mesh.rotation.y = r * Math.PI / 2; if (fl) mesh.scale.x = -1;
     mesh.castShadow = true; mesh.receiveShadow = true; mesh.userData.cell = [cx, cy, cz];
     return { node: mesh, top: cy + 1 };
   }
@@ -119,7 +132,7 @@
     const b = blocks.get(key); if (!b) return;
     const [cx, cy, cz] = key.split(',').map(Number);
     group.remove(b.mesh);
-    const built = buildNode(b.desc, cx, cy, cz);
+    const built = buildNode(b.desc, cx, cy, cz, b.rot, b.flip);
     group.add(built.node); b.mesh = built.node; b.plat.y = built.top;
   }
 
@@ -136,16 +149,16 @@
     if (desc[0] === 'p') { return presetMats[desc.slice(2)] || palette[0].mat; }
     const hex = desc.slice(2); const p = palette.find((q) => q.kind === 'color' && q.hex === hex); return p ? p.mat : colorMat(hex);
   }
-  function placeAt(cx, cy, cz, desc) {
+  function placeAt(cx, cy, cz, desc, r, fl) {
     if (blocks.size >= MAX_BLOCKS) { if (W.hud) W.hud.toast('Block limit reached (' + MAX_BLOCKS + ')'); return; }
     const key = ck(cx, cy, cz);
     if (blocks.has(key)) removeKey(key);                  // overwrite
-    const built = buildNode(desc, cx, cy, cz);
+    const built = buildNode(desc, cx, cy, cz, r, fl);
     group.add(built.node);
     // register a 1x1 standable top so the player can walk on it
     const plat = { cx: cx + 0.5, cz: cz + 0.5, cos: 1, sin: 0, x0: -0.5, x1: 0.5, z0: -0.5, z1: 0.5, y: built.top };
     W.world.platforms.push(plat);
-    blocks.set(key, { mesh: built.node, plat, desc });
+    blocks.set(key, { mesh: built.node, plat, desc, rot: r || 0, flip: !!fl });
   }
   function removeKey(key) {
     const b = blocks.get(key); if (!b) return;
@@ -161,7 +174,7 @@
       saveT = null;
       try {
         const data = { tex: textures, b: [] };
-        blocks.forEach((b, key) => { const [x, y, z] = key.split(',').map(Number); data.b.push([x, y, z, b.desc]); });
+        blocks.forEach((b, key) => { const [x, y, z] = key.split(',').map(Number); data.b.push([x, y, z, b.desc, b.rot || 0, b.flip ? 1 : 0]); });
         localStorage.setItem(KEY, JSON.stringify(data));
       } catch (e) { /* storage full / disabled — ignore */ }
     }, 250);
@@ -169,16 +182,18 @@
   function load() {
     let data = null; try { data = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
     if (!data) return;
-    (data.b || []).forEach(([x, y, z, desc]) => placeAt(x, y, z, desc));   // place now (textured ones get a placeholder colour)
+    (data.b || []).forEach(([x, y, z, desc, r, f]) => placeAt(x, y, z, desc, r || 0, !!f));   // place now (textured ones get a placeholder colour)
     (data.tex || []).forEach((url) => addTexFromURL(url));                 // textures decode async, then re-skin matching blocks
   }
 
   // ---- aiming / raycast -----------------------------------------------------
-  function target() {
+  // Cast through a screen point (nx,ny in NDC; 0,0 = crosshair centre) and return
+  // the cell to add a block to + the exact cell of any block being aimed at.
+  function pick(nx, ny) {
     const cam = W.player && W.player.camera; if (!cam) return null;
     const terrain = W.player.scene.getObjectByName('terrain');
     const objs = group.children.slice(); if (terrain) objs.push(terrain);
-    ray.set(cam.getWorldPosition(tmpA), cam.getWorldDirection(tmpB));
+    ray.setFromCamera(_ndc.set(nx, ny), cam); ray.far = REACH;
     const hit = ray.intersectObjects(objs, true)[0];      // recursive: models are multi-mesh groups
     if (!hit) return null;
     // walk up to the placed block node (a direct child of the builder group) to get its cell
@@ -195,11 +210,12 @@
       add: [Math.floor(add.x), Math.floor(add.y), Math.floor(add.z)],
     };
   }
+  function target() { return pin || pick(0, 0); }         // pinned tap spot, else the crosshair
 
   // ---- actions --------------------------------------------------------------
   function doPlace() {
     const t = target(); if (!t) return;
-    const [x, y, z] = t.add; placeAt(x, y, z, descOf(sel)); save();
+    const [x, y, z] = t.add; placeAt(x, y, z, descOf(sel), rot, flip); save();
   }
   function doDelete() {
     const t = target(); if (!t || !t.cell) return;
@@ -218,15 +234,37 @@
     ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.85 });
     ghost = new THREE.Mesh(GEO, ghostMat); ghost.visible = false; group.add(ghost);
   }
+  // Translucent preview of the ACTUAL model (rotated/flipped) for model presets; box otherwise.
+  function updateGhostModel() {
+    if (!group) return;
+    const p = palette[sel];
+    const isModel = !erase && p && p.kind === 'preset' && p.model && presetModel[p.id];
+    const key = (isModel ? 'm:' + p.id : (erase ? 'e' : 'box')) + ':' + rot + ':' + (flip ? 1 : 0);
+    if (key === ghostKey) return; ghostKey = key;
+    if (ghostModel) { group.remove(ghostModel); ghostModel = null; }
+    if (isModel) {
+      const n = presetModel[p.id].make();
+      n.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; o.material.depthWrite = false; o.castShadow = false; } });
+      n.rotation.y = rot * Math.PI / 2; if (flip) n.scale.x = -1;
+      ghostModel = n; ghostModel.visible = false; group.add(n);
+    }
+  }
   function loop() {
     requestAnimationFrame(loop);
-    if (!on || !ghost) { if (ghost) ghost.visible = false; return; }
+    if (!on || !ghost) { if (ghost) ghost.visible = false; if (ghostModel) ghostModel.visible = false; return; }
     const t = target();
-    if (!t) { ghost.visible = false; return; }
+    if (!t) { ghost.visible = false; if (ghostModel) ghostModel.visible = false; return; }
     const cell = (erase && t.cell) ? t.cell : t.add;
-    ghost.position.set(cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5);
-    ghostMat.color.setHex(erase ? 0xff5544 : 0x66ff88);
-    ghost.visible = true;
+    if (ghostModel && !erase) {
+      ghost.visible = false; ghostModel.visible = true;
+      ghostModel.position.set(cell[0] + 0.5, cell[1], cell[2] + 0.5);
+    } else {
+      if (ghostModel) ghostModel.visible = false;
+      ghost.position.set(cell[0] + 0.5, cell[1] + 0.5, cell[2] + 0.5);
+      ghost.rotation.y = rot * Math.PI / 2;
+      ghostMat.color.setHex(erase ? 0xff5544 : 0x66ff88);
+      ghost.visible = true;
+    }
   }
 
   // ---- toolbar (HUD strip; also tappable on mobile) -------------------------
@@ -258,7 +296,7 @@
     const er = document.createElement('div'); er.className = 'bldBtn'; er.id = 'bldErase'; er.textContent = '🗑️ Erase (F)';
     const clr = document.createElement('div'); clr.className = 'bldBtn'; clr.textContent = '🧹 Clear (X)';
     const close = document.createElement('div'); close.className = 'bldBtn'; close.textContent = '✕ Done (V)';
-    hint = document.createElement('span'); hint.id = 'bldHint'; hint.textContent = 'Z / L-click place · N / R-click delete';
+    hint = document.createElement('span'); hint.id = 'bldHint'; hint.textContent = 'Click place · Y delete · R rotate · G flip · Space/Shift fly';
 
     fileIn = document.createElement('input'); fileIn.type = 'file'; fileIn.accept = 'image/*'; fileIn.style.display = 'none';
     fileIn.addEventListener('change', (e) => {
@@ -289,13 +327,49 @@
       swatches.appendChild(s);
     });
     const er = document.getElementById('bldErase'); if (er) er.classList.toggle('act', erase);
+    if (delBtn) delBtn.classList.toggle('act', erase);
+    updateGhostModel();
+  }
+
+  // ---- Roblox-style on-screen dock (no mouse/keyboard needed) ----------------
+  // Tap the world to drop a green hologram there, then use these big buttons:
+  //   🔄 rotate the hologram · ✓ place it · 🗑️ delete what you're aiming at
+  let dock = null, delBtn = null;
+  function buildDock() {
+    const css = document.createElement('style');
+    css.textContent = `
+      #bldDock{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:31;display:none;
+        gap:16px;align-items:center;pointer-events:auto;}
+      #bldDock.on{display:flex;}
+      .bldD{width:66px;height:66px;border-radius:50%;border:3px solid rgba(255,255,255,.55);
+        display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;user-select:none;
+        background:rgba(20,26,16,.72);text-shadow:0 1px 3px #000;backdrop-filter:blur(2px);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .bldD:active{transform:scale(.9);}
+      #bldPlace{width:82px;height:82px;font-size:40px;background:rgba(70,155,70,.9);border-color:#cffccf;box-shadow:0 0 14px rgba(90,220,90,.5);}
+      #bldDel.act{background:rgba(200,70,60,.92);border-color:#fff;}
+    `;
+    document.head.appendChild(css);
+    dock = document.createElement('div'); dock.id = 'bldDock';
+    const rotB = mkD('bldRot', '🔄'), placeB = mkD('bldPlace', '✓'); delBtn = mkD('bldDel', '🗑️');
+    dock.appendChild(rotB); dock.appendChild(placeB); dock.appendChild(delBtn);
+    document.body.appendChild(dock);
+    bindD(rotB, () => { rot = (rot + 1) % 4; updateGhostModel(); if (W.hud) W.hud.toast('🔄 ' + (rot * 90) + '°'); });
+    bindD(placeB, () => { erase ? doDelete() : doPlace(); });
+    bindD(delBtn, () => { erase = !erase; refreshBar(); delBtn.classList.toggle('act', erase);
+      if (W.hud) W.hud.toast(erase ? '🗑️ Delete mode — aim & tap ✓ (or tap a block)' : '🧱 Place mode'); });
+  }
+  function mkD(id, txt) { const d = document.createElement('div'); d.id = id; d.className = 'bldD'; d.textContent = txt; return d; }
+  function bindD(el, fn) {
+    el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); }, { passive: false });
   }
 
   // ---- mode toggle ----------------------------------------------------------
   function toggle() {
-    on = !on; if (bar) bar.classList.toggle('on', on);
-    if (W.hud) W.hud.toast(on ? '🧱 Build Mode ON — V to exit' : 'Build Mode off');
-    if (!on && ghost) ghost.visible = false;
+    on = !on; if (bar) bar.classList.toggle('on', on); if (dock) dock.classList.toggle('on', on);
+    if (!on) pin = null;
+    if (W.hud) W.hud.toast(on ? '🧱 Build Mode — tap to aim, then ✓ place · 🔄 rotate · 🗑️ delete' : 'Build Mode off');
+    if (!on) { if (ghost) ghost.visible = false; if (ghostModel) ghostModel.visible = false; }
   }
 
   // ---- input (capture phase so build keys/clicks don't reach the game) -------
@@ -311,6 +385,9 @@
     else if (e.code === 'KeyX') { clearAll(); }
     else if (e.code === 'BracketRight') { sel = (sel + 1) % palette.length; erase = false; refreshBar(); }
     else if (e.code === 'BracketLeft') { sel = (sel - 1 + palette.length) % palette.length; erase = false; refreshBar(); }
+    else if (e.code === 'KeyR') { rot = (rot + 1) % 4; updateGhostModel(); if (W.hud) W.hud.toast('↻ ' + (rot * 90) + '°'); }   // rotate / turn
+    else if (e.code === 'KeyG') { flip = !flip; updateGhostModel(); if (W.hud) W.hud.toast(flip ? '⇄ Flipped' : 'Unflipped'); } // flip / mirror
+    else if (e.code === 'KeyY') { erase = !erase; refreshBar(); if (W.hud) W.hud.toast(erase ? '🗑️ Delete mode — click to delete' : '🧱 Place mode'); }
     else used = false;
     if (used) e.stopImmediatePropagation();
   }, true);
@@ -324,7 +401,8 @@
   }, true);
   window.addEventListener('contextmenu', (e) => { if (on) e.preventDefault(); }, true);
 
-  // mobile: a tap on the look area places/deletes; add a toggle pill
+  // mobile: a tap on the world drops the green hologram there (pin); the dock's
+  // ✓/🔄/🗑️ buttons do the rest. A drag still just looks around (no accidental pin).
   function addMobile() {
     const acts = document.getElementById('mActs'); if (!acts || document.getElementById('mBuild')) return;
     const b = document.createElement('div'); b.id = 'mBuild'; b.className = 'mpill';
@@ -334,7 +412,21 @@
     b.addEventListener('touchstart', (ev) => { ev.preventDefault(); ev.stopPropagation(); toggle(); b.style.background = on ? 'rgba(120,160,90,.9)' : ''; }, { passive: false });
     acts.insertBefore(b, acts.firstChild);
     const look = document.getElementById('mLook');
-    if (look) look.addEventListener('touchend', () => { if (on) (erase ? doDelete() : doPlace()); });
+    if (look) {
+      let sx = 0, sy = 0, moved = 0, id = null;
+      look.addEventListener('touchstart', (ev) => { if (!on) return; const tc = ev.changedTouches[0]; id = tc.identifier; sx = tc.clientX; sy = tc.clientY; moved = 0; }, { passive: true });
+      look.addEventListener('touchmove', (ev) => { if (!on) return; for (const tc of ev.changedTouches) if (tc.identifier === id) { moved += Math.abs(tc.clientX - sx) + Math.abs(tc.clientY - sy); sx = tc.clientX; sy = tc.clientY; } }, { passive: true });
+      look.addEventListener('touchend', (ev) => {
+        if (!on) return;
+        for (const tc of ev.changedTouches) {
+          if (tc.identifier !== id) continue;
+          if (moved < 16) {                                     // a genuine tap (not a look-drag) -> pin the ghost here
+            const p = pick((tc.clientX / window.innerWidth) * 2 - 1, -(tc.clientY / window.innerHeight) * 2 + 1);
+            if (p) pin = p;
+          }
+        }
+      });
+    }
   }
 
   // ---- init -----------------------------------------------------------------
@@ -347,13 +439,14 @@
     ensureGhost();
     buildPalette();
     buildBar();
+    buildDock();
     load();
     requestAnimationFrame(loop);
     setTimeout(addMobile, 900); setTimeout(addMobile, 2600);
     window.addEventListener('beforeunload', () => { if (saveT) { clearTimeout(saveT); saveT = null; } save(); });
     W.builder = {
       toggle, isOn: () => on, count: () => blocks.size,
-      place: (cx, cy, cz, i) => { const o = sel; if (i != null) sel = i; placeAt(cx, cy, cz, descOf(sel)); sel = o; save(); },
+      place: (cx, cy, cz, i) => { const o = sel; if (i != null) sel = i; placeAt(cx, cy, cz, descOf(sel), 0, false); sel = o; save(); },
       remove: (cx, cy, cz) => { removeKey(ck(cx, cy, cz)); save(); },
       addArt: addTexFromURL,
       addPreset: addPreset,

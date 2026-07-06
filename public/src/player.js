@@ -1263,9 +1263,12 @@
     const wantSprint = k.ShiftLeft && moving && fwd > 0 && player.stamina > 1;
     const speed = SPEED * (wantSprint ? SPRINT : 1) * (player.speedMult || 1) * (player._mount ? 2.2 : 1);   // horseback = fast
 
+    // Build Mode = spectator: fly + no-clip (move through walls, Space up / Shift down)
+    const spectator = !!(W.builder && W.builder.isOn && W.builder.isOn());
+
     player.pos.x += wishX * speed * dt;
     player.pos.z += wishZ * speed * dt;
-    W.world.resolveCollision(player.pos, C.PLAYER_RADIUS, player.pos.y - C.EYE_HEIGHT);  // feet height: jump over low walls
+    if (!spectator) W.world.resolveCollision(player.pos, C.PLAYER_RADIUS, player.pos.y - C.EYE_HEIGHT);  // feet height: jump over low walls
 
     // keep inside the world
     const fromC = Math.hypot(player.pos.x, player.pos.z);
@@ -1275,22 +1278,29 @@
     }
 
     // --- vertical (gravity, jump, terrain + building floors/stairs) ---
-    const feetY = player.pos.y - C.EYE_HEIGHT;
-    let standY = W.world.heightAt(player.pos.x, player.pos.z);
-    if (W.world.standHeight) {
-      const s = W.world.standHeight(player.pos.x, player.pos.z, feetY);
-      if (s > standY) standY = s;
-    }
-    const groundEye = standY + C.EYE_HEIGHT;
-    if (player.grounded && k.Space) { player.vy = JUMP; player.grounded = false; }
-    player.vy -= GRAV * dt;
-    player.pos.y += player.vy * dt;
-    if (player.pos.y <= groundEye) {
-      player.pos.y = groundEye; player.vy = 0; player.grounded = true;
-    } else if (player.grounded) {
-      // follow gentle slopes / steps up; fall when stepping off a ledge
-      if (player.pos.y - groundEye <= 0.6) { player.pos.y = groundEye; player.vy = 0; }
-      else player.grounded = false;
+    if (spectator) {
+      player.vy = 0; player.grounded = false;
+      const fly = 10;
+      if (k.Space) player.pos.y += fly * dt;                              // ascend
+      if (k.ShiftLeft || k.ShiftRight) player.pos.y -= fly * dt;          // descend
+    } else {
+      const feetY = player.pos.y - C.EYE_HEIGHT;
+      let standY = W.world.heightAt(player.pos.x, player.pos.z);
+      if (W.world.standHeight) {
+        const s = W.world.standHeight(player.pos.x, player.pos.z, feetY);
+        if (s > standY) standY = s;
+      }
+      const groundEye = standY + C.EYE_HEIGHT;
+      if (player.grounded && k.Space) { player.vy = JUMP; player.grounded = false; }
+      player.vy -= GRAV * dt;
+      player.pos.y += player.vy * dt;
+      if (player.pos.y <= groundEye) {
+        player.pos.y = groundEye; player.vy = 0; player.grounded = true;
+      } else if (player.grounded) {
+        // follow gentle slopes / steps up; fall when stepping off a ledge
+        if (player.pos.y - groundEye <= 0.6) { player.pos.y = groundEye; player.vy = 0; }
+        else player.grounded = false;
+      }
     }
 
     // --- stats ---
