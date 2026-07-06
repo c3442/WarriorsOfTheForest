@@ -273,31 +273,32 @@
   function buildBar() {
     const css = document.createElement('style');
     css.textContent = `
-      #bldBar{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:30;display:none;
-        align-items:center;gap:8px;padding:8px 12px;border-radius:14px;background:rgba(14,18,12,.82);
-        border:2px solid rgba(150,180,110,.55);color:#fff;font:bold 13px 'Trebuchet MS',system-ui,sans-serif;
-        text-shadow:0 1px 2px #000;backdrop-filter:blur(2px);max-width:96vw;flex-wrap:wrap;justify-content:center;}
+      /* thin single-row strip pinned to the top edge — leaves the play area clear */
+      #bldBar{position:fixed;left:50%;top:6px;transform:translateX(-50%);z-index:30;display:none;
+        align-items:center;gap:6px;padding:5px 8px;border-radius:11px;background:rgba(14,18,12,.55);
+        border:1px solid rgba(150,180,110,.4);color:#fff;font:bold 12px 'Trebuchet MS',system-ui,sans-serif;
+        text-shadow:0 1px 2px #000;backdrop-filter:blur(2px);max-width:97vw;white-space:nowrap;}
       #bldBar.on{display:flex;}
-      #bldSw{display:flex;gap:5px;flex-wrap:wrap;}
-      .bldS{width:26px;height:26px;border-radius:6px;border:2px solid rgba(255,255,255,.4);cursor:pointer;
+      #bldSw{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;max-width:48vw;padding-bottom:2px;}
+      #bldSw::-webkit-scrollbar{height:4px;} #bldSw::-webkit-scrollbar-thumb{background:rgba(150,180,110,.5);border-radius:2px;}
+      .bldS{flex:0 0 auto;width:28px;height:28px;border-radius:6px;border:2px solid rgba(255,255,255,.4);cursor:pointer;
         background-size:cover;background-position:center;image-rendering:pixelated;}
       .bldS.sel{border-color:#fff;box-shadow:0 0 0 2px #6f6,0 0 8px #6f6;}
-      .bldBtn{padding:5px 10px;border-radius:9px;border:2px solid rgba(255,255,255,.4);cursor:pointer;
-        background:rgba(30,38,24,.7);color:#fff;white-space:nowrap;}
+      .bldBtn{flex:0 0 auto;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:17px;
+        border-radius:9px;border:2px solid rgba(255,255,255,.4);cursor:pointer;background:rgba(30,38,24,.7);color:#fff;}
       .bldBtn:active{background:rgba(120,160,90,.8);}
       .bldBtn.act{background:rgba(200,70,60,.85);border-color:#fff;}
-      #bldHint{opacity:.85;font-weight:normal;}
     `;
     document.head.appendChild(css);
 
     bar = document.createElement('div'); bar.id = 'bldBar';
     const title = document.createElement('span'); title.textContent = '🧱';
     swatches = document.createElement('div'); swatches.id = 'bldSw';
-    const load = document.createElement('div'); load.className = 'bldBtn'; load.textContent = '🖼️ Art (L)';
-    const er = document.createElement('div'); er.className = 'bldBtn'; er.id = 'bldErase'; er.textContent = '🗑️ Erase (F)';
-    const clr = document.createElement('div'); clr.className = 'bldBtn'; clr.textContent = '🧹 Clear (X)';
-    const close = document.createElement('div'); close.className = 'bldBtn'; close.textContent = '✕ Done (V)';
-    hint = document.createElement('span'); hint.id = 'bldHint'; hint.textContent = 'Click place · Y delete · R rotate · G flip · Space/Shift fly';
+    const load = document.createElement('div'); load.className = 'bldBtn'; load.title = 'Load pixel art (L)'; load.textContent = '🖼️';
+    const er = document.createElement('div'); er.className = 'bldBtn'; er.id = 'bldErase'; er.title = 'Erase (F)'; er.textContent = '🗑️';
+    const clr = document.createElement('div'); clr.className = 'bldBtn'; clr.title = 'Clear all (X)'; clr.textContent = '🧹';
+    const close = document.createElement('div'); close.className = 'bldBtn'; close.title = 'Done (V)'; close.textContent = '✕';
+    hint = document.createElement('span'); hint.style.display = 'none';
 
     fileIn = document.createElement('input'); fileIn.type = 'file'; fileIn.accept = 'image/*'; fileIn.style.display = 'none';
     fileIn.addEventListener('change', (e) => {
