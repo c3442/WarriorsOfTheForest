@@ -237,17 +237,38 @@
     return g;
   }
 
-  // A tatami floor: the jap-floor art on a low slab, framed by a raised wooden border.
+  // A 3D hotel room built from the floor art: a textured floor slab with real walls +
+  // ceiling rising around it (hotel-room art on the walls), open front so you can walk in.
   function makeJapFloor() {
     const g = new THREE.Group();
-    const S = 2.2, H = 0.16, edge = 0.1;
+    const S = 3.2, H = 0.18, Ht = 2.6, T = 0.14;
     const wood = M(0x6b4a2a, { roughness: 0.85 });
-    const mat = texMat('jap-floor.png', 1, 1);
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(S, H, S), [wood, wood, mat, wood, wood, wood]);
+    const trim = M(0x4a3320, { roughness: 0.85 });
+    const floorTex = texMat('jap-floor.png', 1, 1);
+    const wallTex = texMat('room.png', 2, 1);
+    // textured floor
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(S, H, S), [wood, wood, floorTex, wood, wood, wood]);
     slab.position.y = H / 2; slab.receiveShadow = true; g.add(slab);
-    for (const [dx, dz, w, d] of [[0, S / 2, S + edge * 2, edge], [0, -S / 2, S + edge * 2, edge], [S / 2, 0, edge, S], [-S / 2, 0, edge, S]]) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, H + 0.06, d), wood);
-      b.position.set(dx, (H + 0.06) / 2, dz); b.castShadow = true; g.add(b);
+    // back + two side walls (hotel-room art)
+    const back = new THREE.Mesh(new THREE.BoxGeometry(S, Ht, T), wallTex);
+    back.position.set(0, H + Ht / 2, -S / 2 + T / 2); back.castShadow = true; g.add(back);
+    for (const sx of [-1, 1]) {
+      const w = new THREE.Mesh(new THREE.BoxGeometry(T, Ht, S), wallTex);
+      w.position.set(sx * (S / 2 - T / 2), H + Ht / 2, 0); w.castShadow = true; g.add(w);
+    }
+    // front wall with a doorway gap (two side posts + a header)
+    for (const sx of [-1, 1]) {
+      const fw = new THREE.Mesh(new THREE.BoxGeometry(S / 2 - 0.55, Ht, T), wallTex);
+      fw.position.set(sx * (S / 4 + 0.275), H + Ht / 2, S / 2 - T / 2); fw.castShadow = true; g.add(fw);
+    }
+    const header = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, T), wallTex);
+    header.position.set(0, H + Ht - 0.25, S / 2 - T / 2); g.add(header);
+    // ceiling + baseboard trim so it reads as an enclosed room
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(S, T, S), trim);
+    roof.position.y = H + Ht - T / 2; roof.castShadow = true; g.add(roof);
+    for (const [dx, dz, w, d] of [[0, S / 2 - 0.05, S, 0.1], [0, -S / 2 + 0.05, S, 0.1], [S / 2 - 0.05, 0, 0.1, S], [-S / 2 + 0.05, 0, 0.1, S]]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, d), trim);
+      b.position.set(dx, H + 0.1, dz); g.add(b);
     }
     return g;
   }
@@ -269,7 +290,7 @@
 
   // [id, file, factory, height] — objects placed as real 3D models
   const MODELS = [
-    ['brick', 'brick.png', makeBrickWall, 2.4], ['jap-floor', 'jap-floor.png', makeJapFloor, 0.22], ['room', 'room.png', makeRoom, 2.6],
+    ['brick', 'brick.png', makeBrickWall, 2.4], ['jap-floor', 'jap-floor.png', makeJapFloor, 0.2], ['room', 'room.png', makeRoom, 2.6],
     ['barrel', 'barrel.png', makeBarrel, 0.9], ['iron-pole', 'iron-pole.png', makePole, 1.55],
     ['cool-door', 'cool-door.png', makeDoor, 2.0], ['blaster', 'blaster.png', makeBlaster, 0.9],
     ['grenade-2', 'grenade-2.png', makeGrenadePineapple, 0.55], ['grenade-1', 'grenade-1.png', makeGrenadeFuturistic, 0.55],

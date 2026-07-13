@@ -68,7 +68,7 @@
       const ti = textures.length - 1;
       palette.push({ kind: 'tex', url: dataURL, ti, mat });
       blocks.forEach((b) => { if (b.desc === 't:' + ti) b.mesh.material = mat; });   // re-skin restored blocks
-      sel = palette.length - 1; erase = false; refreshBar(); save();
+      sel = palette.length - 1; erase = false; refreshBar(); markDirty();
     });
   }
   // built-in textures loaded by URL (e.g. owner asset pack). Referenced by a stable
@@ -201,16 +201,19 @@
   }
 
   // ---- persistence (this browser only) --------------------------------------
-  let saveT = null;
-  function save() {
-    if (saveT) return; saveT = setTimeout(() => {
-      saveT = null;
-      try {
-        const data = { tex: textures, b: [] };
-        blocks.forEach((b, key) => { const [x, y, z] = key.split(',').map(Number); data.b.push([x, y, z, b.desc, b.rot || 0, b.flip ? 1 : 0]); });
-        localStorage.setItem(KEY, JSON.stringify(data));
-      } catch (e) { /* storage full / disabled — ignore */ }
-    }, 250);
+  // Manual save ONLY: nothing is written until you press 💾 Save. Edits just mark
+  // the map "dirty" (the Save button glows) so you know there's unsaved work.
+  let dirty = false;
+  function setSaveDirty(v) { document.querySelectorAll('.bldSaveBtn').forEach((el) => el.classList.toggle('dirty', v)); }
+  function markDirty() { dirty = true; setSaveDirty(true); }
+  function saveMap() {
+    try {
+      const data = { tex: textures, b: [] };
+      blocks.forEach((b, key) => { const [x, y, z] = key.split(',').map(Number); data.b.push([x, y, z, b.desc, b.rot || 0, b.flip ? 1 : 0]); });
+      localStorage.setItem(KEY, JSON.stringify(data));
+      dirty = false; setSaveDirty(false);
+      if (W.hud) W.hud.toast('💾 Map saved');
+    } catch (e) { if (W.hud) W.hud.toast('Save failed (storage full?)'); }
   }
   function load() {
     let data = null; try { data = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
@@ -249,16 +252,69 @@
   // ---- actions --------------------------------------------------------------
   function doPlace() {
     const t = target(); if (!t) return;
-    const [x, y, z] = t.add; placeAt(x, y, z, currentDesc(), rot, flip); save();
+    const [x, y, z] = t.add; placeAt(x, y, z, currentDesc(), rot, flip); markDirty();
+  }
+  // never delete these — terrain, water, sky bodies, lights, the builder itself
+  function isProtected(o) {
+    const n = (o.name || '').toLowerCase();
+    if (n === 'terrain' || n === 'water' || n === 'builder') return true;
+    const wd = W.world || {};
+    if (o === wd.skyDome || o === wd.water || o === wd.mountains || o === wd.clouds ||
+        o === wd.sun || o === wd.sunDisc || o === wd.moon || o === wd.stars || o === wd.hemi) return true;
+    return !!(o.isLight || o.isCamera);
+  }
+  // The deletable object under the crosshair: the nearest node carrying a
+  // userData.type (tree/house/hotel/enemy/prop…) or a single top-level scene
+  // object — but not a huge bulk container (so you can't nuke all foliage at once).
+  function deletableRoot(obj) {
+    let o = obj;
+    while (o && o !== W.player.scene) {
+      if (o === group || o === ghost || o === ghostModel) return null;   // builder's own bits
+      if (o.userData && o.userData.type) return o;                       // a tagged game object
+      if (o.parent === W.player.scene) return (o.children && o.children.length > 24) ? null : o;
+      o = o.parent;
+    }
+    return null;
+  }
+  function removeWorldObject(root) {
+    if (root.parent) root.parent.remove(root);
+    const cols = W.world && W.world.colliders;
+    if (cols) for (let i = cols.length - 1; i >= 0; i--) if (cols[i].ref === root) cols.splice(i, 1);
+    const plats = W.world && W.world.platforms;
+    if (plats && root.position) for (let i = plats.length - 1; i >= 0; i--) {
+      const pl = plats[i];
+      if (pl.cx !== undefined && Math.hypot(pl.cx - root.position.x, pl.cz - root.position.z) < 0.6) plats.splice(i, 1);
+    }
+    if (root.userData) {
+      if (root.userData.alive !== undefined) root.userData.alive = false;
+      if (root.userData.type === 'enemy' && W.enemies && W.enemies.list) {
+        const e = W.enemies.list.find((x) => x.group === root); if (e) e.alive = false;
+      }
+    }
   }
   function doDelete() {
-    const t = target(); if (!t || !t.cell) return;
-    removeKey(ck(t.cell[0], t.cell[1], t.cell[2])); save();
+    // 1) a block you placed
+    const t = target();
+    if (t && t.cell) { removeKey(ck(t.cell[0], t.cell[1], t.cell[2])); markDirty(); return; }
+    // 2) anything else in the world — trees, rocks, houses, props, tents…
+    const cam = W.player && W.player.camera; if (!cam) return;
+    ray.setFromCamera(_ndc.set(0, 0), cam); ray.far = 150;   // cast from the crosshair
+    const objs = W.player.scene.children.filter((c) => c !== cam && c !== group);
+    const hits = ray.intersectObjects(objs, true);
+    ray.far = REACH;
+    for (const h of hits) {
+      const root = deletableRoot(h.object);
+      if (!root || isProtected(root)) continue;
+      removeWorldObject(root);
+      if (W.hud) W.hud.toast('🗑️ Deleted ' + ((root.userData && root.userData.type) || 'object'));
+      return;
+    }
+    if (W.hud) W.hud.toast('Nothing to delete there');
   }
   function clearAll() {
     if (!blocks.size) return;
     if (!confirm('Delete all ' + blocks.size + ' blocks on your map?')) return;
-    Array.from(blocks.keys()).forEach(removeKey); save();
+    Array.from(blocks.keys()).forEach(removeKey); markDirty();
     if (W.hud) W.hud.toast('Map cleared');
   }
 
@@ -305,7 +361,7 @@
   }
 
   // ---- toolbar (HUD strip; also tappable on mobile) -------------------------
-  let bar = null, swatches = null, shapesEl = null, hint = null, fileIn = null;
+  let bar = null, swatches = null, shapesEl = null, hint = null, fileIn = null, saveBtn = null;
   const SHAPES = [['box', '🧊'], ['ramp', '📐'], ['cylinder', '🥫'], ['sphere', '🔵'], ['cone', '🔺'], ['pyramid', '🔻']];
   function buildBar() {
     const css = document.createElement('style');
@@ -330,6 +386,7 @@
         border-radius:9px;border:2px solid rgba(255,255,255,.4);cursor:pointer;background:rgba(30,38,24,.7);color:#fff;}
       .bldBtn:active{background:rgba(120,160,90,.8);}
       .bldBtn.act{background:rgba(200,70,60,.85);border-color:#fff;}
+      .bldSaveBtn.dirty{border-color:#ffcf5c;color:#ffe08a;box-shadow:0 0 9px #ffcf5c;}
     `;
     document.head.appendChild(css);
 
@@ -339,6 +396,7 @@
     const load = document.createElement('div'); load.className = 'bldBtn'; load.title = 'Load pixel art (L)'; load.textContent = '🖼️';
     const er = document.createElement('div'); er.className = 'bldBtn'; er.id = 'bldErase'; er.title = 'Erase (F)'; er.textContent = '🗑️';
     const clr = document.createElement('div'); clr.className = 'bldBtn'; clr.title = 'Clear all (X)'; clr.textContent = '🧹';
+    const saveB = document.createElement('div'); saveB.className = 'bldBtn bldSaveBtn'; saveB.id = 'bldSave'; saveB.title = 'Save map'; saveB.textContent = '💾'; saveBtn = saveB;
     const close = document.createElement('div'); close.className = 'bldBtn'; close.title = 'Done (V)'; close.textContent = '✕';
     hint = document.createElement('span'); hint.style.display = 'none';
 
@@ -352,6 +410,7 @@
     tap(load, () => fileIn.click());
     tap(er, () => { erase = !erase; refreshBar(); });
     tap(clr, clearAll);
+    tap(saveB, saveMap);
     tap(close, () => toggle());
 
     // 3D shape picker (applies to colour + pixel-art blocks) — Roblox-style parts
@@ -363,7 +422,7 @@
     });
 
     bar.appendChild(title); bar.appendChild(shapesEl); bar.appendChild(swatches);
-    bar.appendChild(load); bar.appendChild(er); bar.appendChild(clr); bar.appendChild(close); bar.appendChild(hint);
+    bar.appendChild(load); bar.appendChild(er); bar.appendChild(clr); bar.appendChild(saveB); bar.appendChild(close); bar.appendChild(hint);
     bar.appendChild(fileIn);
     document.body.appendChild(bar);
     refreshBar();
@@ -402,17 +461,22 @@
         background:rgba(20,26,16,.72);text-shadow:0 1px 3px #000;backdrop-filter:blur(2px);cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .bldD:active{transform:scale(.9);}
       #bldPlace{width:82px;height:82px;font-size:40px;background:rgba(70,155,70,.9);border-color:#cffccf;box-shadow:0 0 14px rgba(90,220,90,.5);}
-      #bldDel.act{background:rgba(200,70,60,.92);border-color:#fff;}
+      #bldDel{background:rgba(150,50,44,.8);border-color:#f6b0a8;}
     `;
     document.head.appendChild(css);
     dock = document.createElement('div'); dock.id = 'bldDock';
     const rotB = mkD('bldRot', '🔄'), placeB = mkD('bldPlace', '✓'); delBtn = mkD('bldDel', '🗑️');
-    dock.appendChild(rotB); dock.appendChild(placeB); dock.appendChild(delBtn);
+    const saveD = mkD('bldSaveD', '💾'); saveD.classList.add('bldSaveBtn');
+    dock.appendChild(rotB); dock.appendChild(placeB); dock.appendChild(delBtn); dock.appendChild(saveD);
     document.body.appendChild(dock);
     bindD(rotB, () => { rot = (rot + 1) % 4; updateGhostModel(); if (W.hud) W.hud.toast('🔄 ' + (rot * 90) + '°'); });
-    bindD(placeB, () => { erase ? doDelete() : doPlace(); });
-    bindD(delBtn, () => { erase = !erase; refreshBar(); delBtn.classList.toggle('act', erase);
-      if (W.hud) W.hud.toast(erase ? '🗑️ Delete mode — aim & tap ✓ (or tap a block)' : '🧱 Place mode'); });
+    bindD(placeB, () => doPlace());
+    // 🗑️ deletes WHATEVER you're aiming at (or the block you tapped) — any shape or model
+    bindD(delBtn, () => {
+      const before = blocks.size; doDelete();
+      if (W.hud) W.hud.toast(blocks.size < before ? '🗑️ Deleted' : 'Aim at (or tap) a block to delete');
+    });
+    bindD(saveD, saveMap);
   }
   function mkD(id, txt) { const d = document.createElement('div'); d.id = id; d.className = 'bldD'; d.textContent = txt; return d; }
   function bindD(el, fn) {
@@ -498,12 +562,10 @@
     buildDock();
     load();
     requestAnimationFrame(loop);
-    setTimeout(addMobile, 900); setTimeout(addMobile, 2600);
-    window.addEventListener('beforeunload', () => { if (saveT) { clearTimeout(saveT); saveT = null; } save(); });
-    W.builder = {
+    setTimeout(addMobile, 900); setTimeout(addMobile, 2600);    W.builder = {
       toggle, isOn: () => on, count: () => blocks.size,
-      place: (cx, cy, cz, i) => { const o = sel; if (i != null) sel = i; placeAt(cx, cy, cz, descOf(sel), 0, false); sel = o; save(); },
-      remove: (cx, cy, cz) => { removeKey(ck(cx, cy, cz)); save(); },
+      place: (cx, cy, cz, i) => { const o = sel; if (i != null) sel = i; placeAt(cx, cy, cz, descOf(sel), 0, false); sel = o; markDirty(); },
+      remove: (cx, cy, cz) => { removeKey(ck(cx, cy, cz)); markDirty(); },
       addArt: addTexFromURL,
       addPreset: addPreset,
       addModelPreset: addModelPreset,
