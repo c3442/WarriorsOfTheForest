@@ -214,24 +214,29 @@
     return g;
   }
 
-  // A real brick wall: a textured slab with a few courses of protruding bricks so it
-  // reads as 3D masonry rather than a flat photo.
+  // A real 3D brick wall: every brick is its own box laid in a running-bond course
+  // over a recessed mortar backing, with slight colour variation — actual masonry.
+  const _brickShades = [0x9c3d2b, 0xa94b30, 0x8a3423, 0xb35836, 0x7e3220, 0xa8492f].map((c) => M(c, { roughness: 0.95 }));
   function makeBrickWall() {
     const g = new THREE.Group();
-    const Wd = 2.0, Ht = 2.4, Dp = 0.28;
-    const face = texMat('brick.png', 2, 2);
-    const side = M(0x7a4632, { roughness: 0.95 });
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(Wd, Ht, Dp), [side, side, side, side, face, face]);
-    wall.position.y = Ht / 2; wall.castShadow = true; wall.receiveShadow = true; g.add(wall);
-    // raised individual bricks for relief, brick-coloured to match the art
-    const brickM = M(0x9a4d34, { roughness: 0.95 });
-    const bw = 0.34, bh = 0.14, gap = 0.04;
-    for (let row = 0; row < 5; row++) {
-      const y = 0.28 + row * (bh + 0.12);
-      const off = (row % 2) ? (bw + gap) / 2 : 0;
-      for (let x = -Wd / 2 + 0.2 + off; x < Wd / 2 - 0.2; x += bw + gap) {
-        const b = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.06), brickM);
-        b.position.set(x, y, Dp / 2 + 0.03); b.castShadow = true; g.add(b);
+    const Wd = 2.0, Ht = 2.4, Dp = 0.2;
+    // mortar backing (light grey shows through the joints)
+    const mortar = M(0xc2b9a6, { roughness: 1 });
+    const back = new THREE.Mesh(new THREE.BoxGeometry(Wd, Ht, Dp * 0.55), mortar);
+    back.position.set(0, Ht / 2, -0.02); back.receiveShadow = true; g.add(back);
+    // individual proud bricks, staggered every other row, trimmed at the edges
+    const bw = 0.42, bh = 0.16, gap = 0.035, rowH = bh + gap, bd = Dp;
+    const rows = Math.floor(Ht / rowH);
+    let idx = 0;
+    for (let r = 0; r < rows; r++) {
+      const y = bh / 2 + gap / 2 + r * rowH;
+      const off = (r % 2) ? (bw + gap) / 2 : 0;
+      for (let cx = -Wd / 2 + bw / 2 + off - (bw + gap); cx < Wd / 2 + bw; cx += bw + gap) {
+        const L = Math.max(cx - bw / 2, -Wd / 2 + gap / 2), R = Math.min(cx + bw / 2, Wd / 2 - gap / 2);
+        const w = R - L; if (w < 0.06) continue;                 // skip slivers past the edge
+        const b = new THREE.Mesh(new THREE.BoxGeometry(w, bh, bd), _brickShades[(r * 2 + idx) % _brickShades.length]);
+        b.position.set((L + R) / 2, y, 0.045);                   // sit proud of the mortar
+        b.castShadow = true; b.receiveShadow = true; g.add(b); idx++;
       }
     }
     return g;
