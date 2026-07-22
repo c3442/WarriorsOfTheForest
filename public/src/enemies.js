@@ -249,10 +249,78 @@
     return g;
   }
 
+  // ===== SIR BUFFINGTON — a giant comedic bodybuilder boss ====================
+  const BUFF_TAUNTS = [
+    'BEHOLD MY PERFECTLY NORMAL MUSCLES!',
+    'Do you even lift, peasant?!',
+    'These gains are ALL natural!',
+    'I skipped leg day for YOU!',
+    'My mustache has its own gym membership!',
+    'FLEX FIRST, ASK QUESTIONS LATER!',
+  ];
+  const BUFF_ROTATION = ['bellyBounce', 'chickenThrow', 'flex', 'spinSmash'];
+  const BUFF_DUR = { bellyBounce: 1.5, chickenThrow: 1.8, flex: 2.0, spinSmash: 1.9, eat: 3.2 };
+
+  // A tiny thrown chicken (reused as a projectile).
+  function makeChicken() {
+    const g = new THREE.Group();
+    const white = new THREE.MeshStandardMaterial({ color: 0xf4f0e8, roughness: 1, flatShading: true });
+    const red = new THREE.MeshStandardMaterial({ color: 0xd63b3b, roughness: 1, flatShading: true });
+    const beak = new THREE.MeshStandardMaterial({ color: 0xe8a23a, roughness: 1, flatShading: true });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), white); body.scale.set(1, 0.9, 1.2); g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), white); head.position.set(0, 0.16, 0.18); g.add(head);
+    const comb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.09, 0.12), red); comb.position.set(0, 0.28, 0.18); g.add(comb);
+    const bk = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 4), beak); bk.rotation.x = Math.PI / 2; bk.position.set(0, 0.14, 0.32); g.add(bk);
+    for (const sx of [-0.18, 0.18]) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.2), white); w.position.set(sx, 0, 0); g.add(w); }
+    return g;
+  }
+
+  // The big man himself: huge chest & arms, a belly, tiny legs, a magnificent mustache.
+  function makeBuffington() {
+    const g = new THREE.Group();
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe0a878, roughness: 0.9, flatShading: true });
+    const singlet = new THREE.MeshStandardMaterial({ color: 0xc23636, roughness: 0.9, flatShading: true });
+    const hair = new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 1, flatShading: true });
+    // legs (comically small)
+    const legs = [];
+    const legGeo = new THREE.BoxGeometry(0.34, 0.9, 0.34);
+    for (const sx of [-0.32, 0.32]) { const l = new THREE.Mesh(legGeo, dark); l.position.set(sx, 0.45, 0); l.castShadow = true; g.add(l); legs.push(l); }
+    // huge chest / torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.35, 0.95), skin); torso.position.y = 1.65; torso.castShadow = true; g.add(torso);
+    const singletM = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.9, 0.97), singlet); singletM.position.y = 1.45; g.add(singletM);
+    for (const sx of [-0.42, 0.42]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.5, 0.2), singlet); st.position.set(sx, 1.9, 0.42); g.add(st); }  // straps
+    // pecs
+    for (const sx of [-0.4, 0.4]) { const pec = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), skin); pec.scale.set(1, 0.7, 0.6); pec.position.set(sx, 2.05, 0.4); g.add(pec); }
+    // belly
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.72, 12, 10), skin); belly.scale.set(1.1, 0.85, 0.9); belly.position.set(0, 1.15, 0.35); belly.castShadow = true; g.add(belly);
+    // massive arms (upper arm = bicep, forearm) grouped so we can flex them
+    const armL = new THREE.Group(), armR = new THREE.Group();
+    const mkArm = (grp, side) => {
+      const bicep = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), skin); bicep.scale.set(0.9, 1.15, 0.9); bicep.position.y = -0.35; grp.add(bicep);
+      const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.9, 8), skin); fore.position.y = -0.95; grp.add(fore);
+      const fist = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), skin); fist.position.y = -1.45; grp.add(fist);
+      grp.position.set(side * 1.02, 2.15, 0.1); g.add(grp);
+    };
+    mkArm(armL, -1); mkArm(armR, 1);
+    legs.push(armL, armR);   // arms animate as "legs[2],[3]"
+    // head + face
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), skin); head.position.y = 2.75; head.castShadow = true; g.add(head);
+    const hairT = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.2, 0.64), hair); hairT.position.y = 3.05; g.add(hairT);
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+    for (const sx of [-0.15, 0.15]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), eyeMat); e.position.set(sx, 2.82, 0.31); g.add(e); }
+    // the magnificent mustache
+    const mustache = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.12), hair); mustache.position.set(0, 2.62, 0.32); g.add(mustache);
+    for (const sx of [-0.28, 0.28]) { const tip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.1), hair); tip.position.set(sx, 2.68, 0.32); g.add(tip); }
+    g.userData = { type: 'enemy', kind: 'buffington', legs, mat: skin, eyeMat, belly, armL, armR };
+    return g;
+  }
+
   // Build a foe of the given kind and cache each limb's base rotation for the gait.
   function buildModel(kind) {
     const g = kind === 'werewolf' ? makeWerewolf() : kind === 'zombie' ? makeZombie()
       : kind === 'bandit' ? makeBandit() : kind === 'outlaw' ? makeOutlaw()
+      : kind === 'buffington' ? makeBuffington()
       : kind === 'bear' ? makeBear() : makeWolf();
     g.userData.legBases = g.userData.legs.map((l) => l.rotation.x);
     return g;
@@ -307,6 +375,145 @@
     for (let i = 0; i < 3; i++) enemies.spawnGuard(e);   // starts with a few bodyguards
     if (W.hud) W.hud.banner('A BANDIT BOSS ROAMS', 'Guarded by his gang — hunt him for his shotgun 🔫', '#ffb24a');
   };
+
+  // ---- Sir Buffington: spawn, abilities & FX --------------------------------
+  enemies._buffFx = [];
+  enemies.spawnBuffington = function (center) {
+    const a = U.rand(0, Math.PI * 2);
+    const dist = U.rand(38, 58);
+    const x = center.x + Math.cos(a) * dist, z = center.z + Math.sin(a) * dist;
+    const g = buildModel('buffington');
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a + Math.PI;
+    enemies.scene.add(g);
+    const id = _nextId++; g.userData.id = id;
+    const e = { id, group: g, kind: 'buffington', alive: true, hp: 150, maxHp: 150, speed: 2.4, dmg: 14,
+      lastAttack: -99, t: 0, isBoss: true, buffBoss: true, abilityCD: 3, abilityIdx: 0, tauntCD: U.rand(3, 6), healCD: 0, cast: null };
+    enemies.list.push(e); enemies.buff = e;
+    if (W.hud) W.hud.banner('💪 SIR BUFFINGTON APPEARS', 'Behold his perfectly normal muscles!', '#ff9a3a');
+  };
+
+  function buffDamageNear(x, z, radius, amount) {
+    const ts = enemies._lastTargets || [];
+    for (const t of ts) { if (Math.hypot(t.pos.x - x, t.pos.z - z) < radius) t.onBite(nAtk(amount)); }
+  }
+  function spawnRing(x, y, z) {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.18, 8, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.9, fog: false }));
+    m.rotation.x = -Math.PI / 2; m.position.set(x, y + 0.2, z); enemies.scene.add(m);
+    enemies._buffFx.push({ mesh: m, fx: 'ring', t: 0, dur: 0.6 });
+  }
+  function spawnBoom(x, y, z, dmg) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff7b2a, transparent: true, opacity: 0.95, fog: false }));
+    m.position.set(x, y, z); enemies.scene.add(m);
+    enemies._buffFx.push({ mesh: m, fx: 'boom', t: 0, dur: 0.4 });
+    if (dmg) buffDamageNear(x, z, 2.6, dmg);
+  }
+  function spawnThrownChicken(x, y, z, tx, tz) {
+    const m = makeChicken(); m.position.set(x, y, z); enemies.scene.add(m);
+    const dx = tx - x, dz = tz - z, d = Math.hypot(dx, dz) || 1;
+    const sp = 14;
+    enemies._buffFx.push({ mesh: m, fx: 'chick', t: 0, dur: 2.2, hit: false,
+      vx: (dx / d) * sp, vy: 6.5, vz: (dz / d) * sp, spin: U.rand(6, 12) });
+  }
+  function stepBuffFx(dt) {
+    for (let i = enemies._buffFx.length - 1; i >= 0; i--) {
+      const f = enemies._buffFx[i]; f.t += dt; const k = U.clamp(f.t / f.dur, 0, 1);
+      if (f.fx === 'ring') { const s = 1 + k * 11; f.mesh.scale.set(s, s, 1); f.mesh.material.opacity = 0.9 * (1 - k); }
+      else if (f.fx === 'boom') { const s = 1 + k * 3; f.mesh.scale.setScalar(s); f.mesh.material.opacity = 0.95 * (1 - k); }
+      else if (f.fx === 'chick') {
+        f.vy -= 16 * dt; f.mesh.position.x += f.vx * dt; f.mesh.position.y += f.vy * dt; f.mesh.position.z += f.vz * dt;
+        f.mesh.rotation.x += f.spin * dt; f.mesh.rotation.z += f.spin * 0.5 * dt;
+        if (!f.hit) { const ts = enemies._lastTargets || [];
+          for (const t of ts) { if (Math.hypot(t.pos.x - f.mesh.position.x, t.pos.z - f.mesh.position.z) < 1.3 && Math.abs(f.mesh.position.y - t.pos.y) < 2.0) { t.onBite(nAtk(11)); f.hit = true; break; } } }
+        const gy = W.world.heightAt(f.mesh.position.x, f.mesh.position.z);
+        if (f.mesh.position.y <= gy + 0.2) f.t = f.dur;   // landed -> expire
+      }
+      else if (f.fx === 'debris') { f.vy -= 20 * dt; f.mesh.position.x += f.vx * dt; f.mesh.position.y += f.vy * dt; f.mesh.position.z += f.vz * dt; f.mesh.rotation.x += 8 * dt; f.mesh.material.opacity = 1 - k; }
+      if (f.t >= f.dur) { enemies.scene.remove(f.mesh); enemies._buffFx.splice(i, 1); }
+    }
+  }
+
+  // Sir Buffington's per-frame brain: taunts, healing, and a rotating combo of
+  // belly-bounce / chicken-throw / flex-explode / spin-smash.
+  enemies.updateBuffington = function (e, dt, targets) {
+    const g = e.group; e.t += dt;
+    let tgt = targets[0], bestD = 1e9;
+    for (const t of targets) { const dd = Math.hypot(t.pos.x - g.position.x, t.pos.z - g.position.z); if (dd < bestD) { bestD = dd; tgt = t; } }
+    const dx = tgt.pos.x - g.position.x, dz = tgt.pos.z - g.position.z, d = Math.hypot(dx, dz) || 1;
+    const ground = W.world.heightAt(g.position.x, g.position.z);
+    g.position.y = ground; g.rotation.z = 0; g.scale.set(1, 1, 1);
+    if (g.userData.armL) { g.userData.armL.rotation.z = 0; g.userData.armR.rotation.z = 0; }
+
+    // taunts
+    e.tauntCD -= dt;
+    if (e.tauntCD <= 0 && bestD < 44) { e.tauntCD = U.rand(6, 11); if (W.hud) W.hud.toast('💪 Sir Buffington: “' + BUFF_TAUNTS[U.randInt(0, BUFF_TAUNTS.length - 1)] + '”'); }
+
+    // heal: sit and eat a sandwich when badly hurt (long cooldown)
+    if (e.healCD > 0) e.healCD -= dt;
+    if (!e.cast && e.hp < e.maxHp * 0.4 && e.healCD <= 0) {
+      e.cast = { name: 'eat', t: 0, tick: 0 }; e.healCD = 30;
+      if (W.hud) W.hud.toast('🥪 Sir Buffington sits down to eat a sandwich…');
+    }
+
+    // begin an ability from the rotation
+    e.abilityCD -= dt;
+    if (!e.cast && bestD < 26 && e.abilityCD <= 0) {
+      const name = BUFF_ROTATION[e.abilityIdx % BUFF_ROTATION.length]; e.abilityIdx++;
+      e.cast = { name, t: 0, tick: 0, did: false }; e.abilityCD = U.rand(2.4, 3.6);
+      g.rotation.y = Math.atan2(dx, dz);
+    }
+
+    if (e.cast) { runBuffAbility(e, dt, targets, ground, tgt); return; }
+
+    // otherwise: stomp toward the nearest target and body-slam when close
+    g.rotation.y = Math.atan2(dx, dz);
+    const reach = 2.8;
+    if (d > reach) {
+      const nx = dx / d, nz = dz / d, spd = e.speed * (isNight() ? NIGHT_SPD : 1);
+      g.position.x += nx * spd * dt; g.position.z += nz * spd * dt;
+      const tmp = { x: g.position.x, z: g.position.z }; W.world.resolveCollision(tmp, 0.7); g.position.x = tmp.x; g.position.z = tmp.z;
+      const swing = Math.sin(e.t * 6) * 0.5, bb = g.userData.legBases, legs = g.userData.legs;
+      legs[0].rotation.x = bb[0] + swing; legs[1].rotation.x = bb[1] - swing;
+      g.position.y = ground + Math.abs(Math.sin(e.t * 8)) * 0.05;
+    } else if (e.t - e.lastAttack > 1.1) {
+      e.lastAttack = e.t; tgt.onBite(nAtk(e.dmg));
+      g.position.x -= (dx / d) * 0.3; g.position.z -= (dz / d) * 0.3;
+    }
+  };
+
+  function runBuffAbility(e, dt, targets, ground, tgt) {
+    const g = e.group, c = e.cast; c.t += dt;
+    const dur = BUFF_DUR[c.name];
+    if (c.name === 'bellyBounce') {
+      if (c.t < 0.4) { const s = 1 - c.t; g.scale.set(1.15, 0.8 + 0.2 * (1 - c.t / 0.4), 1.15); }   // crouch
+      else if (c.t < 1.0) { const p = (c.t - 0.4) / 0.6; g.position.y = ground + 4.2 * (p * (1 - p)) * 4 * 0.25; g.scale.set(0.9, 1.15, 0.9); }
+      else { g.position.y = ground; if (!c.did) { c.did = true; spawnRing(g.position.x, ground, g.position.z); buffDamageNear(g.position.x, g.position.z, 6.5, 24); if (W.hud) W.hud.toast('💥 BELLY FLOP SHOCKWAVE!'); } }
+    } else if (c.name === 'chickenThrow') {
+      c.tick -= dt;
+      if (c.tick <= 0 && c.t < dur - 0.2) { c.tick = 0.34; spawnThrownChicken(g.position.x, g.position.y + 2.4, g.position.z, tgt.pos.x, tgt.pos.z); if (!c.did) { c.did = true; if (W.hud) W.hud.toast('🐔 TAKE MY CHICKENS!'); } }
+      if (g.userData.armR) g.userData.armR.rotation.z = Math.sin(c.t * 18) * 0.7;
+    } else if (c.name === 'flex') {
+      if (g.userData.armL) { g.userData.armL.rotation.z = 1.2; g.userData.armR.rotation.z = -1.2; }   // double biceps
+      const pulse = 1 + Math.abs(Math.sin(c.t * 10)) * 0.06; g.scale.set(pulse, pulse, pulse);
+      c.tick -= dt;
+      if (c.tick <= 0) { c.tick = 0.28; const a = U.rand(0, 6.28), r = U.rand(1.5, 5.5); spawnBoom(g.position.x + Math.cos(a) * r, ground + 0.6, g.position.z + Math.sin(a) * r, 14); }
+      if (!c.did) { c.did = true; if (W.hud) W.hud.toast('💪 BEHOLD MY PERFECTLY NORMAL MUSCLES!'); }
+    } else if (c.name === 'spinSmash') {
+      g.rotation.y += 15 * dt;
+      c.tick -= dt;
+      if (c.tick <= 0) { c.tick = 0.4; buffDamageNear(g.position.x, g.position.z, 4.8, 15);
+        const a = U.rand(0, 6.28), r = 3.5; const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: 0x8a5a2e, flatShading: true }));
+        box.position.set(g.position.x, ground + 0.4, g.position.z); enemies.scene.add(box);
+        enemies._buffFx.push({ mesh: box, fx: 'debris', t: 0, dur: 0.8, vx: Math.cos(a) * 7, vy: 5, vz: Math.sin(a) * 7 }); }
+      if (!c.did) { c.did = true; if (W.hud) W.hud.toast('🌀 AAAAAAAHHH!!!'); }
+    } else if (c.name === 'eat') {
+      g.scale.set(1.1, 0.7, 1.1);   // sit down
+      e.hp = Math.min(e.maxHp, e.hp + (55 / BUFF_DUR.eat) * dt);
+      if (g.userData.armR) g.userData.armR.rotation.z = -0.9 + Math.sin(c.t * 8) * 0.3;   // munching
+    }
+    if (c.t >= dur) { e.cast = null; g.scale.set(1, 1, 1); if (g.userData.armL) { g.userData.armL.rotation.z = 0; g.userData.armR.rotation.z = 0; } if (c.name === 'eat' && W.hud) W.hud.toast('😤 Sir Buffington: “Delicious! Now where were we?”'); }
+  }
 
   // A bodyguard outlaw that orbits and protects a given boss.
   enemies.spawnGuard = function (boss) {
@@ -462,7 +669,7 @@
 
   // Damage by mesh root (the local player's swing). Returns true if it died.
   // Approx head height (above the enemy's feet) per kind — for headshots.
-  const HEAD_Y = { wolf: 0.85, werewolf: 2.4, zombie: 1.72, bandit: 2.62, outlaw: 1.86, bear: 1.2 };
+  const HEAD_Y = { wolf: 0.85, werewolf: 2.4, zombie: 1.72, bandit: 2.62, outlaw: 1.86, bear: 1.2, buffington: 2.8 };
   enemies.headY = function (e) { return HEAD_Y[e && e.kind] || 1.7; };
 
   enemies.damage = function (rootGroup, amount, fromPos) {
@@ -484,7 +691,10 @@
     const i = enemies.list.indexOf(e);
     if (i >= 0) enemies.list.splice(i, 1);
     enemies._dying.push({ group: e.group, t: 0 });
-    if (e.isBoss) {
+    if (e.buffBoss) {
+      enemies.buff = null; enemies.buffTimer = 150;     // Sir Buffington returns in ~2.5 min
+      if (W.hud) W.hud.banner('💪 SIR BUFFINGTON DOWN', 'IMPOSSIBLE! I did 12 push-ups this morning!', '#ff9a3a');
+    } else if (e.isBoss) {
       enemies.boss = null; enemies.bossTimer = 120;     // a new bandit in ~2 min
       if (W.world.dropShotgun) W.world.dropShotgun(e.group.position.x, e.group.position.z);
       if (W.hud) W.hud.banner('BANDIT DOWN', 'He dropped a sawed-off shotgun 🔫 — grab it (G)', '#8fd36a');
@@ -654,6 +864,7 @@
 
   enemies.update = function (dt, isNight, dayNum, targets) {
     const center = targets[0] ? targets[0].pos : { x: 0, z: 0 };
+    enemies._lastTargets = targets;
     updateArchers(dt);
     enemies.spawnTimer -= dt;
     // every night gets harder: more foes on the field, and they arrive faster
@@ -692,6 +903,12 @@
       enemies.bossTimer -= dt;
       if (enemies.bossTimer <= 0) { enemies.spawnBoss(center); enemies.bossTimer = 1e9; }
     }
+    // Sir Buffington roams too — first appears ~30s in, respawns a while after death
+    if (enemies.buffTimer === undefined) enemies.buffTimer = 30;
+    if (!enemies.buff || !enemies.buff.alive) {
+      enemies.buffTimer -= dt;
+      if (enemies.buffTimer <= 0) { enemies.spawnBuffington(center); enemies.buffTimer = 1e9; }
+    }
     // free-roaming bandits patrol the desert, day & night
     enemies.desertTimer = (enemies.desertTimer || 0) - dt;
     const wildOutlaws = enemies.list.filter((e) => e.kind === 'outlaw' && !e.guard && e.alive).length;
@@ -721,13 +938,14 @@
     }
     if (!isNight) {
       for (const e of enemies.list.slice()) {
-        // wolves/zombies burn off at dawn; bandits, outlaws & bears roam day & night
-        if (e.alive && e.kind !== 'bandit' && e.kind !== 'outlaw' && e.kind !== 'bear' && U.chance(dt * 0.8)) enemies.kill(e);
+        // wolves/zombies burn off at dawn; bandits, outlaws, bears & Buffington roam day & night
+        if (e.alive && e.kind !== 'bandit' && e.kind !== 'outlaw' && e.kind !== 'bear' && e.kind !== 'buffington' && U.chance(dt * 0.8)) enemies.kill(e);
       }
     }
 
     for (const e of enemies.list) {
       if (!e.alive) continue;
+      if (e.buffBoss) { enemies.updateBuffington(e, dt, targets); continue; }   // Sir Buffington runs his own brain
       e.t += dt;
       const g = e.group;
       let tgt = targets[0], bestD = 1e9;
@@ -817,6 +1035,7 @@
       g.rotation.z = Math.sin(e.t * (e.kind === 'zombie' ? 3 : 8)) * 0.04; // slight sway
     }
     animateDying(dt);
+    stepBuffFx(dt);
   };
 
   // --- Networking (host serialize / client mirror) ---------------------------
