@@ -5,10 +5,10 @@
   const C = W.CONFIG;
 
   const SKY_DAY = '#8ec5ef';
-  const SKY_NIGHT = '#0a1230';
+  const SKY_NIGHT = '#04060e';   // nightmare: near-black night sky
   const SKY_DUSK = '#e88a4e';
   const GROUND_DAY = '#5f8f3e';
-  const GROUND_NIGHT = '#13243a';
+  const GROUND_NIGHT = '#080f1a';   // nightmare: very dark ground bounce
 
   const world = {
     colliders: [],   // {x,z,r} solid objects (trees, rocks, tent walls)
@@ -1813,6 +1813,111 @@
     world._hotelCount = placed;
   }
 
+  // A climbable tree house: a cabin on a deck up a big tree, reached by a ramp.
+  // Returns local wall colliders (minY = only solid once you're up on the deck) +
+  // walkable platforms (deck + ramp), placed/rotated like the hotels.
+  function makeTreehouse() {
+    const g = new THREE.Group();
+    const bark = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 1, flatShading: true });
+    const plank = new THREE.MeshStandardMaterial({ color: 0x8a5a2e, roughness: 1, flatShading: true });
+    const wallM = new THREE.MeshStandardMaterial({ color: 0x9a6a3a, roughness: 1, flatShading: true });
+    const roofM = new THREE.MeshStandardMaterial({ color: 0x6a3b2a, roughness: 1, flatShading: true });
+    const leaf = new THREE.MeshStandardMaterial({ color: 0x2f7a34, roughness: 1, flatShading: true });
+    const H = 4.5, DW = 5, DD = 5, TH = 0.16;
+    const M2 = H - 0.4;                                    // colliders active only up on the deck
+    const wcols = [], plats = [];
+
+    // trunk + roots + canopy
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.1, H + 6, 8), bark);
+    trunk.position.y = (H + 6) / 2; trunk.castShadow = true; g.add(trunk);
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; const rt = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.3, 1.3, 6), bark); rt.position.set(Math.cos(a) * 0.85, 0.2, Math.sin(a) * 0.85); rt.rotation.set(-Math.sin(a) * 0.5, 0, Math.cos(a) * 0.5); g.add(rt); }
+    for (let i = 0; i < 4; i++) { const c = new THREE.Mesh(new THREE.ConeGeometry(4.4 - i * 0.75, 2.6, 8), leaf); c.position.y = H + 5.4 + i * 1.4; c.castShadow = true; g.add(c); }
+
+    // deck slab + corner support posts
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(DW, 0.3, DD), plank); deck.position.y = H - 0.15; deck.castShadow = true; deck.receiveShadow = true; g.add(deck);
+    for (const sx of [-DW / 2 + 0.4, DW / 2 - 0.4]) for (const sz of [-DD / 2 + 0.4, DD / 2 - 0.4]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, H, 6), plank); p.position.set(sx, H / 2, sz); g.add(p); }
+
+    // cabin on the back half of the deck (walls with a doorway on the +Z front + roof)
+    const cw = 3.6, cd = 3.0, ch = 2.4, czc = -0.7, hw = cw / 2, hd = cd / 2, doorHalf = 0.7;
+    const wmesh = (sx, sz, w, d) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, ch, d), wallM); m.position.set(sx, H + ch / 2, sz); m.castShadow = true; g.add(m); };
+    wmesh(0, czc - hd, cw, TH);
+    wmesh(-hw, czc, TH, cd); wmesh(hw, czc, TH, cd);
+    const seg = hw - doorHalf;
+    wmesh(-(doorHalf + hw) / 2, czc + hd, seg, TH); wmesh((doorHalf + hw) / 2, czc + hd, seg, TH);
+    const above = new THREE.Mesh(new THREE.BoxGeometry(doorHalf * 2, ch - 2.0, TH), wallM); above.position.set(0, H + 2.0 + (ch - 2.0) / 2, czc + hd); g.add(above);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(cw, cd) / 2 * 1.06, 1.5, 4), roofM); roof.position.set(0, H + ch + 0.75, czc); roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
+
+    // ramp up to the deck front-right (visual board) + climbable ramp platform
+    const RUN = 6.5, rx0 = 0.8, rx1 = 2.4, zTop = DD / 2, zBot = DD / 2 + RUN;
+    const rampLen = Math.hypot(RUN, H);
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(rx1 - rx0, 0.14, rampLen), plank);
+    ramp.position.set((rx0 + rx1) / 2, H / 2, (zTop + zBot) / 2); ramp.rotation.x = Math.atan2(H, RUN); ramp.castShadow = true; g.add(ramp);
+    for (let k = 1; k < 9; k++) { const rz = zBot - (RUN * k / 9), ry2 = H * k / 9; const rung = new THREE.Mesh(new THREE.BoxGeometry(rx1 - rx0 + 0.1, 0.06, 0.14), plank); rung.position.set((rx0 + rx1) / 2, ry2 + 0.06, rz); g.add(rung); }
+
+    // railings around the deck (visual rail + collider beads), gap on +Z for the ramp
+    const railMat = plank;
+    const railSeg = (x1, y1, z1, x2, y2, z2) => { const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz); const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, len), railMat); m.position.set((x1 + x2) / 2, y1, (z1 + z2) / 2); m.rotation.y = Math.atan2(dx, dz); g.add(m); };
+    const e = DW / 2;
+    railSeg(-e, H + 0.9, -e, e, H + 0.9, -e); railSeg(-e, H + 0.9, e, -0.6, H + 0.9, e); railSeg(2.6, H + 0.9, e, e, H + 0.9, e);
+    railSeg(-e, H + 0.9, -e, -e, H + 0.9, e); railSeg(e, H + 0.9, -e, e, H + 0.9, e);
+    for (const [x, z] of [[-e, 0], [e, 0], [0, -e], [-e, -e], [e, -e], [-e, e], [e, e]]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), railMat); post.position.set(x, H + 0.45, z); g.add(post); }
+
+    // --- colliders (local) ---
+    wcols.push({ x: 0, z: 0, r: 1.0 });                           // solid trunk (all heights)
+    const bead = (x, z) => wcols.push({ x, z, minY: M2 });
+    for (let x = -e; x <= e + 0.001; x += 0.55) { if (x > 0.5 && x < 2.7) continue; bead(x, e); }   // front railing (ramp gap)
+    for (let x = -e; x <= e + 0.001; x += 0.55) bead(x, -e);                                        // back railing
+    for (let z = -e; z <= e + 0.001; z += 0.55) { bead(-e, z); bead(e, z); }                        // side railings
+    for (let x = -hw; x <= hw + 0.001; x += 0.5) bead(x, czc - hd);                                 // cabin back
+    for (let z = czc - hd; z <= czc + hd + 0.001; z += 0.5) { bead(-hw, z); bead(hw, z); }          // cabin sides
+    for (let x = -hw; x <= hw + 0.001; x += 0.5) { if (Math.abs(x) < doorHalf + 0.1) continue; bead(x, czc + hd); }   // cabin front (door open)
+
+    // --- platforms (local) ---
+    plats.push({ x0: -DW / 2, x1: DW / 2, z0: -DD / 2, z1: DD / 2, y: H });                         // deck
+    plats.push({ x0: rx0, x1: rx1, z0: zTop, z1: zBot, yLow: H, yHigh: 0, ramp: true });            // ramp: z=zTop→H, z=zBot→0
+
+    g.userData = { type: 'treehouse', wallCols: wcols, wallR: 0.42, platforms: plats };
+    return g;
+  }
+
+  function buildTreehouses(scene) {
+    // a little grove of 4 tree houses on grassland, away from camp/water/desert/snow
+    let cx = 0, cz = 0, guard = 0, ok = false;
+    do {
+      const p = U.pointInDisc(C.WORLD_RADIUS * 0.5);
+      cx = p.x; cz = p.z;
+      ok = U.dist2(cx, cz, 0, 0) > 90 && world.heightAt(cx, cz) > C.WATER_LEVEL + 1 &&
+           world.desertAt(cx, cz) < 0.3 && world.snowAt(cx, cz) < 0.3;
+    } while (!ok && guard++ < 80);
+    world.treehouseGrove = { x: cx, z: cz };
+    let placed = 0;
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      const tx = cx + Math.cos(a) * 17, tz = cz + Math.sin(a) * 17;
+      if (world.heightAt(tx, tz) <= C.WATER_LEVEL + 0.5) continue;
+      const th = makeTreehouse();
+      const base = world.heightAt(tx, tz);
+      th.position.set(tx, base, tz);
+      const ry = Math.atan2(cx - tx, cz - tz);                   // ramp/front faces the grove centre
+      th.rotation.y = ry;
+      scene.add(th);
+      const cs = Math.cos(ry), sn = Math.sin(ry);
+      for (const lp of th.userData.wallCols) {
+        const o = { x: tx + lp.x * cs + lp.z * sn, z: tz - lp.x * sn + lp.z * cs, r: lp.r !== undefined ? lp.r : th.userData.wallR, ref: th };
+        if (lp.minY !== undefined) o.minY = base + lp.minY;
+        world.colliders.push(o);
+      }
+      for (const pf of th.userData.platforms) {
+        const plat = { cx: tx, cz: tz, cos: cs, sin: sn, x0: pf.x0, x1: pf.x1, z0: pf.z0, z1: pf.z1 };
+        if (pf.ramp) { plat.ramp = true; plat.yLow = base + pf.yLow; plat.yHigh = base + pf.yHigh; }
+        else plat.y = base + pf.y;
+        world.platforms.push(plat);
+      }
+      placed++;
+    }
+    world._treehouseCount = placed;
+  }
+
   // --- Public API ------------------------------------------------------------
 
   // --- Lootable chests --------------------------------------------------------
@@ -2016,7 +2121,7 @@
     if (world.scene) world.scene.background = sky;
     if (world.scene.fog) {
       world.scene.fog.color.copy(sky);
-      world.scene.fog.density = U.lerp(0.0042, 0.0015, day); // thin enough to see across the huge world
+      world.scene.fog.density = U.lerp(0.0085, 0.0015, day); // nightmare: thick, closing-in dark at night
     }
     // gradient sky dome: horizon = sky colour, zenith = a deeper blue
     if (world.skyDome) {
@@ -2026,11 +2131,11 @@
       u.top.value.copy(sky).lerp(new THREE.Color('#1c4f8c'), 0.6 * day);
     }
 
-    world.hemi.intensity = U.lerp(0.42, 0.55, day);   // brighter moonlit nights
+    world.hemi.intensity = U.lerp(0.1, 0.55, day);   // nightmare: nights are near-pitch black
     world.hemi.color.copy(U.mixColor('#24406a', '#cfe6ff', day));
     world.hemi.groundColor.copy(U.mixColor(GROUND_NIGHT, GROUND_DAY, day));
 
-    world.sun.intensity = U.lerp(0.32, 1.1, day);   // stronger moonlight
+    world.sun.intensity = U.lerp(0.07, 1.1, day);   // nightmare: only the faintest moonlight
     world.sun.color.copy(U.mixColor('#8ea2d8', '#fff0cf', day)); // moonlight -> warm sunlight
     world.sun.position.copy(playerPos).addScaledVector(sunDir, 90);
     world.sun.target.position.copy(playerPos);

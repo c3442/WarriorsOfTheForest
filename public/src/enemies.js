@@ -12,6 +12,12 @@
     bossTimer: 10,     // first bandit boss appears ~10s in
   };
 
+  // NIGHTMARE NIGHTS: after dark the monsters hit far harder, move faster, and
+  // shrug off more damage. (Applied at runtime so it flips with the clock.)
+  const NIGHT_ATK = 1.9, NIGHT_SPD = 1.3, NIGHT_TOUGH = 0.6;   // dmg dealt, speed, dmg-taken multipliers
+  const isNight = () => !!(W.world && W.world.isNight && W.world.isNight());
+  const nAtk = (v) => Math.round(v * (isNight() ? NIGHT_ATK : 1));
+
   // --- Models ---------------------------------------------------------------
 
   const WOLF_FUR = ['#6b6f76', '#565b62', '#7a7e84', '#4f5358'];
@@ -406,7 +412,7 @@
   enemies.bossShoot = function (e, tgt) {
     const ex = e.group.position.x, ez = e.group.position.z;
     const d = Math.hypot(tgt.pos.x - ex, tgt.pos.z - ez) || 1;
-    if (U.chance(0.34)) tgt.onBite(Math.max(6, Math.round(26 - d)));   // close = harder hit
+    if (U.chance(0.34)) tgt.onBite(nAtk(Math.max(6, Math.round(26 - d))));   // close = harder hit
     const flash = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xffd24a, transparent: true, opacity: 0.95, fog: false }));
     const nx = (tgt.pos.x - ex) / d, nz = (tgt.pos.z - ez) / d;
@@ -421,7 +427,7 @@
     const ex = e.group.position.x, ey = e.group.position.y + 1.3, ez = e.group.position.z;
     const d = Math.hypot(tgt.pos.x - ex, tgt.pos.z - ez) || 1;
     const hit = U.chance(0.25);                  // only lands ~1 in 4 shots
-    if (hit) tgt.onBite(U.randInt(8, 13));
+    if (hit) tgt.onBite(nAtk(U.randInt(8, 13)));
     // aim toward the target, but spray wide on a miss
     let aimx = tgt.pos.x, aimz = tgt.pos.z;
     if (!hit) { aimx += U.rand(-9, 9); aimz += U.rand(-9, 9); }
@@ -441,7 +447,7 @@
   };
 
   function applyHit(e, amount, fromPos) {
-    e.hp -= amount;
+    e.hp -= amount * (isNight() ? NIGHT_TOUGH : 1);   // tankier after dark
     const mat = e.group.userData.mat;
     if (mat) { const orig = mat.color.getHex(); mat.color.setHex(0xffffff); setTimeout(() => mat.color.setHex(orig), 70); }
     const dx = e.group.position.x - fromPos.x;
@@ -779,8 +785,9 @@
 
       if (ad > (orbiting ? 0.6 : reach)) {
         const nx = adx / ad, nz = adz / ad;
-        g.position.x += nx * e.speed * dt;
-        g.position.z += nz * e.speed * dt;
+        const spd = e.speed * (isNight() ? NIGHT_SPD : 1);   // faster after dark
+        g.position.x += nx * spd * dt;
+        g.position.z += nz * spd * dt;
         const tmp = { x: g.position.x, z: g.position.z };
         W.world.resolveCollision(tmp, 0.5);
         g.position.x = tmp.x; g.position.z = tmp.z;
@@ -792,7 +799,7 @@
       } else if (!orbiting && e.t - e.lastAttack > 1.0 &&
                  !W.world.wallBetween(g.position.x, g.position.z, tgt.pos.x, tgt.pos.z)) {
         e.lastAttack = e.t;
-        tgt.onBite(e.dmg);
+        tgt.onBite(nAtk(e.dmg));
         g.position.x -= (dx / d) * 0.3;
         g.position.z -= (dz / d) * 0.3;
       }

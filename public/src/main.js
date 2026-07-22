@@ -32,6 +32,7 @@
     scene.background = new THREE.Color('#0a1230');
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 760);   // tight far plane: cull fully-fogged distant geometry
     scene.add(camera);
+    W._scene = scene; W._cam = camera;   // exposed for the start lobby (lobby.js)
 
     // post-processing: a soft bloom on bright areas
     composer = new THREE.EffectComposer(renderer);
