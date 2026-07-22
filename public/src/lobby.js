@@ -85,6 +85,10 @@
     const roofM = new THREE.MeshStandardMaterial({ color: 0x8a3d2c, roughness: 0.9, flatShading: true });
     const glass = new THREE.MeshStandardMaterial({ color: 0xbfe6f5, emissive: 0x3a6b80, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.1 });
     const glow = new THREE.MeshStandardMaterial({ color: 0xffe6a0, emissive: 0xffcf5a, emissiveIntensity: 1.3, roughness: 0.5 });
+    const gableM = new THREE.MeshStandardMaterial({ color: 0xc79457, roughness: 0.95, flatShading: true, side: THREE.DoubleSide });
+    const stemMat = new THREE.MeshStandardMaterial({ color: 0x2f6b2a, roughness: 1 });
+    const flowerMats = [0xff6b9d, 0xffd54a, 0xff5a5a, 0xf5f5f5].map((c) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.25, roughness: 0.7, flatShading: true }));
+    const bulbMats = [0xffd36b, 0xff8f6b, 0x8fe6ff, 0xff6b9d].map((c) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 1.1, roughness: 0.5 }));
     const leafCols = [0x2f7a34, 0x3a8a3a, 0x276b2b, 0x429640];
     const leaf = (i) => new THREE.MeshStandardMaterial({ color: leafCols[i % leafCols.length], roughness: 1, flatShading: true });
     const H = TH_H, DW = TH_DW, e = DW / 2;
@@ -93,6 +97,9 @@
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 1.2, H + 7, 9), bark); trunk.position.y = (H + 7) / 2; trunk.castShadow = true; g.add(trunk);
     for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const rt = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.34, 1.5, 6), barkDk); rt.position.set(Math.cos(a) * 0.95, 0.2, Math.sin(a) * 0.95); rt.rotation.set(-Math.sin(a) * 0.5, 0, Math.cos(a) * 0.5); g.add(rt); }
     for (let i = 0; i < 5; i++) { const c = new THREE.Mesh(new THREE.ConeGeometry(4.9 - i * 0.72, 2.9, 9), leaf(i)); c.position.y = H + 5.6 + i * 1.5; c.castShadow = true; g.add(c); }
+    // side tufts + hanging vines for a fuller, lusher canopy
+    for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + 0.6; const tuft = new THREE.Mesh(new THREE.ConeGeometry(2.2, 2.4, 8), leaf(i + 1)); tuft.position.set(Math.cos(a) * 2.7, H + 6.4 + (i % 2) * 0.8, Math.sin(a) * 2.7); tuft.castShadow = true; g.add(tuft); }
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.3, vlen = 1.1 + (i % 3) * 0.5; const vine = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.02, vlen, 4), leaf(2)); vine.position.set(Math.cos(a) * 3.7, H + 5.4 - vlen / 2, Math.sin(a) * 3.7); g.add(vine); const tip = new THREE.Mesh(new THREE.SphereGeometry(0.17, 6, 5), leaf(0)); tip.position.set(Math.cos(a) * 3.7, H + 5.4 - vlen, Math.sin(a) * 3.7); g.add(tip); }
 
     // deck with plank seams + support posts + diagonal braces
     const deck = new THREE.Mesh(new THREE.BoxGeometry(DW, 0.3, DW), plank); deck.position.y = H - 0.15; deck.castShadow = true; deck.receiveShadow = true; g.add(deck);
