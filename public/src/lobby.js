@@ -107,19 +107,40 @@
     for (const sx of [-e + 0.35, e - 0.35]) for (const sz of [-e + 0.35, e - 0.35]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, H, 7), plankDk); p.position.set(sx, H / 2, sz); p.castShadow = true; g.add(p); }
     for (const sx of [-e + 0.35, e - 0.35]) { const br = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, DW - 0.6), plankDk); br.position.set(sx, H * 0.5, 0); br.rotation.x = 0.5; g.add(br); }
 
-    // cabin: warm walls, framed door, glowing windows, overhanging pitched roof, chimney, lantern
-    const cw = 3.8, cd = 3.2, ch = 2.5, czc = -0.6, hw = cw / 2, hd = cd / 2, doorHalf = 0.72, TT = 0.16;
+    // cabin: warm plank walls, framed + ajar plank door, glowing windows w/ flower boxes,
+    // a gabled shingle roof with eaves + ridge, a smoking chimney and a porch lantern
+    const cw = 3.8, cd = 3.2, ch = 2.5, czc = -0.6, hw = cw / 2, hd = cd / 2, doorHalf = 0.72, TT = 0.16, wy = H + ch;
     const wmesh = (sx, sz, w, hh, d, yb) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), wallM); m.position.set(sx, yb === undefined ? H + hh / 2 : yb, sz); m.castShadow = true; g.add(m); };
     wmesh(0, czc - hd, cw, ch, TT);                       // back
     wmesh(-hw, czc, TT, ch, cd); wmesh(hw, czc, TT, ch, cd);   // sides
     const seg = hw - doorHalf;
     wmesh(-(doorHalf + hw) / 2, czc + hd, seg, ch, TT); wmesh((doorHalf + hw) / 2, czc + hd, seg, ch, TT);  // front flanks
     wmesh(0, czc + hd, doorHalf * 2, ch - 1.9, TT, H + 1.9 + (ch - 1.9) / 2);   // lintel over the door
+    // door frame + a slightly-ajar plank slab, hinged on the left jamb
     for (const sx of [-doorHalf, doorHalf]) { const j = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.9, TT + 0.06), frameM); j.position.set(sx, H + 0.95, czc + hd); g.add(j); }
     { const top = new THREE.Mesh(new THREE.BoxGeometry(doorHalf * 2 + 0.16, 0.12, TT + 0.06), frameM); top.position.set(0, H + 1.9, czc + hd); g.add(top); }
-    for (const sx of [-hw, hw]) { const win = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.05, 0.78, 0.78), glass); win.position.set(sx, H + 1.35, czc); g.add(win); const fr = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.02, 0.1, 0.9), frameM); fr.position.set(sx, H + 1.35, czc); g.add(fr); const fr2 = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.02, 0.9, 0.1), frameM); fr2.position.set(sx, H + 1.35, czc); g.add(fr2); }
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(cw, cd) / 2 * 1.16, 1.7, 4), roofM); roof.position.set(0, H + ch + 0.85, czc); roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
-    const chim = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.95, 0.42), barkDk); chim.position.set(hw - 0.5, H + ch + 1.15, czc - hd + 0.55); g.add(chim);
+    { const dg = new THREE.Group(); dg.position.set(-doorHalf + 0.04, H + 0.06, czc + hd); const dwd = doorHalf * 2 - 0.1;
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(dwd, 1.8, 0.07), plankDk); slab.position.set(dwd / 2, 0.9, 0); slab.castShadow = true; dg.add(slab);
+      for (const sy of [0.5, 0.9, 1.3]) { const pl = new THREE.Mesh(new THREE.BoxGeometry(dwd - 0.06, 0.045, 0.09), frameM); pl.position.set(dwd / 2, sy, 0); dg.add(pl); }
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), glow); knob.position.set(dwd - 0.14, 0.9, 0.06); dg.add(knob);
+      dg.rotation.y = -0.66; g.add(dg); }
+    // side windows with muntins + a flower box under each
+    for (const sx of [-hw, hw]) {
+      const win = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.05, 0.78, 0.78), glass); win.position.set(sx, H + 1.4, czc); g.add(win);
+      const fr = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.02, 0.1, 0.9), frameM); fr.position.set(sx, H + 1.4, czc); g.add(fr);
+      const fr2 = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.02, 0.9, 0.1), frameM); fr2.position.set(sx, H + 1.4, czc); g.add(fr2);
+      const off = Math.sign(sx) * 0.13;
+      const boxm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.92), plankDk); boxm.position.set(sx + off, H + 0.92, czc); g.add(boxm);
+      for (let f = 0; f < 4; f++) { const zz = czc - 0.34 + f * 0.225; const fl = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), flowerMats[f]); fl.position.set(sx + off, H + 1.06, zz); g.add(fl); const st = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.16, 4), stemMat); st.position.set(sx + off, H + 0.99, zz); g.add(st); }
+    }
+    // gabled shingle roof (ridge along X) with eave overhang, ridge beam, and gable ends
+    const roofRise = 1.4, oh = 0.5, spanZ = hd + oh, slope = Math.hypot(spanZ, roofRise), rtilt = Math.atan2(roofRise, spanZ);
+    for (const dir of [1, -1]) { const plane = new THREE.Mesh(new THREE.BoxGeometry(cw + 2 * oh, 0.14, slope), roofM); plane.position.set(0, wy + roofRise / 2, czc + dir * spanZ / 2); plane.rotation.x = dir * rtilt; plane.castShadow = true; g.add(plane); }
+    { const ridge = new THREE.Mesh(new THREE.BoxGeometry(cw + 2 * oh + 0.12, 0.17, 0.17), frameM); ridge.position.set(0, wy + roofRise + 0.03, czc); g.add(ridge); }
+    for (const sx of [-hw, hw]) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([sx, wy, czc - hd, sx, wy, czc + hd, sx, wy + roofRise, czc]), 3)); geo.computeVertexNormals(); g.add(new THREE.Mesh(geo, gableM)); }
+    // smoking chimney + warm porch lantern
+    const chim = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, 0.42), barkDk); chim.position.set(hw - 0.5, wy + 0.85, czc - hd + 0.5); chim.castShadow = true; g.add(chim);
+    for (let s = 0; s < 3; s++) { const pf = new THREE.Mesh(new THREE.SphereGeometry(0.16 + s * 0.06, 6, 6), new THREE.MeshStandardMaterial({ color: 0xc2c7cb, transparent: true, opacity: 0.5 - s * 0.13, roughness: 1 })); pf.position.set(hw - 0.5, wy + 1.5 + s * 0.42, czc - hd + 0.5); g.add(pf); }
     const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.2), glow); lantern.position.set(doorHalf + 0.42, H + 1.55, czc + hd + 0.14); g.add(lantern);
 
     // railings: corner + edge posts with a continuous top + mid rail, gapped where the ramp lands (+Z front)
@@ -133,6 +154,9 @@
     const ramp = new THREE.Mesh(new THREE.BoxGeometry(TH_RW, 0.16, rampLen), plank); ramp.position.set(TH_RX, H / 2, e + RUN / 2); ramp.rotation.x = tilt; ramp.castShadow = true; ramp.receiveShadow = true; g.add(ramp);
     for (const rl of [-TH_RW / 2 + 0.05, TH_RW / 2 - 0.05]) { const side = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, rampLen), plankDk); side.position.set(TH_RX + rl, H / 2 + 0.03, e + RUN / 2); side.rotation.x = tilt; g.add(side); }
     for (let t = 0.12; t < 0.9; t += 0.12) { const cl = new THREE.Mesh(new THREE.BoxGeometry(TH_RW - 0.16, 0.05, 0.1), plankDk); cl.position.set(TH_RX, H * t + 0.09, e + RUN * (1 - t)); cl.rotation.x = tilt; g.add(cl); }
+
+    // warm string lights sagging along the two side rails
+    for (const sx of [-e, e]) for (let i = 0; i <= 6; i++) { const t = i / 6; const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 6), bulbMats[i % bulbMats.length]); b.position.set(sx, H + 0.9 - Math.sin(t * Math.PI) * 0.14, -e + t * DW); g.add(b); }
 
     if (label) { const s = makeSign(label); s.position.set(0, H + 1.4, DW / 2 + 0.3); g.add(s); }   // on the front of the deck, clear of the canopy
     return g;

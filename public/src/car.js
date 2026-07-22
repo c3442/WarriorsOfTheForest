@@ -10,10 +10,12 @@
   const P = () => W.player;
 
   const BOOST = 3.3;          // top speed vs on foot
-  const FUEL_MAX = 100, START_FUEL = 40, DRAIN = 2.2, CAN = 30, ENTER_R = 3.6, PICK_R = 1.9;
+  const FUEL_MAX = 100, START_FUEL = 40, DRAIN = 2.2, CAN = 40, ENTER_R = 3.6, PICK_R = 1.9;
+  const ODO_GOAL = 2000;      // drive this many metres to summon Sir Buffington
 
   let scene = null, ready = false, driving = false, savedMult = 1;
   let car = null, carHome = null, fuel = START_FUEL;
+  let odo = 0, prevX = 0, prevZ = 0, buffSummoned = false;
   const cans = [];
   let last = performance.now() / 1000;
   const now = () => performance.now() / 1000;
@@ -75,11 +77,10 @@
     car = makeCar();
     car.position.set(s.x, W.world.heightAt(s.x, s.z), s.z); car.rotation.y = Math.random() * Math.PI * 2;
     scene.add(car); carHome = { x: s.x, z: s.z };
-    // fuel cans scattered near the camp, the village, and out in the open
+    // fuel cans hidden FAR and wide — no easy pickups near camp; you have to explore
     const spots = [];
-    for (let i = 0; i < 4; i++) spots.push(landSpot(0, 0, 12, 40));
-    if (W.world.villagePos) for (let i = 0; i < 4; i++) spots.push(landSpot(W.world.villagePos.x, W.world.villagePos.z, 6, 30));
-    for (let i = 0; i < 3; i++) spots.push(landSpot(0, 0, 40, 100));
+    for (let i = 0; i < 7; i++) spots.push(landSpot(0, 0, 90, 360));
+    if (W.world.villagePos) spots.push(landSpot(W.world.villagePos.x, W.world.villagePos.z, 25, 70));
     spots.forEach((sp) => {
       const m = makeCan(); const y = W.world.heightAt(sp.x, sp.z);
       m.position.set(sp.x, y, sp.z); scene.add(m);
@@ -92,9 +93,21 @@
   function nearCar() { const p = P(); return p && car && W.util.dist2(p.pos.x, p.pos.z, car.position.x, car.position.z) < ENTER_R; }
   function enter() {
     const p = P(); if (!p || driving) return;
-    driving = true; savedMult = p.speedMult || 1;
+    driving = true; savedMult = p.speedMult || 1; prevX = p.pos.x; prevZ = p.pos.z;
     toast(fuel > 0 ? '🚗 Driving! WASD to go · M to get out' : '🚗 In the car — but it\'s out of fuel! Find a fuel can ⛽');
   }
+  function odoStep() {
+    const p = P(); if (!p) return;
+    const dx = p.pos.x - prevX, dz = p.pos.z - prevZ; prevX = p.pos.x; prevZ = p.pos.z;
+    odo += Math.hypot(dx, dz);
+    if (odo >= ODO_GOAL && !buffSummoned) {
+      buffSummoned = true;
+      if (W.enemies && W.enemies.spawnBuffington) W.enemies.spawnBuffington({ x: p.pos.x, z: p.pos.z });
+      toast('💪 You drove far enough — SIR BUFFINGTON appears!');
+    }
+  }
+  // Sir Buffington only shows up by driving 2000m — block the game's own timed spawn.
+  function blockAutoBuff() { if (W.enemies && !buffSummoned) W.enemies.buffTimer = 1e9; }
   function exitCar() {
     const p = P(); if (!p || !driving) return;
     driving = false; p.speedMult = savedMult;
@@ -118,6 +131,7 @@
       }
     }
 
+    blockAutoBuff();
     if (driving) {
       const k = p.keys || {};
       const moving = k.KeyW || k.KeyS || k.KeyA || k.KeyD;
@@ -128,6 +142,7 @@
       } else {
         p.speedMult = savedMult;
       }
+      odoStep();                       // count distance driven → summons the boss at 2000m
       // the car body rides under the player, facing where they steer
       if (car) { car.position.set(p.pos.x, W.world.heightAt(p.pos.x, p.pos.z), p.pos.z); car.rotation.y = p.yaw; }
       if (!p.alive) exitCar();
@@ -154,7 +169,7 @@
     `;
     document.head.appendChild(css);
     prompt = document.createElement('div'); prompt.id = 'carPrompt'; prompt.textContent = '🚗 Press M (or tap Drive) to get in';
-    fuelPill = document.createElement('div'); fuelPill.id = 'carFuel'; fuelPill.innerHTML = '⛽ <div class="bar"><i id="carFuelBar"></i></div><span id="carFuelPct">40%</span>';
+    fuelPill = document.createElement('div'); fuelPill.id = 'carFuel'; fuelPill.innerHTML = '⛽ <div class="bar"><i id="carFuelBar"></i></div><span id="carFuelPct">40%</span><span id="carOdo" style="margin-left:9px;opacity:.9">🏁 0/' + ODO_GOAL + 'm</span>';
     buffPill = document.createElement('div'); buffPill.id = 'buffMark';
     document.body.appendChild(prompt); document.body.appendChild(fuelPill); document.body.appendChild(buffPill);
   }
@@ -163,8 +178,9 @@
     if (prompt) prompt.style.display = (!driving && nearCar()) ? 'block' : 'none';
     if (fuelPill) {
       fuelPill.style.display = driving ? 'flex' : 'none';
-      const bar = document.getElementById('carFuelBar'), pct = document.getElementById('carFuelPct');
+      const bar = document.getElementById('carFuelBar'), pct = document.getElementById('carFuelPct'), od = document.getElementById('carOdo');
       if (bar) bar.style.width = fuel + '%'; if (pct) pct.textContent = Math.round(fuel) + '%';
+      if (od) od.textContent = buffSummoned ? '🏁 boss summoned!' : ('🏁 ' + Math.round(odo) + '/' + ODO_GOAL + 'm');
     }
     // waypoint to Sir Buffington whenever he's on the field
     const buff = W.enemies && W.enemies.buff;
@@ -207,7 +223,7 @@
     setTimeout(addMobile, 900); setTimeout(addMobile, 2600);
     W.car = { driving: () => driving, fuel: () => fuel, addFuel: (n) => { fuel = Math.min(FUEL_MAX, fuel + n); },
               pos: () => (car ? { x: car.position.x, z: car.position.z } : null), enter, exit: exitCar,
-              _tick: (dt) => { const p = P(); if (driving && p) { if (fuel > 0) { p.speedMult = savedMult * BOOST; if (p.keys && (p.keys.KeyW||p.keys.KeyS||p.keys.KeyA||p.keys.KeyD)) fuel = Math.max(0, fuel - DRAIN * (dt||0.016)); if (fuel===0) p.speedMult = savedMult; } else p.speedMult = savedMult; } updateHud(); },
-              cans: () => cans.length };
+              _tick: (dt) => { const p = P(); blockAutoBuff(); if (driving && p) { if (fuel > 0) { p.speedMult = savedMult * BOOST; if (p.keys && (p.keys.KeyW||p.keys.KeyS||p.keys.KeyA||p.keys.KeyD)) fuel = Math.max(0, fuel - DRAIN * (dt||0.016)); if (fuel===0) p.speedMult = savedMult; } else p.speedMult = savedMult; odoStep(); } updateHud(); },
+              odo: () => odo, _setOdo: (v) => { odo = v; }, buffSummoned: () => buffSummoned, cans: () => cans.length };
   }, 400);
 })();
