@@ -69,38 +69,85 @@
     return spr;
   }
 
-  // a decorative tree house (trunk + railed deck + cabin + canopy + ramp), optional sign
+  // tree-house dimensions (shared with the walkable-platform math in build())
+  const TH_H = 4.5, TH_DW = 5, TH_RUN = 6.5, TH_RX = 1.6, TH_RW = 1.7;   // deck top, deck size, ramp run, ramp centre-x, ramp width
+
+  // a cosy climbable tree house (trunk + railed deck + cabin + canopy + planked ramp), optional sign
   function makeTreehouse(label) {
     const g = new THREE.Group();
     const bark = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 1, flatShading: true });
-    const plank = new THREE.MeshStandardMaterial({ color: 0x8a5a2e, roughness: 1, flatShading: true });
-    const wallM = new THREE.MeshStandardMaterial({ color: 0x9a6a3a, roughness: 1, flatShading: true });
-    const roofM = new THREE.MeshStandardMaterial({ color: 0x6a3b2a, roughness: 1, flatShading: true });
-    const leaf = new THREE.MeshStandardMaterial({ color: [0x2f7a34, 0x367f30][(Math.random() * 2) | 0], roughness: 1, flatShading: true });
-    const H = 4.5, DW = 5;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.1, H + 6, 8), bark); trunk.position.y = (H + 6) / 2; g.add(trunk);
-    for (let i = 0; i < 4; i++) { const c = new THREE.Mesh(new THREE.ConeGeometry(4.4 - i * 0.75, 2.6, 8), leaf); c.position.y = H + 5.4 + i * 1.4; g.add(c); }
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(DW, 0.3, DW), plank); deck.position.y = H - 0.15; g.add(deck);
-    for (const sx of [-DW / 2 + 0.4, DW / 2 - 0.4]) for (const sz of [-DW / 2 + 0.4, DW / 2 - 0.4]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, H, 6), plank); p.position.set(sx, H / 2, sz); g.add(p); }
-    // cabin
-    const cw = 3.6, cd = 3.0, ch = 2.4, czc = -0.7, doorHalf = 0.7, hw = cw / 2, hd = cd / 2, TH = 0.16;
-    const wmesh = (sx, sz, w, d) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, ch, d), wallM); m.position.set(sx, H + ch / 2, sz); g.add(m); };
-    wmesh(0, czc - hd, cw, TH); wmesh(-hw, czc, TH, cd); wmesh(hw, czc, TH, cd);
-    const seg = hw - doorHalf; wmesh(-(doorHalf + hw) / 2, czc + hd, seg, TH); wmesh((doorHalf + hw) / 2, czc + hd, seg, TH);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(cw, cd) / 2 * 1.06, 1.5, 4), roofM); roof.position.set(0, H + ch + 0.75, czc); roof.rotation.y = Math.PI / 4; g.add(roof);
-    // railing
-    const e = DW / 2;
-    for (const [x, z] of [[-e, 0], [e, 0], [0, -e], [-e, -e], [e, -e], [-e, e], [e, e]]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), plank); post.position.set(x, H + 0.45, z); g.add(post); }
-    // ramp
-    const RUN = 6.5, rampLen = Math.hypot(RUN, H);
-    const ramp = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.14, rampLen), plank); ramp.position.set(1.6, H / 2, e + RUN / 2); ramp.rotation.x = Math.atan2(H, RUN); g.add(ramp);
-    // a wooden ladder up the front-left to the deck
-    const lad = new THREE.Group();
-    for (const sx of [-0.26, 0.26]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, H + 0.4, 0.07), plank); rail.position.set(sx, (H + 0.4) / 2, 0); lad.add(rail); }
-    for (let r = 0.35; r < H + 0.3; r += 0.4) { const rung = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.06, 0.06), plank); rung.position.set(0, r, 0); lad.add(rung); }
-    lad.position.set(-1.7, 0, e + 0.06); g.add(lad);
+    const barkDk = new THREE.MeshStandardMaterial({ color: 0x442d18, roughness: 1, flatShading: true });
+    const plank = new THREE.MeshStandardMaterial({ color: 0x9c6631, roughness: 0.9, flatShading: true });
+    const plankDk = new THREE.MeshStandardMaterial({ color: 0x6f4622, roughness: 1, flatShading: true });
+    const wallM = new THREE.MeshStandardMaterial({ color: 0xc79457, roughness: 0.95, flatShading: true });
+    const frameM = new THREE.MeshStandardMaterial({ color: 0x5b3b22, roughness: 1, flatShading: true });
+    const roofM = new THREE.MeshStandardMaterial({ color: 0x8a3d2c, roughness: 0.9, flatShading: true });
+    const glass = new THREE.MeshStandardMaterial({ color: 0xbfe6f5, emissive: 0x3a6b80, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.1 });
+    const glow = new THREE.MeshStandardMaterial({ color: 0xffe6a0, emissive: 0xffcf5a, emissiveIntensity: 1.3, roughness: 0.5 });
+    const leafCols = [0x2f7a34, 0x3a8a3a, 0x276b2b, 0x429640];
+    const leaf = (i) => new THREE.MeshStandardMaterial({ color: leafCols[i % leafCols.length], roughness: 1, flatShading: true });
+    const H = TH_H, DW = TH_DW, e = DW / 2;
+
+    // tapered trunk with flared roots + big layered canopy
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 1.2, H + 7, 9), bark); trunk.position.y = (H + 7) / 2; trunk.castShadow = true; g.add(trunk);
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const rt = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.34, 1.5, 6), barkDk); rt.position.set(Math.cos(a) * 0.95, 0.2, Math.sin(a) * 0.95); rt.rotation.set(-Math.sin(a) * 0.5, 0, Math.cos(a) * 0.5); g.add(rt); }
+    for (let i = 0; i < 5; i++) { const c = new THREE.Mesh(new THREE.ConeGeometry(4.9 - i * 0.72, 2.9, 9), leaf(i)); c.position.y = H + 5.6 + i * 1.5; c.castShadow = true; g.add(c); }
+
+    // deck with plank seams + support posts + diagonal braces
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(DW, 0.3, DW), plank); deck.position.y = H - 0.15; deck.castShadow = true; deck.receiveShadow = true; g.add(deck);
+    for (let k = -2; k <= 2; k++) { const ln = new THREE.Mesh(new THREE.BoxGeometry(DW - 0.08, 0.03, 0.06), plankDk); ln.position.set(0, H + 0.01, k * 1.0); g.add(ln); }
+    for (const sx of [-e + 0.35, e - 0.35]) for (const sz of [-e + 0.35, e - 0.35]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, H, 7), plankDk); p.position.set(sx, H / 2, sz); p.castShadow = true; g.add(p); }
+    for (const sx of [-e + 0.35, e - 0.35]) { const br = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, DW - 0.6), plankDk); br.position.set(sx, H * 0.5, 0); br.rotation.x = 0.5; g.add(br); }
+
+    // cabin: warm walls, framed door, glowing windows, overhanging pitched roof, chimney, lantern
+    const cw = 3.8, cd = 3.2, ch = 2.5, czc = -0.6, hw = cw / 2, hd = cd / 2, doorHalf = 0.72, TT = 0.16;
+    const wmesh = (sx, sz, w, hh, d, yb) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), wallM); m.position.set(sx, yb === undefined ? H + hh / 2 : yb, sz); m.castShadow = true; g.add(m); };
+    wmesh(0, czc - hd, cw, ch, TT);                       // back
+    wmesh(-hw, czc, TT, ch, cd); wmesh(hw, czc, TT, ch, cd);   // sides
+    const seg = hw - doorHalf;
+    wmesh(-(doorHalf + hw) / 2, czc + hd, seg, ch, TT); wmesh((doorHalf + hw) / 2, czc + hd, seg, ch, TT);  // front flanks
+    wmesh(0, czc + hd, doorHalf * 2, ch - 1.9, TT, H + 1.9 + (ch - 1.9) / 2);   // lintel over the door
+    for (const sx of [-doorHalf, doorHalf]) { const j = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.9, TT + 0.06), frameM); j.position.set(sx, H + 0.95, czc + hd); g.add(j); }
+    { const top = new THREE.Mesh(new THREE.BoxGeometry(doorHalf * 2 + 0.16, 0.12, TT + 0.06), frameM); top.position.set(0, H + 1.9, czc + hd); g.add(top); }
+    for (const sx of [-hw, hw]) { const win = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.05, 0.78, 0.78), glass); win.position.set(sx, H + 1.35, czc); g.add(win); const fr = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.02, 0.1, 0.9), frameM); fr.position.set(sx, H + 1.35, czc); g.add(fr); const fr2 = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.02, 0.9, 0.1), frameM); fr2.position.set(sx, H + 1.35, czc); g.add(fr2); }
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(cw, cd) / 2 * 1.16, 1.7, 4), roofM); roof.position.set(0, H + ch + 0.85, czc); roof.rotation.y = Math.PI / 4; roof.castShadow = true; g.add(roof);
+    const chim = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.95, 0.42), barkDk); chim.position.set(hw - 0.5, H + ch + 1.15, czc - hd + 0.55); g.add(chim);
+    const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.3, 0.2), glow); lantern.position.set(doorHalf + 0.42, H + 1.55, czc + hd + 0.14); g.add(lantern);
+
+    // railings: corner + edge posts with a continuous top + mid rail, gapped where the ramp lands (+Z front)
+    for (const [x, z] of [[-e, -e], [0, -e], [e, -e], [e, 0], [e, e], [0, e], [-e, e], [-e, 0]]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.98, 0.09), plankDk); post.position.set(x, H + 0.49, z); g.add(post); }
+    const rail = (x1, z1, x2, z2, y) => { const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz); const r = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, len), plank); r.position.set((x1 + x2) / 2, y, (z1 + z2) / 2); r.rotation.y = Math.atan2(dx, dz); g.add(r); };
+    const gapL = TH_RX - TH_RW / 2 - 0.15, gapR = TH_RX + TH_RW / 2 + 0.15;   // ramp opening on the front edge
+    for (const y of [H + 0.92, H + 0.5]) { rail(-e, -e, e, -e, y); rail(-e, -e, -e, e, y); rail(e, -e, e, e, y); rail(-e, e, gapL, e, y); rail(gapR, e, e, e, y); }
+
+    // planked ramp up the front to the deck, with cross-cleats for grip
+    const RUN = TH_RUN, rampLen = Math.hypot(RUN, H), tilt = Math.atan2(H, RUN);
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(TH_RW, 0.16, rampLen), plank); ramp.position.set(TH_RX, H / 2, e + RUN / 2); ramp.rotation.x = tilt; ramp.castShadow = true; ramp.receiveShadow = true; g.add(ramp);
+    for (const rl of [-TH_RW / 2 + 0.05, TH_RW / 2 - 0.05]) { const side = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, rampLen), plankDk); side.position.set(TH_RX + rl, H / 2 + 0.03, e + RUN / 2); side.rotation.x = tilt; g.add(side); }
+    for (let t = 0.12; t < 0.9; t += 0.12) { const cl = new THREE.Mesh(new THREE.BoxGeometry(TH_RW - 0.16, 0.05, 0.1), plankDk); cl.position.set(TH_RX, H * t + 0.09, e + RUN * (1 - t)); cl.rotation.x = tilt; g.add(cl); }
+
     if (label) { const s = makeSign(label); s.position.set(0, H + 1.4, DW / 2 + 0.3); g.add(s); }   // on the front of the deck, clear of the canopy
     return g;
+  }
+
+  // register a tree house's deck + ramp as walkable platforms (world-space, rotated by ry)
+  function registerTreehousePlats(tx, tz, ry) {
+    const cs = Math.cos(ry), sn = Math.sin(ry), e = TH_DW / 2;
+    lobbyPlats.push({ cx: tx, cz: tz, cos: cs, sin: sn, x0: -e, x1: e, z0: -e, z1: e, y: TH_H });                       // deck
+    lobbyPlats.push({ cx: tx, cz: tz, cos: cs, sin: sn, x0: TH_RX - TH_RW / 2, x1: TH_RX + TH_RW / 2, z0: e, z1: e + TH_RUN, yLow: TH_H, yHigh: 0, ramp: true });   // ramp
+  }
+
+  // highest walkable surface (deck/ramp) under (x,z) reachable from feetY; ground (0) otherwise
+  function lobbyStand(x, z, feetY) {
+    let best = 0; const STEP = 0.7;
+    for (const pl of lobbyPlats) {
+      const dx = x - pl.cx, dz = z - pl.cz;
+      const lx = pl.cos * dx - pl.sin * dz, lz = pl.sin * dx + pl.cos * dz;
+      if (lx < pl.x0 || lx > pl.x1 || lz < pl.z0 || lz > pl.z1) continue;
+      const surf = pl.ramp ? pl.yLow + (pl.yHigh - pl.yLow) * clamp((lz - pl.z0) / (pl.z1 - pl.z0), 0, 1) : pl.y;
+      if (surf <= feetY + STEP && surf > best) best = surf;
+    }
+    return best;
   }
 
   // a glowing numbered JOIN square you run onto to customise your look
@@ -197,12 +244,15 @@
     }
     // 4 tree houses ringing the clearing, ramps + signs facing inward
     const labels = ['', '', 'CLASSES', 'VEHICLES'];   // front-facing pair (in view on spawn)
+    lobbyPlats = [];
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const tx = Math.cos(a) * 15, tz = Math.sin(a) * 15;
       const th = makeTreehouse(labels[i]);
       th.position.set(tx, 0, tz);
-      th.rotation.y = Math.atan2(-tx, -tz);   // ramp/front faces the centre
+      const ry = Math.atan2(-tx, -tz);        // ramp/front faces the centre
+      th.rotation.y = ry;
+      registerTreehousePlats(tx, tz, ry);     // deck + ramp become climbable
       group.add(th);
     }
     for (let r = 13; r < 230; r += 6.5) {
@@ -279,6 +329,9 @@
       if (on >= 0) { if (on !== leftPad) enterPad(on); }
       else { leftPad = -1; if (menuOpen) closePad(); }
     }
+    // stand on / climb the tree-house ramps + decks (ground otherwise)
+    const stand = lobbyStand(pos.x, pos.z, pos.y - EYE);
+    pos.y += (stand + EYE - pos.y) * 0.4;    // smooth step up the ramp / settle onto the deck
     cam.position.set(pos.x, pos.y, pos.z);
     cam.rotation.set(pitch, yaw, 0, 'YXZ');
   }
