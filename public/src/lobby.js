@@ -23,7 +23,7 @@
   const pos = { x: 0, y: EYE, z: 17 };            // spawn: standing back from the portal
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const rnd = (a, b) => a + Math.random() * (b - a);
-  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows</b> or <b>click+Mouse</b> to look · run onto a numbered <b style="color:#8fe6ff">square</b> to join · walk into the <b style="color:#8fe6ff">portal</b> to PLAY';
+  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows</b> or <b>click+Mouse</b> to look · run onto a numbered <b style="color:#8fe6ff">square</b> to join · press <b style="color:#8fe6ff">Enter</b> to PLAY';
 
   function makeTree(x, z, s) {
     const g = new THREE.Group();
@@ -256,7 +256,6 @@
     plaza.position.y = 0.15; group.add(plaza);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(9, 0.28, 8, 44), new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 0.6, roughness: 0.35 }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.3; group.add(ring);
-    portal = makePortal(); portal.position.set(0, 0.3, 0); group.add(portal);
     // five numbered JOIN squares across the middle of the clearing
     pads = [];
     for (let i = 0; i < 5; i++) {
@@ -323,7 +322,6 @@
     if (started) return;
     raf = requestAnimationFrame(step);
     tphase += 0.02;
-    if (portal) { portal.children[0].rotation.z += 0.02; portal.position.y = 0.3 + Math.sin(tphase) * 0.05; }
     if (partyRunning) { updateParty(); if (performance.now() / 1000 >= partyEnd) { startGame(); } }
     if (!menuOpen) {
       // arrow keys turn/look — works with NO mouse lock needed
@@ -339,7 +337,6 @@
         const len = Math.hypot(wx, wz) || 1; const sp = (keys.ShiftLeft ? 12 : 7) / 60;
         pos.x += (wx / len) * sp; pos.z += (wz / len) * sp;
         const r = Math.hypot(pos.x, pos.z); if (r > 215) { pos.x *= 215 / r; pos.z *= 215 / r; }
-        if (Math.hypot(pos.x, pos.z) < 2.6) startGame();       // stepped into the portal
       }
     }
     // which numbered square am I standing on? (locked squares can't be joined)

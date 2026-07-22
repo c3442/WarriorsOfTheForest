@@ -416,8 +416,7 @@
       player.lastAttack = player._t;
       fireArrow(charge);
       if (player.bowNock) player.bowNock.visible = false;
-      player._bowSnap = 0;                // release recoil
-      W.hud.refresh();                    // update the arrow count
+      player._bowSnap = 0;                // release recoil (HUD ammo refreshes each frame)
     }
   };
 
@@ -784,7 +783,6 @@
     if (!player.hasBow) { player.hasBow = true; equipWeapon('bow'); parts.push('🏹 a BOW!'); }
     parts.push('+' + arrows + ' arrows 🏹');
     W.hud.toast('Looted a chest! ' + parts.join('  '));
-    W.hud.refresh();
   };
 
   // --- Fishing: cast a line by a lake, wait, reel in a fish for food ----------
