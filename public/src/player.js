@@ -16,7 +16,7 @@
     building: null, invOpen: false,
     sitting: false, _seat: null, _seatHint: false,
     hasShotgun: false, shells: 0,
-    hasBow: true, bowColor: 0x7a4a24, arrowColor: 0xe6c54a,   // start with a bow (colours from the menu)
+    hasBow: false, arrowCount: 0, bowColor: 0x7a4a24, arrowColor: 0xe6c54a,   // bow is chest-only; arrows are limited ammo
     saplings: 0,
     berries: 0, berryMax: 5,
     health: 100, stamina: 100, hunger: 100, thirst: 100,
@@ -55,7 +55,7 @@
     buildShield(camera);
     buildBottle(camera);
     buildHeldBerry(camera);
-    equipWeapon('bow');                 // you START WITH THE BOW (user request)
+    equipWeapon('axe');                 // start with the axe — the bow is found in chests
     player.dropped = [];
 
     // --- input: WASD move, trackpad/mouse look, click attack, etc. ---
@@ -407,10 +407,17 @@
     const charge = player._bowCharge || 0;
     player._bowCharge = 0;
     if (charge >= 0.12) {                 // too short a draw fizzles (no shot)
+      if ((player.arrowCount || 0) <= 0) {          // limited ammo — out of arrows
+        if (player.bowNock) player.bowNock.visible = false;
+        if (player._t - (player._noAmmoT || 0) > 1.2) { player._noAmmoT = player._t; W.hud.toast('Out of arrows! 🏹 Find more in chests'); }
+        return;
+      }
+      player.arrowCount -= 1;
       player.lastAttack = player._t;
       fireArrow(charge);
       if (player.bowNock) player.bowNock.visible = false;
       player._bowSnap = 0;                // release recoil
+      W.hud.refresh();                    // update the arrow count
     }
   };
 
@@ -771,7 +778,13 @@
     if (loot.bandaids) { player.bandaids += loot.bandaids; parts.push('+' + loot.bandaids + ' 🩹'); }
     if (loot.shells && player.hasShotgun) { player.shells += loot.shells; parts.push('+' + loot.shells + ' 🔫'); }
     if (loot.food) { player.hunger = U.clamp(player.hunger + loot.food, 0, 100); parts.push('+' + loot.food + ' 🍖'); }
+    // every chest holds a bundle of arrows; the first chest also contains the BOW itself
+    const arrows = U.randInt(5, 12);
+    player.arrowCount = (player.arrowCount || 0) + arrows;
+    if (!player.hasBow) { player.hasBow = true; equipWeapon('bow'); parts.push('🏹 a BOW!'); }
+    parts.push('+' + arrows + ' arrows 🏹');
     W.hud.toast('Looted a chest! ' + parts.join('  '));
+    W.hud.refresh();
   };
 
   // --- Fishing: cast a line by a lake, wait, reel in a fish for food ----------
@@ -1459,10 +1472,10 @@
       alive: true, downed: false, bleedT: 0, bandaids: 0, ghost: false, ghostT: 0,
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
       sitting: false, _seat: null, _seatHint: false,
-      hasShotgun: false, shells: 0, hasBow: true, saplings: 0,
+      hasShotgun: false, shells: 0, hasBow: false, arrowCount: 0, saplings: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: START_WOOD, kills: 0, vy: 0,
-      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'bow',
+      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'axe',
     });
   };
 

@@ -43,8 +43,14 @@
     els.killNum.textContent = s.kills;
     // hotbar weapon + shells
     if (els.weaponIc) els.weaponIc.textContent = { axe: '🪓', sword: '⚔️', katana: '🗡️', shotgun: '🔫', bow: '🏹' }[W.player.currentWeapon] || '🪓';
-    if (els.slotShell) els.slotShell.classList.toggle('hidden', !W.player.hasShotgun);
-    if (els.shellNum) els.shellNum.textContent = W.player.shells || 0;
+    // ammo slot: shows arrows when the bow is out, shells when the shotgun is out
+    const bowOut = W.player.currentWeapon === 'bow' && W.player.hasBow;
+    const gunOut = W.player.currentWeapon === 'shotgun' && W.player.hasShotgun;
+    if (els.slotShell) {
+      els.slotShell.classList.toggle('hidden', !bowOut && !gunOut);
+      const ic = els.slotShell.querySelector('.ic'); if (ic) ic.textContent = bowOut ? '🏹' : '🔫';
+    }
+    if (els.shellNum) els.shellNum.textContent = bowOut ? (W.player.arrowCount || 0) : (W.player.shells || 0);
     if (hud._inv) hud.refreshInv();          // keep the inventory live while open
     hud.drawMinimap();
   };

@@ -13,6 +13,7 @@
   let started = false, starting = false, raf = 0, tphase = 0, menuOpen = false, hint = null;
   let pads = [], curPad = -1, leftPad = -1;                  // 5 join squares in the middle
   let partyBar = null, partyLen = 60, partyRunning = false, partyEnd = 0;   // maker-set countdown (max 2:00)
+  let partySize = 4;                                          // how many players allowed (1-5) -> active squares
   const HUD_IDS = ['minimap', 'stats', 'res', 'hotbar', 'info', 'tpVillage', 'cross', 'ownBar'];
   const hudPrev = {};
   const keys = {};
@@ -180,8 +181,16 @@
     partyBar.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:12;display:flex;gap:6px;align-items:center;' +
       'background:rgba(12,16,10,.72);border:2px solid rgba(150,180,110,.5);border-radius:12px;padding:7px 12px;' +
       "font:bold 13px 'Trebuchet MS',sans-serif;color:#eaf4dd;text-shadow:0 1px 2px #000;backdrop-filter:blur(2px);";
-    const lbl = document.createElement('span'); lbl.textContent = '⏱ Party length:'; partyBar.appendChild(lbl);
     const bstyle = 'background:#2a3320;border:1px solid #46562f;border-radius:6px;color:#dfeec8;font:bold 12px sans-serif;padding:3px 8px;cursor:pointer;';
+    // how many players are allowed in the party (1-5) -> lights up that many squares
+    const plbl = document.createElement('span'); plbl.textContent = '👥 Players:'; partyBar.appendChild(plbl);
+    [1, 2, 3, 4, 5].forEach((n) => {
+      const b = document.createElement('button'); b.textContent = n; b.dataset.size = n; b.style.cssText = bstyle;
+      b.onclick = () => { if (partyRunning) return; partySize = n; applyPadStates(); updateParty(); };
+      partyBar.appendChild(b);
+    });
+    const sep = document.createElement('span'); sep.textContent = '·'; sep.style.opacity = '.5'; partyBar.appendChild(sep);
+    const lbl = document.createElement('span'); lbl.textContent = '⏱ Length:'; partyBar.appendChild(lbl);
     [['0:30', 30], ['1:00', 60], ['1:30', 90], ['2:00', 120]].forEach(([l, s]) => {
       const b = document.createElement('button'); b.textContent = l; b.dataset.sec = s; b.style.cssText = bstyle;
       b.onclick = () => { if (partyRunning) return; partyLen = s; updateParty(); };
@@ -193,7 +202,7 @@
     partyBar.appendChild(start);
     const cd = document.createElement('span'); cd.id = 'partyCd'; cd.style.cssText = 'margin-left:6px;color:#8fe6ff;font-size:15px;min-width:44px;text-align:center;'; partyBar.appendChild(cd);
     document.body.appendChild(partyBar);
-    updateParty();
+    applyPadStates(); updateParty();
   }
   function updateParty() {
     if (!partyBar) return;
@@ -201,9 +210,22 @@
       const on = +b.dataset.sec === partyLen;
       b.style.background = on ? '#6a8a3a' : '#2a3320'; b.style.borderColor = on ? '#cff0a0' : '#46562f';
     });
+    partyBar.querySelectorAll('button[data-size]').forEach((b) => {
+      const on = +b.dataset.size === partySize;
+      b.style.background = on ? '#3a6a8a' : '#2a3320'; b.style.borderColor = on ? '#a0d8f0' : '#46562f';
+    });
     const cd = document.getElementById('partyCd');
     if (cd) cd.textContent = partyRunning ? '⏳ ' + fmt(partyEnd - performance.now() / 1000) : fmt(partyLen);
     const s = document.getElementById('partyStart'); if (s) s.textContent = partyRunning ? '● LIVE' : '▶ START';
+  }
+  // only the first `partySize` squares are joinable; the rest are locked & greyed
+  function applyPadStates() {
+    pads.forEach((p, i) => {
+      p.active = i < partySize;
+      const m = p.mesh && p.mesh.userData.glow; if (!m) return;
+      if (!p.active) { m.material.color.setHex(0x4a4f42); m.material.emissive.setHex(0x1a1e16); m.material.emissiveIntensity = 0.12; }
+      else { m.material.color.setHex(0x2bd4ff); m.material.emissive.setHex(0x2bd4ff); m.material.emissiveIntensity = 0.7; }
+    });
   }
   function startParty() {
     if (partyRunning) return;
@@ -240,7 +262,7 @@
     for (let i = 0; i < 5; i++) {
       const px = -4.6 + i * 2.3, pz = 5.5;
       const pad = makePad(i + 1); pad.position.set(px, 0.2, pz); group.add(pad);
-      pads.push({ mesh: pad, x: px, z: pz });
+      pads.push({ mesh: pad, x: px, z: pz, active: i < partySize });
     }
     // 4 tree houses ringing the clearing, ramps + signs facing inward
     const labels = ['', '', 'CLASSES', 'VEHICLES'];   // front-facing pair (in view on spawn)
@@ -320,10 +342,14 @@
         if (Math.hypot(pos.x, pos.z) < 2.6) startGame();       // stepped into the portal
       }
     }
-    // which numbered square am I standing on?
+    // which numbered square am I standing on? (locked squares can't be joined)
     let on = -1;
-    for (let i = 0; i < pads.length; i++) { if (Math.abs(pos.x - pads[i].x) < 0.95 && Math.abs(pos.z - pads[i].z) < 0.95) { on = i; break; } }
-    pads.forEach((p, i) => { if (p.mesh.userData.glow) p.mesh.userData.glow.material.emissiveIntensity = (i === on ? 1.9 : 0.7); });
+    for (let i = 0; i < pads.length; i++) { if (pads[i].active && Math.abs(pos.x - pads[i].x) < 0.95 && Math.abs(pos.z - pads[i].z) < 0.95) { on = i; break; } }
+    pads.forEach((p, i) => {
+      const m = p.mesh.userData.glow; if (!m) return;
+      if (!p.active) { m.material.color.setHex(0x4a4f42); m.material.emissive.setHex(0x1a1e16); m.material.emissiveIntensity = 0.12; }
+      else { m.material.color.setHex(0x2bd4ff); m.material.emissive.setHex(0x2bd4ff); m.material.emissiveIntensity = (i === on ? 1.9 : 0.7); }
+    });
     if (on !== curPad) {
       curPad = on;
       if (on >= 0) { if (on !== leftPad) enterPad(on); }
