@@ -94,7 +94,7 @@
   function enter() {
     const p = P(); if (!p || driving) return;
     driving = true; savedMult = p.speedMult || 1; prevX = p.pos.x; prevZ = p.pos.z;
-    toast(fuel > 0 ? '🚗 Driving! WASD to go · M to get out' : '🚗 In the car — but it\'s out of fuel! Find a fuel can ⛽');
+    toast(fuel > 0 ? '🚗 Driving! WASD to go · press B to get out' : '🚗 In the car — but it\'s out of fuel! Find a fuel can ⛽ (B to get out)');
   }
   function odoStep() {
     const p = P(); if (!p) return;
@@ -193,12 +193,16 @@
   }
 
   // ---- input ----------------------------------------------------------------
-  // M enters the car when you're next to it, exits when driving — otherwise it
-  // falls through to the normal horse mount.
+  // M gets IN the car when you're next to it. Once you're in you're locked in —
+  // the ONLY way out is pressing B. (M and B are otherwise horse mount / bandaid.)
   window.addEventListener('keydown', (e) => {
-    if (e.code !== 'KeyM' || e.repeat) return;
-    if (driving) { e.stopImmediatePropagation(); exitCar(); }
-    else if (nearCar()) { e.stopImmediatePropagation(); enter(); }
+    if (e.repeat) return;
+    if (e.code === 'KeyM') {
+      if (driving) { e.stopImmediatePropagation(); }               // seated — M can't mount a horse or leave
+      else if (nearCar()) { e.stopImmediatePropagation(); enter(); }
+    } else if (e.code === 'KeyB') {
+      if (driving) { e.stopImmediatePropagation(); exitCar(); }     // B is the only way out of the car
+    }
   }, true);
 
   function addMobile() {
