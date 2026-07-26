@@ -427,7 +427,12 @@
     const p = ov.querySelector('p'); if (p) p.style.display = 'none';
     const keysBlk = ov.querySelector('.keys'); if (keysBlk) keysBlk.style.display = 'none';
     const h1 = ov.querySelector('h1'); if (h1) h1.style.display = 'none';
-    const menu = document.getElementById('menu'); if (menu) menu.style.display = 'none';   // hidden until C
+    const menu = document.getElementById('menu'); if (menu) menu.style.display = 'none';   // hidden until you enter a square
+    // the pad panel is just look-customization now — starting happens via the portal/timer,
+    // and the party size is picked in the top bar. Hide the launch/co-op controls.
+    // (soloBtn stays in the DOM so startGame() can still click it programmatically.)
+    ['soloBtn', 'hostBtn'].forEach((id) => { const b = document.getElementById(id); if (b) b.style.display = 'none'; });
+    const jr = document.querySelector('#menu .joinrow'); if (jr) jr.style.display = 'none';
     HUD_IDS.forEach((id) => { const el = document.getElementById(id); if (el) { hudPrev[id] = el.style.display; el.style.display = 'none'; } });
     // teardown the instant the game begins (beginGame adds .hidden)
     new MutationObserver(() => { if (ov.classList.contains('hidden')) teardown(); }).observe(ov, { attributes: true, attributeFilter: ['class'] });

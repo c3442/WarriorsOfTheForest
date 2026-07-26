@@ -414,6 +414,7 @@
       }
       player.arrowCount -= 1;
       player.lastAttack = player._t;
+      if (W.sfx) W.sfx.bow();
       fireArrow(charge);
       if (player.bowNock) player.bowNock.visible = false;
       player._bowSnap = 0;                // release recoil (HUD ammo refreshes each frame)
@@ -456,9 +457,11 @@
         if (killed) player.creditKill(root.userData.kind);
       }
       player.popDamage(root.position, dmg, head);
+      if (W.sfx) { if (head) W.sfx.headshot(); else W.sfx.hit(); }
       if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
     } else if (root.userData.type === 'tree') {
       const dmg = 10 + player.axeLevel * 5;                 // sharper axe = bigger chips
+      if (W.sfx) W.sfx.chop();
       const wood = W.world.chopTree(root, dmg);
       showTreeHealth(root, dmg);                            // floating damage + a health bar
       if (wood) {
@@ -535,6 +538,7 @@
   function fireShotgun() {
     if (player.shells <= 0) { W.hud.toast('Out of shells 🔫'); return; }
     player.shells -= 1;
+    if (W.sfx) W.sfx.shotgun();
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
     ray.far = 22;
@@ -575,6 +579,7 @@
     if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
     else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
     player.popDamage(root.position, dmg, head);
+    if (W.sfx) { if (head) W.sfx.headshot(); else W.sfx.hit(); }
     if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
   }
 
@@ -657,6 +662,7 @@
   // Reward for a kill (used locally, and by net for remote-credited kills).
   player.creditKill = function (kind) {
     player.kills += 1;
+    if (W.sfx) W.sfx.kill();
     const bonus = kind === 'werewolf' ? 2 : 1;
     if (Math.random() < 0.6) player.wood += bonus;
     if (Math.random() < 0.45) {
@@ -682,6 +688,7 @@
         if (plot.ripe && U.dist2(player.pos.x, player.pos.z, plot.x, plot.z) < 2.6) {
           plot.ripe = false; plot.t = 0;
           player.hunger = U.clamp(player.hunger + 45, 0, 100);
+          if (W.sfx) W.sfx.eat();
           W.hud.toast('Harvested a crop 🥕 +45 food');
           return;
         }
@@ -697,6 +704,7 @@
     best.ready = false;
     best.mesh.userData.berries.forEach((berry) => { berry.visible = false; });
     player.hunger = U.clamp(player.hunger + 35, 0, 100);
+    if (W.sfx) W.sfx.eat();
     W.hud.toast('+35 food 🍓');
     setTimeout(() => {
       best.ready = true;
@@ -1043,11 +1051,13 @@
     if (W.world.isWater(player.pos.x, player.pos.z)) {
       player.thirst = 100;
       player.bottle = player.bottleMax;
+      if (W.sfx) W.sfx.drink();
       W.hud.toast('Drank deeply & filled bottle 💧');
       player._drink = 0;
     } else if (player.bottle > 0) {
       player.bottle -= 1;
       player.thirst = U.clamp(player.thirst + 35, 0, 100);
+      if (W.sfx) W.sfx.drink();
       W.hud.toast('Sip 💧 (' + player.bottle + '/' + player.bottleMax + ')');
       player._drink = 0;
     } else {
@@ -1138,6 +1148,7 @@
     player.health -= amount;
     player.lastHurt = player._t;
     W.hud.flashDamage(U.clamp(amount / 14, 0.25, 0.9));
+    if (W.sfx) { if (player.health <= 0) W.sfx.die(); else W.sfx.hurt(); }
     if (player.health <= 0) {
       player.health = 0;
       if (W.net && W.net.role) {
