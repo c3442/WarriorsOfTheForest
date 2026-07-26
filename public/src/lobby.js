@@ -14,7 +14,7 @@
   let pads = [], curPad = -1, leftPad = -1;                  // 5 join squares in the middle
   let partyBar = null, partyLen = 60, partyRunning = false, partyEnd = 0;   // maker-set countdown (max 2:00)
   let partySize = 4;                                          // how many players allowed (1-5) -> active squares
-  let padSubmitted = [false, false, false, false, false];    // each player submits their square; all in -> start
+  let chosenPad = -1, filled = 0;                            // the ONE shared box everyone piles into, and how many are in it
   const HUD_IDS = ['minimap', 'stats', 'res', 'hotbar', 'info', 'tpVillage', 'cross', 'ownBar'];
   const hudPrev = {};
   const keys = {};
@@ -24,7 +24,7 @@
   const pos = { x: 0, y: EYE, z: 17 };            // spawn: standing back from the portal
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const rnd = (a, b) => a + Math.random() * (b - a);
-  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows/Mouse</b> look · run onto a numbered <b style="color:#8fe6ff">square</b>, customise & <b style="color:#8fd36a">Submit</b> — the game starts once every player has submitted';
+  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows/Mouse</b> look · everyone piles into <b>ONE</b> numbered <b style="color:#8fe6ff">square</b>, customise & <b style="color:#8fd36a">Submit</b> — the game starts when the box is full';
 
   function makeTree(x, z, s) {
     const g = new THREE.Group();
@@ -237,8 +237,7 @@
     document.body.appendChild(partyBar);
     applyPadStates(); updateParty();
   }
-  function readyCount() { let n = 0; for (let i = 0; i < partySize; i++) if (padSubmitted[i]) n++; return n; }
-  function updateReady() { const r = document.getElementById('partyReady'); if (r) r.textContent = '✓ Ready ' + readyCount() + '/' + partySize; }
+  function updateReady() { const r = document.getElementById('partyReady'); if (r) r.textContent = '✓ In box ' + filled + '/' + partySize; }
   function updateParty() {
     if (!partyBar) return;
     partyBar.querySelectorAll('button[data-sec]').forEach((b) => {
@@ -253,28 +252,39 @@
     if (cd) cd.textContent = partyRunning ? '⏳ ' + fmt(partyEnd - performance.now() / 1000) : fmt(partyLen);
     const s = document.getElementById('partyStart'); if (s) s.textContent = partyRunning ? '● LIVE' : '▶ START';
   }
-  // paint one pad's glow: grey=locked, cyan=open, green=submitted (brighter when hovered)
+  // paint one pad's glow: grey=locked, cyan=open, green=the chosen shared box (brighter when hovered)
   function paintPad(p, i, hovered) {
     const m = p.mesh && p.mesh.userData.glow; if (!m) return;
     if (!p.active) { m.material.color.setHex(0x4a4f42); m.material.emissive.setHex(0x1a1e16); m.material.emissiveIntensity = 0.12; }
-    else if (padSubmitted[i]) { m.material.color.setHex(0x36e05a); m.material.emissive.setHex(0x36e05a); m.material.emissiveIntensity = hovered ? 2.0 : 0.95; }
+    else if (i === chosenPad) { m.material.color.setHex(0x36e05a); m.material.emissive.setHex(0x36e05a); m.material.emissiveIntensity = hovered ? 2.0 : 1.1; }
     else { m.material.color.setHex(0x2bd4ff); m.material.emissive.setHex(0x2bd4ff); m.material.emissiveIntensity = hovered ? 1.9 : 0.7; }
   }
-  // only the first `partySize` squares are joinable; the rest are locked & greyed.
-  // Changing the party size clears everyone's "ready" so the new roster re-submits.
+  // A square is joinable when it's within the party size AND either no box has been
+  // chosen yet, or it IS the chosen box — once one box is claimed, the rest lock.
+  function refreshActive() { pads.forEach((p, i) => { p.active = i < partySize && (chosenPad < 0 || i === chosenPad); }); }
+  // Changing the party size clears the roster so everyone re-piles into a fresh box.
   function applyPadStates() {
-    padSubmitted = [false, false, false, false, false];
-    pads.forEach((p, i) => { p.active = i < partySize; paintPad(p, i, false); });
+    chosenPad = -1; filled = 0;
+    refreshActive();
+    pads.forEach((p, i) => paintPad(p, i, false));
     updateReady();
   }
-  // a player finished customizing their square and submitted — start once everyone has
+  // A player customised and submitted. The first submit claims the shared box;
+  // every later player must submit in that SAME box, filling it up. Full -> start.
   function submitPad(i) {
-    if (i < 0 || i >= partySize) return;
-    padSubmitted[i] = true; leftPad = i; updateReady();
-    const p = pads[i]; if (p) paintPad(p, i, false);
-    if (W.hud && W.hud.toast) W.hud.toast('✓ Player ' + (i + 1) + ' is ready! (' + readyCount() + '/' + partySize + ')');
+    if (i < 0 || !pads[i] || i >= partySize) return;
+    if (chosenPad < 0) { chosenPad = i; filled = 1; }                 // first player claims the box
+    else if (i !== chosenPad) {                                       // wrong box — send them to the shared one
+      if (W.hud && W.hud.toast) W.hud.toast('Everyone piles into the SAME box — head to square ' + (chosenPad + 1) + '! 📦');
+      return;
+    } else if (filled < partySize) { filled += 1; }                  // another player joins the box
+    refreshActive();
+    leftPad = i; updateReady();
+    pads.forEach((p, k) => paintPad(p, k, false));
+    if (W.hud && W.hud.toast) W.hud.toast('✓ Player ' + filled + ' in the box (' + filled + '/' + partySize + ')');
     closePad();
-    if (readyCount() >= partySize) { if (hint) hint.innerHTML = '🚀 <b>Everyone\'s ready — entering the forest…</b>'; startGame(); }
+    if (filled >= partySize) { if (hint) hint.innerHTML = '🚀 <b>Box full — entering the forest…</b>'; startGame(); }
+    else if (hint) hint.innerHTML = '🙌 <b>' + filled + '/' + partySize + ' in square ' + (chosenPad + 1) + '</b> — next player, step into the <b style="color:#8fe6ff">same box</b> and Submit';
   }
   function startParty() {
     if (partyRunning) return;
@@ -302,10 +312,10 @@
     return b;
   }
   function enterPad(i) {
-    padTag(i + 1);
-    const b = ensureSubmitBtn(); if (b) b.textContent = padSubmitted[i] ? '✓ SUBMITTED — update & re-submit' : '✓ SUBMIT (' + (i + 1) + ')';
+    padTag(filled + 1);                       // this square customises the NEXT player to join the box
+    const b = ensureSubmitBtn(); if (b) b.textContent = '✓ SUBMIT — Player ' + (filled + 1) + ' of ' + partySize;
     toggleMenu(true);
-    if (hint) hint.innerHTML = '✨ <b>Square ' + (i + 1) + '</b> — pick your look, then <b>Submit</b> (Enter) · <b>B</b> to leave';
+    if (hint) hint.innerHTML = '✨ <b>Square ' + (i + 1) + '</b> — customise <b>Player ' + (filled + 1) + '</b>, then <b>Submit</b> (Enter) · <b>B</b> to leave';
   }
   function closePad() { toggleMenu(false); if (hint && !partyRunning) hint.innerHTML = HINT_HTML; }
 

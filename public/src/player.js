@@ -450,7 +450,9 @@
       const e = W.enemies.list.find((x) => x.group === root);
       const headY = root.position.y + (W.enemies.headY ? W.enemies.headY(e) : 1.7);
       const head = Math.abs(hits[0].point.y - headY) < 0.45;          // struck the head
-      let dmg = player.attackDmg; if (head) dmg = Math.round(dmg * 2.2);
+      let dmg = player.attackDmg;
+      if (player.currentWeapon === 'axe') dmg = Math.max(1, Math.round(dmg * 0.55));   // nerf: the axe is a wood-chopper, weak in a real fight
+      if (head) dmg = Math.round(dmg * 2.2);
       if (W.net && W.net.role === 'client') {
         W.net.sendHit(root.userData.id, dmg);  // host resolves the damage
       } else {
@@ -570,12 +572,12 @@
     arrow.position.copy(start);
     arrow.quaternion.setFromUnitVectors(ARROW_FWD, dir.clone().normalize());
     player.scene.add(arrow);
-    const speed = 32 + c * 32;                         // fuller draw → faster, flatter arrow
+    const speed = 38 + c * 40;                         // buffed: fuller draw → faster, flatter arrow
     player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(speed), life: 0, pow: c });
   }
   function applyArrow(root, pow, head) {
     const c = pow == null ? 1 : pow;
-    let dmg = Math.round(4 + c * 8) + (player.bowDmgBonus || 0);     // fuller draw hits harder
+    let dmg = Math.round(9 + c * 15) + (player.bowDmgBonus || 0);    // buffed: fuller draw hits much harder (up to 24)
     if (head) dmg = Math.round(dmg * 2.2);                           // headshot!
     if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
     else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
