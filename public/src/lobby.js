@@ -14,6 +14,7 @@
   let pads = [], curPad = -1, leftPad = -1;                  // 5 join squares in the middle
   let partyBar = null, partyLen = 60, partyRunning = false, partyEnd = 0;   // maker-set countdown (max 2:00)
   let partySize = 4;                                          // how many players allowed (1-5) -> active squares
+  let padSubmitted = [false, false, false, false, false];    // each player submits their square; all in -> start
   const HUD_IDS = ['minimap', 'stats', 'res', 'hotbar', 'info', 'tpVillage', 'cross', 'ownBar'];
   const hudPrev = {};
   const keys = {};
@@ -23,7 +24,7 @@
   const pos = { x: 0, y: EYE, z: 17 };            // spawn: standing back from the portal
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const rnd = (a, b) => a + Math.random() * (b - a);
-  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows</b> or <b>click+Mouse</b> to look · run onto a numbered <b style="color:#8fe6ff">square</b> to join · press <b style="color:#8fe6ff">Enter</b> to PLAY';
+  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows/Mouse</b> look · run onto a numbered <b style="color:#8fe6ff">square</b>, customise & <b style="color:#8fd36a">Submit</b> — the game starts once every player has submitted';
 
   function makeTree(x, z, s) {
     const g = new THREE.Group();
@@ -232,9 +233,12 @@
     start.onclick = () => startParty();
     partyBar.appendChild(start);
     const cd = document.createElement('span'); cd.id = 'partyCd'; cd.style.cssText = 'margin-left:6px;color:#8fe6ff;font-size:15px;min-width:44px;text-align:center;'; partyBar.appendChild(cd);
+    const rdy = document.createElement('span'); rdy.id = 'partyReady'; rdy.style.cssText = 'margin-left:10px;color:#8fd36a;font-size:14px;'; partyBar.appendChild(rdy);
     document.body.appendChild(partyBar);
     applyPadStates(); updateParty();
   }
+  function readyCount() { let n = 0; for (let i = 0; i < partySize; i++) if (padSubmitted[i]) n++; return n; }
+  function updateReady() { const r = document.getElementById('partyReady'); if (r) r.textContent = '✓ Ready ' + readyCount() + '/' + partySize; }
   function updateParty() {
     if (!partyBar) return;
     partyBar.querySelectorAll('button[data-sec]').forEach((b) => {
@@ -249,14 +253,28 @@
     if (cd) cd.textContent = partyRunning ? '⏳ ' + fmt(partyEnd - performance.now() / 1000) : fmt(partyLen);
     const s = document.getElementById('partyStart'); if (s) s.textContent = partyRunning ? '● LIVE' : '▶ START';
   }
-  // only the first `partySize` squares are joinable; the rest are locked & greyed
+  // paint one pad's glow: grey=locked, cyan=open, green=submitted (brighter when hovered)
+  function paintPad(p, i, hovered) {
+    const m = p.mesh && p.mesh.userData.glow; if (!m) return;
+    if (!p.active) { m.material.color.setHex(0x4a4f42); m.material.emissive.setHex(0x1a1e16); m.material.emissiveIntensity = 0.12; }
+    else if (padSubmitted[i]) { m.material.color.setHex(0x36e05a); m.material.emissive.setHex(0x36e05a); m.material.emissiveIntensity = hovered ? 2.0 : 0.95; }
+    else { m.material.color.setHex(0x2bd4ff); m.material.emissive.setHex(0x2bd4ff); m.material.emissiveIntensity = hovered ? 1.9 : 0.7; }
+  }
+  // only the first `partySize` squares are joinable; the rest are locked & greyed.
+  // Changing the party size clears everyone's "ready" so the new roster re-submits.
   function applyPadStates() {
-    pads.forEach((p, i) => {
-      p.active = i < partySize;
-      const m = p.mesh && p.mesh.userData.glow; if (!m) return;
-      if (!p.active) { m.material.color.setHex(0x4a4f42); m.material.emissive.setHex(0x1a1e16); m.material.emissiveIntensity = 0.12; }
-      else { m.material.color.setHex(0x2bd4ff); m.material.emissive.setHex(0x2bd4ff); m.material.emissiveIntensity = 0.7; }
-    });
+    padSubmitted = [false, false, false, false, false];
+    pads.forEach((p, i) => { p.active = i < partySize; paintPad(p, i, false); });
+    updateReady();
+  }
+  // a player finished customizing their square and submitted — start once everyone has
+  function submitPad(i) {
+    if (i < 0 || i >= partySize) return;
+    padSubmitted[i] = true; leftPad = i; updateReady();
+    const p = pads[i]; if (p) paintPad(p, i, false);
+    if (W.hud && W.hud.toast) W.hud.toast('✓ Player ' + (i + 1) + ' is ready! (' + readyCount() + '/' + partySize + ')');
+    closePad();
+    if (readyCount() >= partySize) { if (hint) hint.innerHTML = '🚀 <b>Everyone\'s ready — entering the forest…</b>'; startGame(); }
   }
   function startParty() {
     if (partyRunning) return;
@@ -272,10 +290,22 @@
     if (!t) { t = document.createElement('div'); t.id = 'lobbyTag'; t.style.cssText = 'font:bold 16px "Trebuchet MS",sans-serif;color:#8fe6ff;letter-spacing:1px;margin-bottom:4px;'; menu.insertBefore(t, menu.firstChild); }
     t.textContent = '🙂 PLAYER ' + n + ' — pick your look';
   }
+  function ensureSubmitBtn() {
+    const menu = document.getElementById('menu'); if (!menu) return null;
+    let b = document.getElementById('lobbySubmit');
+    if (!b) {
+      b = document.createElement('button'); b.id = 'lobbySubmit'; b.className = 'btn';
+      b.style.cssText = 'background:#3c7a2c;border:2px solid #8fd36a;color:#fff;font:bold 15px "Trebuchet MS",sans-serif;border-radius:9px;padding:8px 18px;margin-top:8px;cursor:pointer;';
+      b.onclick = () => submitPad(curPad);
+      menu.appendChild(b);
+    }
+    return b;
+  }
   function enterPad(i) {
     padTag(i + 1);
+    const b = ensureSubmitBtn(); if (b) b.textContent = padSubmitted[i] ? '✓ SUBMITTED — update & re-submit' : '✓ SUBMIT (' + (i + 1) + ')';
     toggleMenu(true);
-    if (hint) hint.innerHTML = '✨ You\'re in <b>square ' + (i + 1) + '</b> — pick your look, then press <b>B</b> to leave';
+    if (hint) hint.innerHTML = '✨ <b>Square ' + (i + 1) + '</b> — pick your look, then <b>Submit</b> (Enter) · <b>B</b> to leave';
   }
   function closePad() { toggleMenu(false); if (hint && !partyRunning) hint.innerHTML = HINT_HTML; }
 
@@ -373,11 +403,7 @@
     // which numbered square am I standing on? (locked squares can't be joined)
     let on = -1;
     for (let i = 0; i < pads.length; i++) { if (pads[i].active && Math.abs(pos.x - pads[i].x) < 0.95 && Math.abs(pos.z - pads[i].z) < 0.95) { on = i; break; } }
-    pads.forEach((p, i) => {
-      const m = p.mesh.userData.glow; if (!m) return;
-      if (!p.active) { m.material.color.setHex(0x4a4f42); m.material.emissive.setHex(0x1a1e16); m.material.emissiveIntensity = 0.12; }
-      else { m.material.color.setHex(0x2bd4ff); m.material.emissive.setHex(0x2bd4ff); m.material.emissiveIntensity = (i === on ? 1.9 : 0.7); }
-    });
+    pads.forEach((p, i) => paintPad(p, i, i === on));
     if (on !== curPad) {
       curPad = on;
       if (on >= 0) { if (on !== leftPad) enterPad(on); }
@@ -392,7 +418,7 @@
 
   const onMove = (e) => { if (started || menuOpen || document.pointerLockElement !== canvas) return; yaw -= e.movementX * 0.0022; pitch = clamp(pitch - e.movementY * 0.0022, -1.4, 1.4); };
   const MOVE_KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, ShiftLeft: 1 };
-  const onDown = (e) => { if (started) return; keys[e.code] = true; if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); } if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; closePad(); } else if (e.code === 'Enter' && !menuOpen) { startGame(); } };
+  const onDown = (e) => { if (started) return; keys[e.code] = true; if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); } if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); submitPad(curPad); } else if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; closePad(); } };
   const onUp = (e) => { keys[e.code] = false; };
   const onCanvasDown = () => { if (started || menuOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };
 
