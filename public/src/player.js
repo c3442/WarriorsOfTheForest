@@ -339,6 +339,7 @@
     if (order.length === 1) { W.hud.toast('Craft a Sword or find the bandit’s shotgun'); return; }
     const i = order.indexOf(player.currentWeapon);
     equipWeapon(order[(i + 1) % order.length]);
+    if (W.sfx) W.sfx.select();
     W.hud.toast({ bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', shotgun: '🔫 Sawed-off shotgun' }[player.currentWeapon] + ' equipped');
   };
 
@@ -915,6 +916,7 @@
       player.bandaids += 1;
       W.hud.toast('Bandaid crafted 🩹 (' + player.bandaids + ')');
     } else { return; }
+    if (W.sfx) W.sfx.craft();
     refreshCraft();
   };
 
@@ -1359,6 +1361,15 @@
     // head bob
     const bob = moving && player.grounded ? Math.sin(player._t * (wantSprint ? 14 : 9)) * 0.04 : 0;
     player.camera.position.y += bob;
+
+    // footstep sounds, paced to the walk/run cadence
+    if (moving && player.grounded && !player._mount) {
+      player._stepT = (player._stepT || 0) + dt;
+      if (player._stepT >= (wantSprint ? 0.30 : 0.42)) {
+        player._stepT = 0; player._stepR = !player._stepR;
+        if (W.sfx) W.sfx.step(player._stepR);
+      }
+    } else { player._stepT = 0.4; }
 
     // riding a horse: sit up high, place the horse under you, gallop its legs
     if (player._mount) {
