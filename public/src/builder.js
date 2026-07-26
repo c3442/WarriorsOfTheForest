@@ -494,7 +494,7 @@
 
   // ---- input (capture phase so build keys/clicks don't reach the game) -------
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyV' && !e.repeat) { e.stopImmediatePropagation(); toggle(); return; }
+    if (e.code === 'Backquote' && !e.repeat) { e.stopImmediatePropagation(); toggle(); return; }   // ` toggles Build Mode (V is the village teleport)
     if (!on) return;
     let used = true;
     if (e.code === 'KeyZ') { doPlace(); }            // Z = place a block

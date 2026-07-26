@@ -455,7 +455,7 @@
     buildHud();
     requestAnimationFrame(loop);
     setTimeout(addMobile, 900); setTimeout(addMobile, 2600);
-    if (W.hud && W.hud.toast) W.hud.toast('👑 Owner pack unlocked — P blaster · Y grenade · custom blocks in Build (V)');
+    if (W.hud && W.hud.toast) W.hud.toast('👑 Owner pack unlocked — P blaster · Y grenade · custom blocks in Build (`)');
     W.owner = {
       fireBlaster, throwGrenade, count: () => ({ bolts: bolts.length, nades: nades.length, fx: fx.length }),
       _step: (dt) => { stepBolts(dt); stepNades(dt); stepFx(dt); },   // test hook (preview rAF is suspended)
