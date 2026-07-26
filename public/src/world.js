@@ -1957,13 +1957,28 @@
     return loot;
   };
   function buildChests(scene) {
+    // drop a cluster of chests on solid ground around a centre
+    const cluster = (cx, cz, r0, r1, count, minGap) => {
+      for (let i = 0; i < count; i++) {
+        for (let t = 0; t < 24; t++) {
+          const a = U.rand(0, 6.28), r = U.rand(r0, r1);
+          const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+          if (world.heightAt(x, z) <= C.WATER_LEVEL + 0.6) continue;
+          if (world.chests.some((c) => U.dist2(x, z, c.x, c.z) < (minGap || 8))) continue;
+          world.placeChest(x, z, U.rand(0, 6.28)); break;
+        }
+      }
+    };
+    cluster(0, 0, 14, 40, 5, 8);                                   // easy finds near the home camp (grab the bow early)
+    if (world.villagePos) cluster(world.villagePos.x, world.villagePos.z, 8, 42, 5, 8);   // more around the village
+    // and a denser scattering across the rest of the map
     let n = 0, tries = 0;
-    while (n < 38 && tries < 1500) {
+    while (n < 60 && tries < 2500) {
       tries++;
       const p = U.pointInDisc(C.WORLD_RADIUS * 0.95);
       if (world.heightAt(p.x, p.z) <= C.WATER_LEVEL + 0.6) continue;
-      if (U.dist2(p.x, p.z, 0, 0) < 28) continue;
-      if (world.chests.some((c) => U.dist2(p.x, p.z, c.x, c.z) < 40)) continue;
+      if (U.dist2(p.x, p.z, 0, 0) < 44) continue;
+      if (world.chests.some((c) => U.dist2(p.x, p.z, c.x, c.z) < 30)) continue;
       world.placeChest(p.x, p.z, U.rand(0, 6.28)); n++;
     }
   }
