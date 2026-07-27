@@ -131,7 +131,24 @@
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+    // Procedural ground-detail texture: soft mottled patches so the terrain reads as
+    // real earth/grass instead of flat paint. Multiplies the vertex biome colours.
+    const dTex = (() => {
+      const S = 256, cv = document.createElement('canvas'); cv.width = cv.height = S;
+      const c = cv.getContext('2d');
+      c.fillStyle = '#ffffff'; c.fillRect(0, 0, S, S);
+      for (let i = 0; i < 900; i++) {                       // overlapping soft blotches -> value noise
+        const x = Math.random() * S, y = Math.random() * S, r = 6 + Math.random() * 42;
+        const v = 150 + ((Math.random() * 105) | 0);        // 150..255 grey — only ever darkens a little
+        const g = c.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(' + v + ',' + v + ',' + v + ',0.22)'); g.addColorStop(1, 'rgba(' + v + ',' + v + ',' + v + ',0)');
+        c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      const t = new THREE.CanvasTexture(cv);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(90, 90); t.anisotropy = 4; t.encoding = THREE.sRGBEncoding;
+      return t;
+    })();
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, map: dTex, roughnessMap: dTex });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     mesh.name = 'terrain';
@@ -158,13 +175,17 @@
     trunk.userData.parent = g;
     g.add(trunk);
 
-    const fColor = foliagePalette[U.randInt(0, foliagePalette.length - 1)];
-    const fMat = new THREE.MeshStandardMaterial({ color: fColor, roughness: 1, flatShading: true });
-    const tiers = big ? U.randInt(3, 4) : U.randInt(2, 3);
+    const fColor = new THREE.Color(foliagePalette[U.randInt(0, foliagePalette.length - 1)]);
+    const tiers = (big ? U.randInt(4, 5) : U.randInt(3, 4));          // denser, fuller canopy
     for (let i = 0; i < tiers; i++) {
-      const r = (1.5 - i * 0.32) * scale;
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 1.7 * scale, 7), fMat);
-      cone.position.y = trunkH + i * 1.0 * scale - 0.2;
+      const r = (1.55 - i * 0.28) * scale;
+      // lower tiers sit in shade (darker), upper tiers catch light (lighter) -> depth
+      const shade = 0.72 + 0.4 * (i / Math.max(1, tiers - 1));
+      const tierCol = fColor.clone().multiplyScalar(shade).offsetHSL(U.rand(-0.02, 0.02), U.rand(-0.03, 0.05), 0);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 1.7 * scale, 8),
+        new THREE.MeshStandardMaterial({ color: tierCol, roughness: 1, flatShading: true }));
+      cone.position.y = trunkH + i * 0.85 * scale - 0.2;             // overlap tiers so no gaps
+      cone.rotation.y = U.rand(0, Math.PI);                          // break up aligned facets
       cone.castShadow = true;
       cone.userData.parent = g;
       g.add(cone);
@@ -449,6 +470,8 @@
     const d = 70;
     Object.assign(world.sun.shadow.camera, { left: -d, right: d, top: d, bottom: -d, near: 1, far: 260 });
     world.sun.shadow.bias = -0.0005;
+    world.sun.shadow.normalBias = 0.03;   // kill shadow acne on the low-poly facets
+    world.sun.shadow.radius = 4;           // soft, natural PCF penumbra instead of hard edges
     scene.add(world.sun);
     scene.add(world.sun.target);
 
@@ -2164,7 +2187,7 @@
     world.hemi.color.copy(U.mixColor('#24406a', '#cfe6ff', day));
     world.hemi.groundColor.copy(U.mixColor(GROUND_NIGHT, GROUND_DAY, day));
 
-    world.sun.intensity = U.lerp(0.07, 1.1, day);   // nightmare: only the faintest moonlight
+    world.sun.intensity = U.lerp(0.07, 1.28, day);   // nightmare: only the faintest moonlight; bright, crisp midday
     world.sun.color.copy(U.mixColor('#8ea2d8', '#fff0cf', day)); // moonlight -> warm sunlight
     world.sun.position.copy(playerPos).addScaledVector(sunDir, 90);
     world.sun.target.position.copy(playerPos);
