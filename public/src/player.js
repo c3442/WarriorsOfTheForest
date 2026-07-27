@@ -16,6 +16,7 @@
     building: null, invOpen: false,
     sitting: false, _seat: null, _seatHint: false,
     hasShotgun: false, shells: 0,
+    hasRifle: false, rounds: 0,                                                // rifle is a rare 5% chest find
     hasBow: false, arrowCount: 0, bowColor: 0x7a4a24, arrowColor: 0xe6c54a,   // bow is chest-only; arrows are limited ammo
     saplings: 0,
     berries: 0, berryMax: 5,
@@ -51,6 +52,7 @@
     buildSword(camera);
     buildKatana(camera);
     buildShotgun(camera);
+    buildRifle(camera);
     buildBow(camera);
     buildShield(camera);
     buildBottle(camera);
@@ -223,6 +225,28 @@
     g.userData.home = g.position.clone();
     camera.add(g);
     player.shotgun = g;
+  }
+
+  // A rifle: long barrel, wooden stock, scope + magazine — a rare chest find.
+  function buildRifle(camera) {
+    const g = new THREE.Group();
+    const metal = new THREE.MeshStandardMaterial({ color: 0x3c4048, roughness: 0.35, metalness: 0.6 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x6a4326, roughness: 1 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x22252b, roughness: 0.5, metalness: 0.4 });
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.0, 10), metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.02, -0.5); g.add(barrel);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.5), wood); body.position.set(0, 0, -0.02); g.add(body);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.15, 0.3), wood); stock.position.set(0, -0.03, 0.28); g.add(stock);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.1), dark); mag.position.set(0, -0.16, 0.02); mag.rotation.x = 0.15; g.add(mag);
+    const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.24, 8), dark); scope.rotation.x = Math.PI / 2; scope.position.set(0, 0.11, -0.02); g.add(scope);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.09), wood); grip.position.set(0, -0.13, 0.12); grip.rotation.x = -0.35; g.add(grip);
+    g.position.set(0.32, -0.38, -0.6);
+    g.rotation.set(-0.04, 0, 0);
+    g.scale.setScalar(0.95);
+    g.visible = false;
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
+    camera.add(g);
+    player.rifle = g;
   }
 
   function buildBow(camera) {

@@ -168,7 +168,7 @@
         color:#ffd9c0;font:bold 12px 'Trebuchet MS',system-ui,sans-serif;text-shadow:0 1px 2px #000;}
     `;
     document.head.appendChild(css);
-    prompt = document.createElement('div'); prompt.id = 'carPrompt'; prompt.textContent = '🚗 Press M (or tap Drive) to get in';
+    prompt = document.createElement('div'); prompt.id = 'carPrompt'; prompt.textContent = '🚗 Press B (or tap Drive) to get in';
     fuelPill = document.createElement('div'); fuelPill.id = 'carFuel'; fuelPill.innerHTML = '⛽ <div class="bar"><i id="carFuelBar"></i></div><span id="carFuelPct">40%</span><span id="carOdo" style="margin-left:9px;opacity:.9">🏁 0/' + ODO_GOAL + 'm</span>';
     buffPill = document.createElement('div'); buffPill.id = 'buffMark';
     document.body.appendChild(prompt); document.body.appendChild(fuelPill); document.body.appendChild(buffPill);
@@ -193,16 +193,12 @@
   }
 
   // ---- input ----------------------------------------------------------------
-  // M gets IN the car when you're next to it. Once you're in you're locked in —
-  // the ONLY way out is pressing B. (M and B are otherwise horse mount / bandaid.)
+  // B is the car key: press it next to the car to get IN, press it while driving
+  // to get OUT. M is left alone entirely, so it always mounts the horse.
   window.addEventListener('keydown', (e) => {
-    if (e.repeat) return;
-    if (e.code === 'KeyM') {
-      if (driving) { e.stopImmediatePropagation(); }               // seated — M can't mount a horse or leave
-      else if (nearCar()) { e.stopImmediatePropagation(); enter(); }
-    } else if (e.code === 'KeyB') {
-      if (driving) { e.stopImmediatePropagation(); exitCar(); }     // B is the only way out of the car
-    }
+    if (e.code !== 'KeyB' || e.repeat) return;
+    if (driving) { e.stopImmediatePropagation(); exitCar(); }          // get out
+    else if (nearCar()) { e.stopImmediatePropagation(); enter(); }     // get in when you're right by it
   }, true);
 
   function addMobile() {
