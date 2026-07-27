@@ -26,7 +26,7 @@
   const pos = { x: 0, y: EYE, z: 17 };            // spawn: standing back from the portal
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const rnd = (a, b) => a + Math.random() * (b - a);
-  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows/Mouse</b> look · everyone piles into <b>ONE</b> numbered <b style="color:#8fe6ff">square</b>, customise & <b style="color:#8fd36a">Submit</b> — the game starts when the box is full';
+  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows/Mouse</b> look · walk into the <b style="color:#8fd36a">📦 JOIN BOX</b> at the back (<b>∞ players</b>), customise & <b style="color:#8fd36a">Submit</b> · press <b style="color:#8fe6ff">Enter</b> to PLAY';
 
   function makeTree(x, z, s) {
     const g = new THREE.Group();
