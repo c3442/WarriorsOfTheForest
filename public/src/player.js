@@ -330,9 +330,9 @@
     player.shield3d = g;
   }
 
-  const WEAPON_OBJ = () => ({ axe: player.axe, sword: player.sword, katana: player.katana, shotgun: player.shotgun, bow: player.bow });
+  const WEAPON_OBJ = () => ({ axe: player.axe, sword: player.sword, katana: player.katana, shotgun: player.shotgun, rifle: player.rifle, bow: player.bow });
   function equipWeapon(which) {
-    const have = { axe: true, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, shotgun: !!player.hasShotgun };
+    const have = { axe: true, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, shotgun: !!player.hasShotgun, rifle: !!player.hasRifle };
     if (!have[which]) which = 'axe';
     player._bowDrawing = false; player._bowCharge = 0; player._bowSnap = undefined;   // cancel any draw
     if (player.bowNock && player._nockHome) { player.bowNock.visible = true; player.bowNock.position.copy(player._nockHome); }
@@ -341,6 +341,7 @@
     player.axe.visible = which === 'axe';
     if (player.sword) player.sword.visible = which === 'sword';
     if (player.shotgun) player.shotgun.visible = which === 'shotgun';
+    if (player.rifle) player.rifle.visible = which === 'rifle';
     if (player.bow) player.bow.visible = which === 'bow';
     const w = objs[which];
     player.weapon = w;
@@ -360,11 +361,12 @@
     if (player.hasSword) order.push('sword');
     if (player.hasKatana) order.push('katana');
     if (player.hasShotgun) order.push('shotgun');
+    if (player.hasRifle) order.push('rifle');
     if (order.length === 1) { W.hud.toast('Craft a Sword or find the bandit’s shotgun'); return; }
     const i = order.indexOf(player.currentWeapon);
     equipWeapon(order[(i + 1) % order.length]);
     if (W.sfx) W.sfx.select();
-    W.hud.toast({ bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', shotgun: '🔫 Sawed-off shotgun' }[player.currentWeapon] + ' equipped');
+    W.hud.toast({ bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', shotgun: '🔫 Sawed-off shotgun', rifle: '🎯 Rifle' }[player.currentWeapon] + ' equipped');
   };
 
   const BOTTLE_HOME = new THREE.Vector3(-0.42, -0.4, -0.7);
@@ -454,6 +456,7 @@
     player.swing = 0; // drives the swing / recoil animation
 
     if (player.currentWeapon === 'shotgun') { fireShotgun(); return; }
+    if (player.currentWeapon === 'rifle') { fireRifle(); return; }
 
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
@@ -583,6 +586,42 @@
       }
     }
     W.hud.toast('💥 BOOM — ' + player.shells + ' shells left');
+  }
+
+  // The rifle: a fast, long-range precision shot — single target, high damage, with a muzzle tracer.
+  function fireRifle() {
+    if (player.rounds <= 0) { W.hud.toast('Out of rounds 🎯 — find more in chests'); return; }
+    player.rounds -= 1;
+    if (W.sfx) { if (W.sfx.shotgun) W.sfx.shotgun(); }
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera({ x: 0, y: 0 }, player.camera);
+    ray.far = 90;
+    const targets = [];
+    W.enemies.list.forEach((e) => { if (e.alive) targets.push(e.group); });
+    const hits = ray.intersectObjects(targets, true);
+    if (hits.length) {
+      const root = findRoot(hits[0].object);
+      if (root && root.userData.type === 'enemy') {
+        const e = W.enemies.list.find((x) => x.group === root);
+        const headY = root.position.y + (W.enemies.headY ? W.enemies.headY(e) : 1.7);
+        const head = Math.abs(hits[0].point.y - headY) < 0.5;
+        let dmg = 18; if (head) dmg = Math.round(dmg * 2.2);
+        if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
+        else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
+        player.popDamage(root.position, dmg, head);
+        if (head && W.hud) W.hud.toast('🎯 HEADSHOT! ' + dmg);
+      }
+    }
+    // muzzle tracer down the barrel line
+    const dir = player.camera.getWorldDirection(new THREE.Vector3());
+    const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.7);
+    const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 30),
+      new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.6, fog: false }));
+    tracer.position.copy(start.clone().addScaledVector(dir, 15));
+    tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir.clone().normalize());
+    player.scene.add(tracer);
+    setTimeout(() => player.scene.remove(tracer), 70);
+    W.hud.toast('🎯 ' + player.rounds + ' rounds left');
   }
 
   // The bow: looses a coloured arrow that flies and hits a foe.
@@ -812,11 +851,18 @@
     if (loot.bandaids) { player.bandaids += loot.bandaids; parts.push('+' + loot.bandaids + ' 🩹'); }
     if (loot.shells && player.hasShotgun) { player.shells += loot.shells; parts.push('+' + loot.shells + ' 🔫'); }
     if (loot.food) { player.hunger = U.clamp(player.hunger + loot.food, 0, 100); parts.push('+' + loot.food + ' 🍖'); }
+    // rare: a RIFLE with a full box of 120 rounds
+    if (loot.rifle) {
+      player.rounds += (loot.rounds || 120);
+      if (!player.hasRifle) { player.hasRifle = true; equipWeapon('rifle'); parts.push('🎯 a RIFLE!'); }
+      parts.push('+' + (loot.rounds || 120) + ' rounds 🎯');
+    }
     // every chest holds a bundle of arrows; the first chest also contains the BOW itself
     const arrows = U.randInt(5, 12);
     player.arrowCount = (player.arrowCount || 0) + arrows;
-    if (!player.hasBow) { player.hasBow = true; equipWeapon('bow'); parts.push('🏹 a BOW!'); }
+    if (!player.hasBow) { player.hasBow = true; if (!loot.rifle) equipWeapon('bow'); parts.push('🏹 a BOW!'); }   // a rifle in the same chest takes priority
     parts.push('+' + arrows + ' arrows 🏹');
+    if (loot.rifle) equipWeapon('rifle');   // ensure the shiny new rifle is the one in hand
     W.hud.toast('Looted a chest! ' + parts.join('  '));
   };
 
@@ -1518,7 +1564,7 @@
       alive: true, downed: false, bleedT: 0, bandaids: 0, ghost: false, ghostT: 0,
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
       sitting: false, _seat: null, _seatHint: false,
-      hasShotgun: false, shells: 0, hasBow: false, arrowCount: 0, saplings: 0,
+      hasShotgun: false, shells: 0, hasRifle: false, rounds: 0, hasBow: false, arrowCount: 0, saplings: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: START_WOOD, kills: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'axe',

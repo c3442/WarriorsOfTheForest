@@ -778,7 +778,7 @@
     arrow.position.set(sn.x, sy, sn.z);
     arrow.quaternion.setFromUnitVectors(A_FWD, dir.clone());
     enemies.scene.add(arrow);
-    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(120), life: 0, dmg: 32 });   // sniper round: very fast, very flat, big hit
+    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(95), life: 0, dmg: 12 });   // sniper round (nerfed): softer hit
   }
 
   enemies.spawnVillageArchers = function () {
@@ -815,7 +815,7 @@
     const sn = enemies.sniper;
     if (sn && sn.alive) {
       sn.cd -= dt;
-      let sbest = null, sbd = 95 * 95, swarm = 0;
+      let sbest = null, sbd = 60 * 60, swarm = 0;
       for (const e of enemies.list) {
         if (!e.alive) continue;
         const dx = e.group.position.x - sn.x, dz = e.group.position.z - sn.z, d = dx * dx + dz * dz;
@@ -824,7 +824,7 @@
       }
       if (sbest) {
         sn.group.rotation.y = Math.atan2(sbest.group.position.x - sn.x, sbest.group.position.z - sn.z);
-        if (sn.cd <= 0) { sn.cd = U.rand(0.55, 0.9); sniperShoot(sn, sbest); }
+        if (sn.cd <= 0) { sn.cd = U.rand(1.6, 2.6); sniperShoot(sn, sbest); }
       }
       if (swarm > 0) {
         sn.hp -= swarm * 0.6 * dt;

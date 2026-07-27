@@ -498,23 +498,6 @@
     );
     scene.add(world.stars);
 
-    // Soft drifting clouds — a puffy cloud texture reused across sprites high in the sky.
-    const cloudTex = (() => {
-      const cv = document.createElement('canvas'); cv.width = cv.height = 160;
-      const c = cv.getContext('2d');
-      const blob = (x, y, r, a) => { const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(255,255,255,' + a + ')'); g.addColorStop(0.55, 'rgba(255,255,255,' + a * 0.55 + ')'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 160, 160); };
-      blob(70, 96, 50, 0.92); blob(100, 90, 44, 0.88); blob(84, 74, 40, 0.82); blob(52, 86, 34, 0.78); blob(118, 100, 32, 0.72); blob(40, 100, 24, 0.62);
-      const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; return t;
-    })();
-    world.clouds = new THREE.Group();
-    for (let i = 0; i < 18; i++) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0, depthWrite: false, fog: false }));
-      s.userData = { ang: U.rand(0, Math.PI * 2), rad: U.rand(190, 340), hgt: U.rand(85, 190), sz: U.rand(70, 155), spd: U.rand(0.004, 0.012) * (U.chance(0.5) ? 1 : -1), base: U.rand(0.45, 0.85) };
-      s.scale.set(s.userData.sz, s.userData.sz * 0.52, 1);
-      world.clouds.add(s);
-    }
-    scene.add(world.clouds);
-
     // Warm atmospheric glow around the sun (light scattering through the sky).
     const glowTex = (() => {
       const cv = document.createElement('canvas'); cv.width = cv.height = 128;
@@ -524,7 +507,7 @@
       c.fillStyle = g; c.fillRect(0, 0, 128, 128);
       return new THREE.CanvasTexture(cv);
     })();
-    world.sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false }));
+    world.sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     world.sunGlow.scale.set(190, 190, 1);
     scene.add(world.sunGlow);
 
@@ -1575,13 +1558,13 @@
   // always full, and slowly drift on the wind.
   function buildClouds(scene) {
     const grp = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.85, fog: false, flatShading: true });
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.82, fog: false, flatShading: false });
     for (let i = 0; i < 16; i++) {
       const cloud = new THREE.Group();
-      const puffs = U.randInt(4, 7);
+      const puffs = U.randInt(5, 9);
       for (let j = 0; j < puffs; j++) {
         const r = U.rand(7, 14);
-        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), mat);
+        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 2), mat);   // smoother, rounder puffs
         puff.position.set(U.rand(-16, 16), U.rand(-2, 2), U.rand(-10, 10));
         puff.scale.y = 0.5;
         cloud.add(puff);
@@ -2189,6 +2172,17 @@
 
     world.sunDisc.position.copy(playerPos).addScaledVector(sunDir, 380);
     world.sunDisc.visible = elev > -0.05;
+
+    // Sun scatter-glow: sits on the sun, blooms warmest low on the horizon (dawn/dusk).
+    if (world.sunGlow) {
+      world.sunGlow.position.copy(playerPos).addScaledVector(sunDir, 370);
+      const low = U.clamp(1 - Math.abs(elev) / 0.5, 0, 1);            // strongest near the horizon
+      world.sunGlow.material.opacity = U.clamp(day, 0, 1) * (0.5 + 0.5 * low);
+      const sc = 150 + 150 * low;                                     // fatter halo at sunrise/sunset
+      world.sunGlow.scale.set(sc, sc, 1);
+      world.sunGlow.material.color.copy(U.mixColor('#ff9a4a', '#fff2c0', U.clamp(elev * 2.5, 0, 1)));
+      world.sunGlow.visible = elev > -0.08;
+    }
 
     // Moon: opposite the sun, so it rises as the sun sets.
     const moonDir = sunDir.clone().multiplyScalar(-1);

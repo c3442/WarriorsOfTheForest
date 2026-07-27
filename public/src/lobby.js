@@ -15,6 +15,8 @@
   let partyBar = null, partyLen = 60, partyRunning = false, partyEnd = 0;   // maker-set countdown (max 2:00)
   let partySize = 4;                                          // how many players allowed (1-5) -> active squares
   let chosenPad = -1, filled = 0;                            // the ONE shared box everyone piles into, and how many are in it
+  let inBox = false, boxCount = 0, boxCountCanvas = null, boxCountTex = null;   // the infinite-capacity JOIN BOX at the back
+  const BOX = { x: 0, z: -6, w: 6, d: 4 };                    // footprint of the walk-in box
   const HUD_IDS = ['minimap', 'stats', 'res', 'hotbar', 'info', 'tpVillage', 'cross', 'ownBar'];
   const hudPrev = {};
   const keys = {};
@@ -306,7 +308,7 @@
     if (!b) {
       b = document.createElement('button'); b.id = 'lobbySubmit'; b.className = 'btn';
       b.style.cssText = 'background:#3c7a2c;border:2px solid #8fd36a;color:#fff;font:bold 15px "Trebuchet MS",sans-serif;border-radius:9px;padding:8px 18px;margin-top:8px;cursor:pointer;';
-      b.onclick = () => submitPad(curPad);
+      b.onclick = () => (inBox ? submitBox() : submitPad(curPad));
       menu.appendChild(b);
     }
     return b;
@@ -318,6 +320,51 @@
     if (hint) hint.innerHTML = '✨ <b>Square ' + (i + 1) + '</b> — customise <b>Player ' + (filled + 1) + '</b>, then <b>Submit</b> (Enter) · <b>B</b> to leave';
   }
   function closePad() { toggleMenu(false); if (hint && !partyRunning) hint.innerHTML = HINT_HTML; }
+
+  // --- the infinite-capacity JOIN BOX at the back of the clearing ---
+  function paintBoxCount() {
+    if (!boxCountCanvas) return;
+    const c = boxCountCanvas.getContext('2d'); c.clearRect(0, 0, 256, 92);
+    c.font = "bold 46px 'Trebuchet MS',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.lineWidth = 8; c.strokeStyle = 'rgba(6,20,26,.9)'; c.strokeText('👥 ' + boxCount, 128, 46);
+    c.fillStyle = '#bfffca'; c.fillText('👥 ' + boxCount, 128, 46);
+    if (boxCountTex) boxCountTex.needsUpdate = true;
+  }
+  function makeJoinBox() {
+    const g = new THREE.Group(); g.position.set(BOX.x, 0, BOX.z);
+    const woodM = new THREE.MeshStandardMaterial({ color: 0x9c6631, roughness: 0.9, flatShading: true });
+    const woodDk = new THREE.MeshStandardMaterial({ color: 0x6f4622, roughness: 1, flatShading: true });
+    const glowM = new THREE.MeshStandardMaterial({ color: 0x36e05a, emissive: 0x36e05a, emissiveIntensity: 0.9, roughness: 0.4, transparent: true, opacity: 0.85 });
+    const w = BOX.w, d = BOX.d, wallH = 0.95, t = 0.18;
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(w - 0.24, 0.08, d - 0.24), glowM); floor.position.y = 0.12; g.add(floor);
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.18, d), woodDk); rim.position.y = 0.09; g.add(rim);
+    const wall = (x, z, wl, dl) => { const m = new THREE.Mesh(new THREE.BoxGeometry(wl, wallH, dl), woodM); m.position.set(x, wallH / 2 + 0.18, z); m.castShadow = true; g.add(m); };
+    wall(0, -d / 2, w, t);                                  // back
+    wall(-w / 2, 0, t, d); wall(w / 2, 0, t, d);            // sides
+    const stub = (w - 2.6) / 2;                             // front, with a wide entrance (open toward the plaza)
+    wall(-(1.3 + stub / 2), d / 2, stub, t); wall(1.3 + stub / 2, d / 2, stub, t);
+    for (const sx of [-w / 2, w / 2]) for (const sz of [-d / 2, d / 2]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, wallH + 0.6, 7), woodDk); p.position.set(sx, (wallH + 0.6) / 2 + 0.18, sz); p.castShadow = true; g.add(p); }
+    // header sign + live player count floating over the box
+    const lab = makeSign('JOIN · ∞ PLAYERS'); lab.position.set(0, 3.1, -d / 2 - 0.05); lab.scale.set(4.2, 1.25, 1); g.add(lab);
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 92; boxCountCanvas = cv;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+    boxCountTex = spr.material.map; spr.scale.set(3.0, 1.08, 1); spr.position.set(0, 2.15, 0); g.add(spr);
+    paintBoxCount();
+    return g;
+  }
+  function enterBox() {
+    padTag(boxCount + 1);
+    const b = ensureSubmitBtn(); if (b) b.textContent = '✓ SUBMIT — Player ' + (boxCount + 1);
+    toggleMenu(true);
+    if (hint) hint.innerHTML = '📦 <b>In the box</b> — customise <b>Player ' + (boxCount + 1) + '</b>, then <b>Submit</b> (Enter). Room for infinite players! · <b>B</b> to leave';
+  }
+  function submitBox() {
+    boxCount += 1; paintBoxCount();
+    if (W.hud && W.hud.toast) W.hud.toast('✓ Player ' + boxCount + ' joined the box (∞)');
+    toggleMenu(false);
+    if (hint) hint.innerHTML = '👥 <b>' + boxCount + ' in the box</b> — step out & back in to add more · press <b style="color:#8fe6ff">Enter</b> to PLAY';
+  }
+  function closeBox() { toggleMenu(false); if (hint && !partyRunning) hint.innerHTML = HINT_HTML; }
 
   function build() {
     group = new THREE.Group();
@@ -334,6 +381,9 @@
       const pad = makePad(i + 1); pad.position.set(px, 0.2, pz); group.add(pad);
       pads.push({ mesh: pad, x: px, z: pz, active: i < partySize });
     }
+    // the walk-in JOIN BOX at the back — unlimited players
+    inBox = false; boxCount = 0;
+    group.add(makeJoinBox());
     // 4 tree houses ringing the clearing, ramps + signs facing inward
     const labels = ['', '', 'CLASSES', 'VEHICLES'];   // front-facing pair (in view on spawn)
     lobbyPlats = [];
@@ -419,6 +469,10 @@
       if (on >= 0) { if (on !== leftPad) enterPad(on); }
       else { leftPad = -1; if (menuOpen) closePad(); }
     }
+    // the infinite JOIN BOX at the back — walk in to add a player, walk out to close
+    const inNow = Math.abs(pos.x - BOX.x) < BOX.w / 2 && Math.abs(pos.z - BOX.z) < BOX.d / 2;
+    if (inNow && !inBox) { inBox = true; enterBox(); }
+    else if (!inNow && inBox) { inBox = false; closeBox(); }
     // stand on / climb the tree-house ramps + decks (ground otherwise)
     const stand = lobbyStand(pos.x, pos.z, pos.y - EYE);
     pos.y += (stand + EYE - pos.y) * 0.4;    // smooth step up the ramp / settle onto the deck
@@ -428,7 +482,7 @@
 
   const onMove = (e) => { if (started || menuOpen || document.pointerLockElement !== canvas) return; yaw -= e.movementX * 0.0022; pitch = clamp(pitch - e.movementY * 0.0022, -1.4, 1.4); };
   const MOVE_KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, ShiftLeft: 1 };
-  const onDown = (e) => { if (started) return; keys[e.code] = true; if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); } if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); submitPad(curPad); } else if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; closePad(); } };
+  const onDown = (e) => { if (started) return; keys[e.code] = true; if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); } if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); if (inBox) submitBox(); else submitPad(curPad); } else if (e.code === 'Enter' && !menuOpen) { startGame(); } else if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; if (inBox) closeBox(); else closePad(); } };
   const onUp = (e) => { keys[e.code] = false; };
   const onCanvasDown = () => { if (started || menuOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };
 
