@@ -21,7 +21,8 @@
   const hudPrev = {};
   const keys = {};
   let lobbyPlats = [];                            // walkable decks + ramps (tree houses)
-  let v0Trigger = null, v0Portal = null;          // the UPDATES house's "play v0.0 (legacy)" launcher
+  let bandit = null, banditPos = null, banditBaseY = 0;   // the friendly "Update Keeper" in the UPDATES house
+  let nearBandit = false, updatesOpen = false, updatesPanel = null, fPrompt = null;  // his versions menu (press F)
   let vy = 0;                                     // vertical velocity for jumping in the lobby
   const EYE = 1.7;
   let yaw = 0, pitch = -0.08;
@@ -75,24 +76,77 @@
     return spr;
   }
 
-  // a retro amber portal that launches the v0.0 "legacy" build (bare woods, wolves & werewolves)
-  function makeV0Portal() {
+  // a friendly bandit — the "Update Keeper" who stands in the UPDATES tree house.
+  // Walk up and press F and he opens the versions/updates menu.
+  function makeBandit() {
     const g = new THREE.Group();
-    const amber = new THREE.MeshStandardMaterial({ color: 0xff9a3c, emissive: 0xff8a2c, emissiveIntensity: 1.3, roughness: 0.4 });
-    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 0.6, roughness: 0.35 });
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.13, 12, 28), amber); ring.position.y = 1.6; g.add(ring);
-    const core = new THREE.Mesh(new THREE.CircleGeometry(1.02, 28), new THREE.MeshBasicMaterial({ color: 0xffd08a, transparent: true, opacity: 0.32, side: THREE.DoubleSide })); core.position.y = 1.6; g.add(core);
-    for (const sx of [-1.1, 1.1]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.6, 8), gold); p.position.set(sx, 0.8, 0); g.add(p); }
-    const cv = document.createElement('canvas'); cv.width = 340; cv.height = 96;
-    const c = cv.getContext('2d'); c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.font = "bold 42px 'Trebuchet MS',sans-serif"; c.lineWidth = 8; c.strokeStyle = 'rgba(30,12,0,.9)';
-    c.strokeText('▶ PLAY v0.0', 170, 30); c.fillStyle = '#ffe6b0'; c.fillText('▶ PLAY v0.0', 170, 30);
-    c.font = "bold 20px 'Trebuchet MS',sans-serif"; c.lineWidth = 6; c.strokeStyle = 'rgba(30,12,0,.9)';
-    c.strokeText('no camp · just wolves & werewolves', 170, 68); c.fillStyle = '#ffd08a'; c.fillText('no camp · just wolves & werewolves', 170, 68);
-    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
-    spr.scale.set(4.6, 1.3, 1); spr.position.y = 3.0; g.add(spr);
-    g.userData.ring = ring;
+    const DS = THREE.DoubleSide;
+    const skin = new THREE.MeshStandardMaterial({ color: 0xd6a878, roughness: 1, flatShading: true, side: DS });
+    const coat = new THREE.MeshStandardMaterial({ color: 0x2f8f6a, roughness: 1, flatShading: true, side: DS });   // friendly green
+    const trews = new THREE.MeshStandardMaterial({ color: 0x38291a, roughness: 1, flatShading: true, side: DS });
+    const bandana = new THREE.MeshStandardMaterial({ color: 0x9c3b3b, roughness: 1, flatShading: true, side: DS });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 1, flatShading: true });
+    const mk = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+    mk(0.24, 0.72, 0.24, trews, -0.15, 0.36, 0); mk(0.24, 0.72, 0.24, trews, 0.15, 0.36, 0);   // legs
+    mk(0.74, 0.82, 0.42, coat, 0, 1.13, 0);                                                     // coat / torso
+    mk(0.78, 0.12, 0.46, dark, 0, 0.78, 0);                                                     // belt
+    mk(0.17, 0.72, 0.19, coat, -0.46, 1.12, 0); mk(0.17, 0.72, 0.19, coat, 0.46, 1.12, 0);      // arms
+    mk(0.44, 0.44, 0.44, skin, 0, 1.78, 0);                                                     // head
+    mk(0.5, 0.18, 0.5, bandana, 0, 2.0, 0);                                                     // bandana cap
+    mk(0.5, 0.12, 0.5, bandana, 0, 1.62, 0.0);                                                  // bandana across face
+    mk(0.07, 0.07, 0.05, dark, -0.1, 1.84, 0.23); mk(0.07, 0.07, 0.05, dark, 0.1, 1.84, 0.23);  // eyes
+    // floating nametag
+    const cv = document.createElement('canvas'); cv.width = 340; cv.height = 76;
+    const c = cv.getContext('2d');
+    c.fillStyle = 'rgba(22,40,28,.92)'; c.fillRect(6, 8, 328, 60);
+    c.strokeStyle = '#8fd36a'; c.lineWidth = 4; c.strokeRect(6, 8, 328, 60);
+    c.font = "bold 30px 'Trebuchet MS',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#e8ffe0'; c.fillText('🛡️ UPDATE KEEPER', 170, 38);
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+    tag.scale.set(3.4, 0.76, 1); tag.position.y = 2.7; g.add(tag);
     return g;
+  }
+
+  // the versions / updates menu the Update Keeper opens — a list of builds with Play buttons
+  function makeUpdatesPanel() {
+    const p = document.createElement('div');
+    p.id = 'lobbyUpdates';
+    p.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:14;display:none;width:min(460px,92vw);' +
+      'background:rgba(14,20,12,.96);border:2px solid #6f8a3a;border-radius:14px;padding:18px 20px;' +
+      "font-family:'Trebuchet MS',sans-serif;color:#eaf4dd;box-shadow:0 16px 50px rgba(0,0,0,.6);backdrop-filter:blur(3px);";
+    const versions = [
+      { v: 'v0.1', tag: 'Current', legacy: false, desc: 'The full game — camp, village, bandits, bears, hotels, tree houses, the realism pass & more.', cur: true },
+      { v: 'v0.0', tag: 'Original', legacy: true, desc: 'The very first build: a bare forest — no camp, just wolves & werewolves.' },
+    ];
+    let rows = '';
+    versions.forEach((r, i) => {
+      rows += '<div style="display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.28);border:1px solid #3d4a2a;border-radius:10px;padding:11px 12px;margin-bottom:10px;">' +
+        '<div style="flex:1;"><div style="font-size:16px;font-weight:bold;color:#cfe8b6;">' + r.v +
+        ' <span style="font-size:11px;color:' + (r.cur ? '#8fe6ff' : '#ffd08a') + ';border:1px solid currentColor;border-radius:5px;padding:0 6px;margin-left:4px;">' + r.tag + '</span></div>' +
+        '<div style="font-size:12px;color:#b9c6a6;margin-top:3px;line-height:1.35;">' + r.desc + '</div></div>' +
+        '<button data-legacy="' + (r.legacy ? 1 : 0) + '" style="background:#3c7a2c;border:2px solid #8fd36a;color:#fff;font:bold 14px \'Trebuchet MS\',sans-serif;border-radius:9px;padding:9px 14px;cursor:pointer;white-space:nowrap;">▶ Play</button>' +
+      '</div>';
+    });
+    p.innerHTML = '<div style="font-size:18px;font-weight:bold;letter-spacing:1px;color:#8fd36a;margin-bottom:4px;">🛡️ THE UPDATE KEEPER</div>' +
+      '<div style="font-size:12px;color:#9fb488;margin-bottom:12px;">"Pick a version of the woods to play, friend."</div>' + rows +
+      '<div style="font-size:11px;color:#8fae74;text-align:center;margin-top:2px;">press <b style="background:#2a3320;border:1px solid #46562f;border-radius:4px;padding:0 5px;">F</b> or <b style="background:#2a3320;border:1px solid #46562f;border-radius:4px;padding:0 5px;">Esc</b> to close</div>';
+    p.querySelectorAll('button[data-legacy]').forEach((b) => {
+      b.onclick = () => { closeUpdates(); startGame(b.dataset.legacy === '1'); };
+    });
+    document.body.appendChild(p);
+    return p;
+  }
+  function openUpdates() {
+    if (!updatesPanel) updatesPanel = makeUpdatesPanel();
+    updatesOpen = true; updatesPanel.style.display = 'block';
+    if (fPrompt) fPrompt.style.display = 'none';
+    if (hint) hint.style.display = 'none';
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function closeUpdates() {
+    updatesOpen = false;
+    if (updatesPanel) updatesPanel.style.display = 'none';
+    if (hint) hint.style.display = '';
   }
 
   // tree-house dimensions (shared with the walkable-platform math in build())
@@ -380,15 +434,22 @@
     // starts when it ends (or sooner if the box fills / someone hits PLAY)
     if (!partyRunning) { partyLen = 120; startParty(); if (W.hud && W.hud.toast) W.hud.toast('⏳ 2:00 timer started — pile into the box!'); }
     padTag(boxCount + 1);
-    const b = ensureSubmitBtn(); if (b) b.textContent = '✓ SUBMIT — Player ' + (boxCount + 1);
+    const b = ensureSubmitBtn(); if (b) b.textContent = '✓ SUBMIT — Player ' + (boxCount + 1) + ' of ' + partySize;
     toggleMenu(true);
-    if (hint) hint.innerHTML = '📦 <b>In the box</b> — customise <b>Player ' + (boxCount + 1) + '</b>, then <b>Submit</b> (Enter). Room for infinite players! · <b>B</b> to leave';
+    if (hint) hint.innerHTML = '📦 <b>In the box</b> — customise <b>Player ' + (boxCount + 1) + '</b>, then <b>Submit</b> (Enter). Game starts when all <b>' + partySize + '</b> submit · <b>B</b> to leave';
   }
   function submitBox() {
     boxCount += 1; paintBoxCount();
-    if (W.hud && W.hud.toast) W.hud.toast('✓ Player ' + boxCount + ' joined the box (∞)');
     toggleMenu(false);
-    if (hint) hint.innerHTML = '👥 <b>' + boxCount + ' in the box</b> — step out & back in to add more · press <b style="color:#8fe6ff">Enter</b> to PLAY';
+    // auto-start the moment the party is complete: 1 submit for solo, everyone for a party
+    if (boxCount >= partySize) {
+      if (W.hud && W.hud.toast) W.hud.toast('✓ Party ready (' + boxCount + '/' + partySize + ')');
+      if (hint) hint.innerHTML = '🚀 <b>Everyone submitted — entering the forest…</b>';
+      startGame();
+    } else {
+      if (W.hud && W.hud.toast) W.hud.toast('✓ Player ' + boxCount + ' submitted (' + boxCount + '/' + partySize + ')');
+      if (hint) hint.innerHTML = '👥 <b>' + boxCount + '/' + partySize + ' submitted</b> — next player, step into the box & Submit';
+    }
   }
   function closeBox() { toggleMenu(false); if (hint && !partyRunning) hint.innerHTML = HINT_HTML; }
 
@@ -422,12 +483,14 @@
       th.rotation.y = ry;
       registerTreehousePlats(tx, tz, ry);     // deck + ramp become climbable
       group.add(th);
-      if (i === 0) {                          // UPDATES house: a retro portal that boots the v0.0 build
+      if (i === 0) {                          // UPDATES house: the Update Keeper stands on its deck
         const dl = Math.hypot(tx, tz) || 1;
-        v0Trigger = { x: tx - tx / dl * 8, z: tz - tz / dl * 8 };   // 8m toward the centre, in front of the ramp
-        v0Portal = makeV0Portal();
-        v0Portal.position.set(v0Trigger.x, 0.2, v0Trigger.z);
-        group.add(v0Portal);
+        const bx = tx - tx / dl * 1.1, bz = tz - tz / dl * 1.1;   // on the deck, a touch toward the ramp/front
+        banditPos = { x: bx, z: bz }; banditBaseY = TH_H;
+        bandit = makeBandit();
+        bandit.position.set(bx, TH_H, bz);
+        bandit.rotation.y = Math.atan2(-bx, -bz);   // face the centre (where the player climbs up)
+        group.add(bandit);
       }
     }
     for (let r = 13; r < 230; r += 6.5) {
@@ -479,7 +542,7 @@
     raf = requestAnimationFrame(step);
     tphase += 0.02;
     if (partyRunning) { updateParty(); if (performance.now() / 1000 >= partyEnd) { startGame(); } }
-    if (!menuOpen) {
+    if (!menuOpen && !updatesOpen) {
       // arrow keys turn/look — works with NO mouse lock needed
       const LK = 2.0 / 60;
       if (keys.ArrowLeft) yaw += LK; if (keys.ArrowRight) yaw -= LK;
@@ -508,15 +571,16 @@
     const inNow = Math.abs(pos.x - BOX.x) < BOX.w / 2 && Math.abs(pos.z - BOX.z) < BOX.d / 2;
     if (inNow && !inBox) { inBox = true; enterBox(); }
     else if (!inNow && inBox) { inBox = false; closeBox(); }
-    // v0.0 launcher: walk into the UPDATES portal to boot the legacy build
-    if (v0Portal) v0Portal.userData.ring.rotation.z += 0.03;
-    if (v0Trigger && !menuOpen && !starting && Math.hypot(pos.x - v0Trigger.x, pos.z - v0Trigger.z) < 1.9) {
-      if (hint) hint.innerHTML = '🕹️ <b>Launching v0.0…</b> the original woods — no camp, just wolves &amp; werewolves';
-      startGame(true);
+    // the Update Keeper bandit: gently bob, face the player, show an [F] prompt when you're up on his deck
+    if (bandit) {
+      bandit.position.y = banditBaseY + Math.sin(tphase * 2) * 0.05;
+      bandit.rotation.y = Math.atan2(pos.x - banditPos.x, pos.z - banditPos.z);
+      nearBandit = !menuOpen && pos.y > TH_H - 1 && Math.hypot(pos.x - banditPos.x, pos.z - banditPos.z) < 2.6;
+      if (fPrompt) fPrompt.style.display = (nearBandit && !updatesOpen) ? 'block' : 'none';
     }
     // stand on / climb the ramps + decks, with jumping (Space) and gravity
     const floorY = lobbyStand(pos.x, pos.z, pos.y - EYE) + EYE;
-    if (keys.Space && !menuOpen && pos.y <= floorY + 0.06 && vy <= 0.01) vy = 7.4;   // hop when grounded
+    if (keys.Space && !menuOpen && !updatesOpen && pos.y <= floorY + 0.06 && vy <= 0.01) vy = 7.4;   // hop when grounded
     vy -= 24 / 60;                           // gravity (fixed ~60fps step)
     pos.y += vy / 60;
     if (pos.y <= floorY) { pos.y = floorY; vy = 0; }   // land, or ride ramps/decks up
