@@ -376,6 +376,9 @@
     return g;
   }
   function enterBox() {
+    // the first player to step into the ∞ box arms a 2:00 countdown; the game
+    // starts when it ends (or sooner if the box fills / someone hits PLAY)
+    if (!partyRunning) { partyLen = 120; startParty(); if (W.hud && W.hud.toast) W.hud.toast('⏳ 2:00 timer started — pile into the box!'); }
     padTag(boxCount + 1);
     const b = ensureSubmitBtn(); if (b) b.textContent = '✓ SUBMIT — Player ' + (boxCount + 1);
     toggleMenu(true);

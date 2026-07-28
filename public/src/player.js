@@ -133,39 +133,36 @@
     const metal = new THREE.MeshStandardMaterial({ color: (player.axeColor != null ? player.axeColor : 0xaeb6c2), roughness: 0.4, metalness: 0.45 });
 
     // Handle: hand sits at the group origin (y=0), head at the top (good swing pivot).
-    // A proper haft, not a twig — thick enough to read as a wooden handle.
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.062, 1.02, 10), wood);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.036, 1.0, 8), wood);
     handle.position.y = 0.5; g.add(handle);
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), wood);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), wood);
     knob.position.y = 0.02; g.add(knob);
-    // a leather grip wrap near the base
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.066, 0.066, 0.22, 10), new THREE.MeshStandardMaterial({ color: 0x3a2818, roughness: 1, flatShading: true }));
-    grip.position.y = 0.16; g.add(grip);
 
-    // Head assembly seated firmly on top of the handle (overlaps it, so nothing floats).
+    // Head assembly at the top of the handle.
     const head = new THREE.Group();
-    head.position.y = 0.9;
-    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.3, 0.2), metal);   // chunky socket wrapping the haft
+    head.position.y = 0.95;
+    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.2, 0.14), metal);   // socket around the handle
     head.add(eye);
-    const poll = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.24, 0.18), metal);   // hammer poll on the back
-    poll.position.x = -0.14; head.add(poll);
 
-    // Single-bit blade: a solid wedge flaring out to a curved cutting edge, backed by the eye.
+    // Double-bit head: a curved cutting blade flaring out on BOTH sides.
     const shape = new THREE.Shape();
-    shape.moveTo(0.08, -0.16);
-    shape.lineTo(0.08, 0.18);
-    shape.lineTo(0.38, 0.3);
-    shape.quadraticCurveTo(0.56, 0, 0.38, -0.3);
-    shape.lineTo(0.08, -0.16);
-    const bladeGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false });
-    bladeGeo.translate(0, 0, -0.04);
-    const blade = new THREE.Mesh(bladeGeo, metal);
-    head.add(blade);
+    shape.moveTo(0.05, -0.14);
+    shape.lineTo(0.05, 0.16);
+    shape.lineTo(0.30, 0.24);
+    shape.quadraticCurveTo(0.46, 0, 0.30, -0.24);
+    shape.lineTo(0.05, -0.14);
+    const bladeGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: false });
+    bladeGeo.translate(0, 0, -0.025);
+    const blade1 = new THREE.Mesh(bladeGeo, metal);
+    head.add(blade1);
+    const blade2 = new THREE.Mesh(bladeGeo, metal);
+    blade2.rotation.y = Math.PI; // mirror to the other side
+    head.add(blade2);
     g.add(head);
 
     g.position.set(0.36, -0.52, -0.72);
     g.rotation.set(-0.15, -0.5, 0.2);
-    g.scale.setScalar(0.5);
+    g.scale.setScalar(0.46);
     camera.add(g);
     g.userData.rest = g.rotation.clone();
     g.userData.home = g.position.clone();
