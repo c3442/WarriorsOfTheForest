@@ -21,12 +21,14 @@
   const hudPrev = {};
   const keys = {};
   let lobbyPlats = [];                            // walkable decks + ramps (tree houses)
+  let v0Trigger = null, v0Portal = null;          // the UPDATES house's "play v0.0 (legacy)" launcher
+  let vy = 0;                                     // vertical velocity for jumping in the lobby
   const EYE = 1.7;
   let yaw = 0, pitch = -0.08;
   const pos = { x: 0, y: EYE, z: 17 };            // spawn: standing back from the portal
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const rnd = (a, b) => a + Math.random() * (b - a);
-  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Arrows/Mouse</b> look · walk into the <b style="color:#8fd36a">📦 JOIN BOX</b> at the back (<b>∞ players</b>), customise & <b style="color:#8fd36a">Submit</b> · press <b style="color:#8fe6ff">Enter</b> to PLAY';
+  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Space</b> jump · <b>Arrows/Mouse</b> look · walk into the <b style="color:#8fd36a">📦 JOIN BOX</b> at the back (<b>∞ players</b>), customise & <b style="color:#8fd36a">Submit</b> · press <b style="color:#8fe6ff">Enter</b> to PLAY';
 
   function makeTree(x, z, s) {
     const g = new THREE.Group();
@@ -73,6 +75,26 @@
     return spr;
   }
 
+  // a retro amber portal that launches the v0.0 "legacy" build (bare woods, wolves & werewolves)
+  function makeV0Portal() {
+    const g = new THREE.Group();
+    const amber = new THREE.MeshStandardMaterial({ color: 0xff9a3c, emissive: 0xff8a2c, emissiveIntensity: 1.3, roughness: 0.4 });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 0.6, roughness: 0.35 });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.13, 12, 28), amber); ring.position.y = 1.6; g.add(ring);
+    const core = new THREE.Mesh(new THREE.CircleGeometry(1.02, 28), new THREE.MeshBasicMaterial({ color: 0xffd08a, transparent: true, opacity: 0.32, side: THREE.DoubleSide })); core.position.y = 1.6; g.add(core);
+    for (const sx of [-1.1, 1.1]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.6, 8), gold); p.position.set(sx, 0.8, 0); g.add(p); }
+    const cv = document.createElement('canvas'); cv.width = 340; cv.height = 96;
+    const c = cv.getContext('2d'); c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = "bold 42px 'Trebuchet MS',sans-serif"; c.lineWidth = 8; c.strokeStyle = 'rgba(30,12,0,.9)';
+    c.strokeText('▶ PLAY v0.0', 170, 30); c.fillStyle = '#ffe6b0'; c.fillText('▶ PLAY v0.0', 170, 30);
+    c.font = "bold 20px 'Trebuchet MS',sans-serif"; c.lineWidth = 6; c.strokeStyle = 'rgba(30,12,0,.9)';
+    c.strokeText('no camp · just wolves & werewolves', 170, 68); c.fillStyle = '#ffd08a'; c.fillText('no camp · just wolves & werewolves', 170, 68);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+    spr.scale.set(4.6, 1.3, 1); spr.position.y = 3.0; g.add(spr);
+    g.userData.ring = ring;
+    return g;
+  }
+
   // tree-house dimensions (shared with the walkable-platform math in build())
   const TH_H = 4.5, TH_DW = 5, TH_RUN = 6.5, TH_RX = 1.6, TH_RW = 1.7;   // deck top, deck size, ramp run, ramp centre-x, ramp width
 
@@ -81,11 +103,12 @@
     const g = new THREE.Group();
     const bark = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 1, flatShading: true });
     const barkDk = new THREE.MeshStandardMaterial({ color: 0x442d18, roughness: 1, flatShading: true });
-    const plank = new THREE.MeshStandardMaterial({ color: 0x9c6631, roughness: 0.9, flatShading: true });
-    const plankDk = new THREE.MeshStandardMaterial({ color: 0x6f4622, roughness: 1, flatShading: true });
-    const wallM = new THREE.MeshStandardMaterial({ color: 0xc79457, roughness: 0.95, flatShading: true });
-    const frameM = new THREE.MeshStandardMaterial({ color: 0x5b3b22, roughness: 1, flatShading: true });
-    const roofM = new THREE.MeshStandardMaterial({ color: 0x8a3d2c, roughness: 0.9, flatShading: true });
+    const DS = THREE.DoubleSide;   // solid walls — never see-through / hollow
+    const plank = new THREE.MeshStandardMaterial({ color: 0x9c6631, roughness: 0.9, flatShading: true, side: DS });
+    const plankDk = new THREE.MeshStandardMaterial({ color: 0x6f4622, roughness: 1, flatShading: true, side: DS });
+    const wallM = new THREE.MeshStandardMaterial({ color: 0xc79457, roughness: 0.95, flatShading: true, side: DS });
+    const frameM = new THREE.MeshStandardMaterial({ color: 0x5b3b22, roughness: 1, flatShading: true, side: DS });
+    const roofM = new THREE.MeshStandardMaterial({ color: 0x8a3d2c, roughness: 0.9, flatShading: true, side: DS });
     const glass = new THREE.MeshStandardMaterial({ color: 0xbfe6f5, emissive: 0x3a6b80, emissiveIntensity: 0.6, roughness: 0.35, metalness: 0.1 });
     const glow = new THREE.MeshStandardMaterial({ color: 0xffe6a0, emissive: 0xffcf5a, emissiveIntensity: 1.3, roughness: 0.5 });
     const gableM = new THREE.MeshStandardMaterial({ color: 0xc79457, roughness: 0.95, flatShading: true, side: THREE.DoubleSide });
@@ -385,7 +408,7 @@
     inBox = false; boxCount = 0;
     group.add(makeJoinBox());
     // 4 tree houses ringing the clearing, ramps + signs facing inward
-    const labels = ['', '', 'CLASSES', 'VEHICLES'];   // front-facing pair (in view on spawn)
+    const labels = ['UPDATES', '', 'CLASSES', 'VEHICLES'];   // house 0 = the version picker
     lobbyPlats = [];
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
@@ -396,6 +419,13 @@
       th.rotation.y = ry;
       registerTreehousePlats(tx, tz, ry);     // deck + ramp become climbable
       group.add(th);
+      if (i === 0) {                          // UPDATES house: a retro portal that boots the v0.0 build
+        const dl = Math.hypot(tx, tz) || 1;
+        v0Trigger = { x: tx - tx / dl * 8, z: tz - tz / dl * 8 };   // 8m toward the centre, in front of the ramp
+        v0Portal = makeV0Portal();
+        v0Portal.position.set(v0Trigger.x, 0.2, v0Trigger.z);
+        group.add(v0Portal);
+      }
     }
     for (let r = 13; r < 230; r += 6.5) {
       const n = Math.max(6, Math.floor(r * 0.42));
@@ -432,8 +462,10 @@
     if (menuOpen && document.pointerLockElement) document.exitPointerLock();
   }
 
-  function startGame() {
+  function startGame(legacy) {
     if (started || starting) return; starting = true;
+    W.LEGACY = !!legacy;        // v0.0 launcher passes true -> world/enemies build the bare legacy mode
+    const vt = document.getElementById('verTag'); if (vt) vt.textContent = legacy ? 'v0.0' : 'v0.1';
     if (document.pointerLockElement) document.exitPointerLock();
     const solo = document.getElementById('soloBtn');
     if (solo) solo.click();     // -> beginGame -> overlay gets .hidden -> teardown()
@@ -473,15 +505,24 @@
     const inNow = Math.abs(pos.x - BOX.x) < BOX.w / 2 && Math.abs(pos.z - BOX.z) < BOX.d / 2;
     if (inNow && !inBox) { inBox = true; enterBox(); }
     else if (!inNow && inBox) { inBox = false; closeBox(); }
-    // stand on / climb the tree-house ramps + decks (ground otherwise)
-    const stand = lobbyStand(pos.x, pos.z, pos.y - EYE);
-    pos.y += (stand + EYE - pos.y) * 0.4;    // smooth step up the ramp / settle onto the deck
+    // v0.0 launcher: walk into the UPDATES portal to boot the legacy build
+    if (v0Portal) v0Portal.userData.ring.rotation.z += 0.03;
+    if (v0Trigger && !menuOpen && !starting && Math.hypot(pos.x - v0Trigger.x, pos.z - v0Trigger.z) < 1.9) {
+      if (hint) hint.innerHTML = '🕹️ <b>Launching v0.0…</b> the original woods — no camp, just wolves &amp; werewolves';
+      startGame(true);
+    }
+    // stand on / climb the ramps + decks, with jumping (Space) and gravity
+    const floorY = lobbyStand(pos.x, pos.z, pos.y - EYE) + EYE;
+    if (keys.Space && !menuOpen && pos.y <= floorY + 0.06 && vy <= 0.01) vy = 7.4;   // hop when grounded
+    vy -= 24 / 60;                           // gravity (fixed ~60fps step)
+    pos.y += vy / 60;
+    if (pos.y <= floorY) { pos.y = floorY; vy = 0; }   // land, or ride ramps/decks up
     cam.position.set(pos.x, pos.y, pos.z);
     cam.rotation.set(pitch, yaw, 0, 'YXZ');
   }
 
   const onMove = (e) => { if (started || menuOpen || document.pointerLockElement !== canvas) return; yaw -= e.movementX * 0.0022; pitch = clamp(pitch - e.movementY * 0.0022, -1.4, 1.4); };
-  const MOVE_KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, ShiftLeft: 1 };
+  const MOVE_KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, ShiftLeft: 1, Space: 1 };
   const onDown = (e) => { if (started) return; keys[e.code] = true; if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); } if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); if (inBox) submitBox(); else submitPad(curPad); } else if (e.code === 'Enter' && !menuOpen) { startGame(); } else if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; if (inBox) closeBox(); else closePad(); } };
   const onUp = (e) => { keys[e.code] = false; };
   const onCanvasDown = () => { if (started || menuOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };

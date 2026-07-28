@@ -2083,6 +2083,18 @@
     return best;
   };
 
+  // Make structures read as solid, not see-through: double-side every building material
+  // so walls never vanish or look hollow. Skips terrain, trees & instanced foliage (perf),
+  // and sky domes (which are intentionally back-faced).
+  function solidify(scene) {
+    scene.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || o.name === 'terrain') return;
+      for (let p = o; p; p = p.parent) { if (p.userData && p.userData.type === 'tree') return; }
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) { if (m && m.isMeshStandardMaterial && m.side !== THREE.BackSide) m.side = THREE.DoubleSide; }
+    });
+  }
+
   world.init = function (scene) {
     genLakes();                        // carve lakes before the terrain reads heights
     buildTerrain(scene);
@@ -2092,17 +2104,21 @@
     buildWater(scene);
     buildClouds(scene);
     scatter(scene);
-    buildCamp(scene);
-    buildVillage(scene);
-    buildBanditOutposts(scene);
-    buildLakeHotels(scene);            // tiny luxury hotels on the lake shores
-    buildChests(scene);                // lootable chests scattered around
+    // v0.0 legacy mode: a bare forest — no camp, village, outposts, hotels, chests or horses
+    if (!W.LEGACY) {
+      buildCamp(scene);
+      buildVillage(scene);
+      buildBanditOutposts(scene);
+      buildLakeHotels(scene);          // tiny luxury hotels on the lake shores
+      buildChests(scene);              // lootable chests scattered around
+      buildHorses(scene);              // rideable horses out in the grass
+    }
     buildFish(scene);                  // fish swimming in the lakes
-    buildHorses(scene);                // rideable horses out in the grass
     // buildGrass(scene);              // tall grass removed (user request)
     buildFlowers(scene);
     buildBirds(scene);                 // ambient life: birds overhead + butterflies
     buildButterflies(scene);
+    solidify(scene);                   // no hollow / see-through walls
   };
 
   // dayT in [0,1): 0 = dawn, 0.25 = noon, 0.5 = dusk, 0.75 = midnight

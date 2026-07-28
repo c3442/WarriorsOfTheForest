@@ -342,7 +342,10 @@
     const roll = U.random();
     const zChance = U.clamp(0.18 + (dayNum - 1) * 0.05, 0, 0.5);
     const wChance = U.clamp(0.08 + (dayNum - 1) * 0.05, 0, 0.35);
-    const kind = roll < zChance ? 'zombie' : roll < zChance + wChance ? 'werewolf' : 'wolf';
+    // v0.0 legacy: wolves & werewolves only — no zombies
+    const kind = W.LEGACY
+      ? (roll < U.clamp(0.22 + (dayNum - 1) * 0.05, 0, 0.5) ? 'werewolf' : 'wolf')
+      : (roll < zChance ? 'zombie' : roll < zChance + wChance ? 'werewolf' : 'wolf');
 
     const g = buildModel(kind);
     g.position.set(x, W.world.heightAt(x, z), z);
@@ -873,6 +876,8 @@
       enemies.spawn(center, dayNum);
       enemies.spawnTimer = Math.max(0.25, U.rand(0.7, 1.9) - dayNum * 0.07);
     }
+    // v0.0 legacy mode: wolves & werewolves only — skip every bandit/bear/boss/raid/outpost spawner
+    if (!W.LEGACY) {
     // from day 8, bandits raid the home camp once per night (bigger waves on later days)
     if (dayNum >= 8 && isNight && enemies._lastRaidDay !== dayNum) {
       enemies._lastRaidDay = dayNum;
@@ -936,6 +941,7 @@
         enemies.outpostTimer = U.rand(1.2, 2.2);
       }
     }
+    } // end !W.LEGACY (v0.0 spawns wolves & werewolves only)
     if (!isNight) {
       for (const e of enemies.list.slice()) {
         // wolves/zombies burn off at dawn; bandits, outlaws, bears & Buffington roam day & night
@@ -1003,7 +1009,7 @@
 
       if (ad > (orbiting ? 0.6 : reach)) {
         const nx = adx / ad, nz = adz / ad;
-        const spd = e.speed * (isNight() ? NIGHT_SPD : 1);   // faster after dark
+        const spd = e.speed * (isNight ? NIGHT_SPD : 1);   // faster after dark (isNight is the boolean param here)
         g.position.x += nx * spd * dt;
         g.position.z += nz * spd * dt;
         const tmp = { x: g.position.x, z: g.position.z };
