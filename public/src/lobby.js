@@ -187,7 +187,7 @@
     for (const sx of [-e + 0.35, e - 0.35]) for (const sz of [-e + 0.35, e - 0.35]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.17, H, 7), plankDk); p.position.set(sx, H / 2, sz); p.castShadow = true; g.add(p); }
     for (const sx of [-e + 0.35, e - 0.35]) { const br = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, DW - 0.6), plankDk); br.position.set(sx, H * 0.5, 0); br.rotation.x = 0.5; g.add(br); }
 
-    // cabin: warm plank walls, framed + ajar plank door, glowing windows w/ flower boxes,
+    // cabin: warm plank walls, framed closed door, glowing windows w/ flower boxes, a SOLID interior,
     // a gabled shingle roof with eaves + ridge, a smoking chimney and a porch lantern
     const cw = 3.8, cd = 3.2, ch = 2.5, czc = -0.6, hw = cw / 2, hd = cd / 2, doorHalf = 0.72, TT = 0.16, wy = H + ch;
     const wmesh = (sx, sz, w, hh, d, yb) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, hh, d), wallM); m.position.set(sx, yb === undefined ? H + hh / 2 : yb, sz); m.castShadow = true; g.add(m); };
@@ -196,14 +196,16 @@
     const seg = hw - doorHalf;
     wmesh(-(doorHalf + hw) / 2, czc + hd, seg, ch, TT); wmesh((doorHalf + hw) / 2, czc + hd, seg, ch, TT);  // front flanks
     wmesh(0, czc + hd, doorHalf * 2, ch - 1.9, TT, H + 1.9 + (ch - 1.9) / 2);   // lintel over the door
-    // door frame + a slightly-ajar plank slab, hinged on the left jamb
+    // solid interior core (fills the room top-to-deck) so the cabin isn't a hollow shell
+    { const core = new THREE.Mesh(new THREE.BoxGeometry(cw - 0.34, ch - 0.02, cd - 0.34), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true })); core.position.set(0, H + (ch - 0.02) / 2, czc); core.castShadow = true; g.add(core); }
+    // door frame + a closed plank slab set flush in the doorway
     for (const sx of [-doorHalf, doorHalf]) { const j = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.9, TT + 0.06), frameM); j.position.set(sx, H + 0.95, czc + hd); g.add(j); }
     { const top = new THREE.Mesh(new THREE.BoxGeometry(doorHalf * 2 + 0.16, 0.12, TT + 0.06), frameM); top.position.set(0, H + 1.9, czc + hd); g.add(top); }
     { const dg = new THREE.Group(); dg.position.set(-doorHalf + 0.04, H + 0.06, czc + hd); const dwd = doorHalf * 2 - 0.1;
       const slab = new THREE.Mesh(new THREE.BoxGeometry(dwd, 1.8, 0.07), plankDk); slab.position.set(dwd / 2, 0.9, 0); slab.castShadow = true; dg.add(slab);
       for (const sy of [0.5, 0.9, 1.3]) { const pl = new THREE.Mesh(new THREE.BoxGeometry(dwd - 0.06, 0.045, 0.09), frameM); pl.position.set(dwd / 2, sy, 0); dg.add(pl); }
       const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), glow); knob.position.set(dwd - 0.14, 0.9, 0.06); dg.add(knob);
-      dg.rotation.y = -0.66; g.add(dg); }
+      dg.rotation.y = 0; g.add(dg); }   // closed, flush against the solid interior
     // side windows with muntins + a flower box under each
     for (const sx of [-hw, hw]) {
       const win = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.05, 0.78, 0.78), glass); win.position.set(sx, H + 1.4, czc); g.add(win);
@@ -520,6 +522,16 @@
     document.body.appendChild(hint);
   }
 
+  // the "[F] Talk to the Update Keeper" prompt, shown when you're up on his deck
+  function makeFPrompt() {
+    fPrompt = document.createElement('div');
+    fPrompt.style.cssText = 'position:fixed;left:50%;bottom:78px;transform:translateX(-50%);z-index:13;display:none;' +
+      'background:rgba(20,32,16,.9);border:2px solid #8fd36a;border-radius:12px;padding:8px 16px;' +
+      "font:bold 15px 'Trebuchet MS',sans-serif;color:#eaffe0;text-shadow:0 1px 2px #000;white-space:nowrap;pointer-events:none;";
+    fPrompt.innerHTML = 'Press <b style="background:#2a3320;border:1px solid #8fd36a;border-radius:5px;padding:0 7px;">F</b> to talk to the 🛡️ <b>Update Keeper</b>';
+    document.body.appendChild(fPrompt);
+  }
+
   function toggleMenu(openState) {
     menuOpen = (openState === undefined) ? !menuOpen : openState;
     const menu = document.getElementById('menu');
@@ -590,9 +602,19 @@
 
   const onMove = (e) => { if (started || menuOpen || document.pointerLockElement !== canvas) return; yaw -= e.movementX * 0.0022; pitch = clamp(pitch - e.movementY * 0.0022, -1.4, 1.4); };
   const MOVE_KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, ShiftLeft: 1, Space: 1 };
-  const onDown = (e) => { if (started) return; keys[e.code] = true; if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); } if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); if (inBox) submitBox(); else submitPad(curPad); } else if (e.code === 'Enter' && !menuOpen) { startGame(); } else if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; if (inBox) closeBox(); else closePad(); } };
+  const onDown = (e) => {
+    if (started) return; keys[e.code] = true;
+    if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); }
+    if (e.code === 'KeyF' && !menuOpen) {                       // talk to the Update Keeper
+      if (updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
+      else if (nearBandit) { e.stopImmediatePropagation(); openUpdates(); }
+    } else if ((e.code === 'Escape' || e.code === 'KeyB') && updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
+    else if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); if (inBox) submitBox(); else submitPad(curPad); }
+    else if (e.code === 'Enter' && !menuOpen && !updatesOpen) { startGame(); }
+    else if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; if (inBox) closeBox(); else closePad(); }
+  };
   const onUp = (e) => { keys[e.code] = false; };
-  const onCanvasDown = () => { if (started || menuOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };
+  const onCanvasDown = () => { if (started || menuOpen || updatesOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };
 
   function addControls() {
     document.addEventListener('mousemove', onMove);
@@ -613,6 +635,8 @@
       if (hemi) scene.remove(hemi);
       if (sun) scene.remove(sun);
       if (hint) hint.remove();
+      if (fPrompt) fPrompt.remove();
+      if (updatesPanel) updatesPanel.remove();
       if (partyBar) partyBar.remove();
       const tg = document.getElementById('lobbyTag'); if (tg) tg.remove();
       HUD_IDS.forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = hudPrev[id] || ''; });
@@ -643,7 +667,7 @@
       scene = W._scene; cam = W._cam;
       canvas = document.querySelector('#app canvas') || document.querySelector('canvas');
       if (!canvas) throw new Error('no canvas');
-      build(); makeHint(); makePartyBar(); addControls(); slimOverlay(); step();
+      build(); makeHint(); makeFPrompt(); makePartyBar(); addControls(); slimOverlay(); step();
     } catch (e) {
       // failsafe: never trap the player — restore the plain menu
       const menu = document.getElementById('menu'); if (menu) menu.style.display = '';
