@@ -23,6 +23,7 @@
     health: 100, stamina: 100, hunger: 100, thirst: 100,
     bottle: 5, bottleMax: 5,
     wood: START_WOOD, kills: 0,
+    banditKills: 0, treelingCoins: 0,                 // 5 bandit kills -> 1 Treeling Coin
     attackDmg: 2, attackRange: 4.0, armor: 1.0,        // upgraded by crafting
     axeLevel: 0,
     craftOpen: false, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'axe',
@@ -729,6 +730,16 @@
   player.creditKill = function (kind) {
     player.kills += 1;
     if (W.sfx) W.sfx.kill();
+    // Bandits (raiders, outlaws & the bandit boss) pay out: every 5 killed = 1 Treeling Coin.
+    if (kind === 'bandit' || kind === 'outlaw') {
+      player.banditKills += 1;
+      if (player.banditKills % 5 === 0) {
+        player.treelingCoins = W.classes ? W.classes.addCoins(1) : player.treelingCoins + 1;   // persist to the wallet
+        W.hud.toast('🪙 +1 Treeling Coin! (' + player.treelingCoins + ')');
+      } else {
+        W.hud.toast('🗡️ Bandit down — ' + (player.banditKills % 5) + '/5 to a 🪙');
+      }
+    }
     const bonus = kind === 'werewolf' ? 2 : 1;
     if (Math.random() < 0.6) player.wood += bonus;
     if (Math.random() < 0.45) {
@@ -1566,7 +1577,7 @@
       sitting: false, _seat: null, _seatHint: false,
       hasShotgun: false, shells: 0, hasRifle: false, rounds: 0, hasBow: false, arrowCount: 0, saplings: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
-      bottle: 5, bottleMax: 5, berries: 0, wood: START_WOOD, kills: 0, vy: 0,
+      bottle: 5, bottleMax: 5, berries: 0, wood: START_WOOD, kills: 0, banditKills: 0, treelingCoins: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'axe',
     });
   };

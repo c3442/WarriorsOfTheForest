@@ -163,6 +163,7 @@
     if (W.net.role === 'client') { timeOfDay = W.net.time; day = W.net.day; }
     started = true; paused = false;
     W.player.active = true;
+    if (W.classes) { const d = W.classes.applyToPlayer(W.player); if (d && d.id !== 'villager' && W.hud) W.hud.banner(d.emoji + ' ' + d.name.toUpperCase(), d.blurb, '#8fbfff'); }
     document.getElementById('startOverlay').classList.add('hidden');
     renderer.domElement.focus();
     renderer.domElement.requestPointerLock();
@@ -244,6 +245,7 @@
         bandaids: W.player.bandaids,
         night, day,
         foes: W.enemies.list.length, wood: W.player.wood, kills: W.player.kills,
+        coins: W.player.treelingCoins,
       });
     }
 

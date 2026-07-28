@@ -23,6 +23,7 @@
   let lobbyPlats = [];                            // walkable decks + ramps (tree houses)
   let bandit = null, banditPos = null, banditBaseY = 0;   // the friendly "Update Keeper" in the UPDATES house
   let nearBandit = false, updatesOpen = false, updatesPanel = null, fPrompt = null;  // his versions menu (press F)
+  let wolf = null, wolfPos = null, wolfBaseY = 0, nearWolf = false, classesOpen = false, classesPanel = null;  // CLASSES house wolf shop (press F)
   let vy = 0;                                     // vertical velocity for jumping in the lobby
   const EYE = 1.7;
   let yaw = 0, pitch = -0.08;
@@ -149,11 +150,100 @@
     if (hint) hint.style.display = '';
   }
 
+  // --- the CLASSES tree house: a tame grey wolf you press F to open the class shop ---
+  function makeWolf() {
+    const g = new THREE.Group();
+    const DS = THREE.DoubleSide;
+    const fur = new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 1, flatShading: true, side: DS });
+    const furDk = new THREE.MeshStandardMaterial({ color: 0x4f5358, roughness: 1, flatShading: true, side: DS });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x161a1e, roughness: 1, flatShading: true });
+    const eyeM = new THREE.MeshStandardMaterial({ color: 0xffd24a, emissive: 0xffb020, emissiveIntensity: 0.8, roughness: 0.5 });
+    const mk = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+    mk(0.62, 0.5, 1.15, fur, 0, 0.62, 0);                                        // body
+    for (const sx of [-0.22, 0.22]) for (const sz of [-0.42, 0.42]) mk(0.15, 0.62, 0.15, furDk, sx, 0.31, sz);   // legs
+    mk(0.16, 0.12, 0.5, furDk, 0, 0.66, -0.78); const tail = g.children[g.children.length - 1]; tail.rotation.x = -0.6;  // tail
+    mk(0.34, 0.34, 0.3, fur, 0, 0.92, 0.62);                                     // neck/base of head
+    const head = mk(0.4, 0.4, 0.44, fur, 0, 1.12, 0.82);                          // head
+    mk(0.26, 0.2, 0.24, furDk, 0, 1.04, 1.06);                                    // snout
+    mk(0.11, 0.18, 0.05, fur, -0.13, 1.36, 0.72); mk(0.11, 0.18, 0.05, fur, 0.13, 1.36, 0.72);   // ears
+    mk(0.06, 0.06, 0.04, eyeM, -0.1, 1.16, 1.04); mk(0.06, 0.06, 0.04, eyeM, 0.1, 1.16, 1.04);    // eyes
+    // floating nametag
+    const cv = document.createElement('canvas'); cv.width = 340; cv.height = 76;
+    const c = cv.getContext('2d');
+    c.fillStyle = 'rgba(20,28,40,.92)'; c.fillRect(6, 8, 328, 60);
+    c.strokeStyle = '#8fbfff'; c.lineWidth = 4; c.strokeRect(6, 8, 328, 60);
+    c.font = "bold 28px 'Trebuchet MS',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#e6f0ff'; c.fillText('🐺 CLASS WOLF', 170, 38);
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+    tag.scale.set(3.2, 0.72, 1); tag.position.y = 2.1; g.add(tag);
+    return g;
+  }
+
+  function makeClassesPanel() {
+    const p = document.createElement('div');
+    p.id = 'lobbyClasses';
+    p.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:14;display:none;width:min(500px,94vw);max-height:88vh;overflow:auto;' +
+      'background:rgba(12,18,26,.97);border:2px solid #4f7fb0;border-radius:14px;padding:18px 20px;' +
+      "font-family:'Trebuchet MS',sans-serif;color:#eaf2fb;box-shadow:0 16px 50px rgba(0,0,0,.6);backdrop-filter:blur(3px);";
+    document.body.appendChild(p);
+    return p;
+  }
+  function refreshClasses() {
+    if (!classesPanel || !W.classes) return;
+    const K = W.classes, coins = K.coins(), sel = K.selected();
+    let rows = '';
+    K.ORDER.forEach((id) => {
+      const d = K.DEFS[id], owned = K.owned(id), equipped = sel === id, afford = coins >= d.cost;
+      const perks = d.perks.map((x) => '<li>' + x + '</li>').join('');
+      const btn = equipped
+        ? '<span style="color:#8fd36a;font-weight:bold;font-size:14px;">✓ EQUIPPED</span>'
+        : owned
+          ? '<button data-act="select" data-id="' + id + '" style="background:#2f5a8a;border:2px solid #8fbfff;color:#fff;font:bold 13px sans-serif;border-radius:8px;padding:8px 14px;cursor:pointer;">EQUIP</button>'
+          : '<button data-act="buy" data-id="' + id + '" ' + (afford ? '' : 'disabled') + ' style="background:' + (afford ? '#3c7a2c' : '#3a3f46') + ';border:2px solid ' + (afford ? '#8fd36a' : '#586' ) + ';color:' + (afford ? '#fff' : '#9aa') + ';font:bold 13px sans-serif;border-radius:8px;padding:8px 14px;cursor:' + (afford ? 'pointer' : 'not-allowed') + ';">🪙 ' + d.cost + '</button>';
+      rows += '<div style="display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.3);border:1px solid ' + (equipped ? '#8fd36a' : '#2f4560') + ';border-radius:10px;padding:11px 12px;margin-bottom:10px;">' +
+        '<div style="font-size:30px;width:40px;text-align:center;">' + d.emoji + '</div>' +
+        '<div style="flex:1;"><div style="font-size:16px;font-weight:bold;color:#cfe4ff;">' + d.name + '</div>' +
+        '<div style="font-size:12px;color:#a9bdd6;margin:2px 0 4px;line-height:1.35;">' + d.blurb + '</div>' +
+        '<ul style="margin:0;padding-left:16px;font-size:11px;color:#8fd36a;line-height:1.4;">' + perks + '</ul></div>' +
+        '<div style="min-width:78px;text-align:center;">' + btn + '</div>' +
+      '</div>';
+    });
+    classesPanel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+      '<div style="font-size:18px;font-weight:bold;letter-spacing:1px;color:#8fbfff;">🐺 THE CLASS WOLF</div>' +
+      '<div style="font-size:15px;font-weight:bold;color:#ffd873;">🪙 ' + coins + ' treeling</div></div>' +
+      '<div style="font-size:12px;color:#9fb4cc;margin-bottom:12px;">"Choose your calling, warrior — the woods reward the bold."</div>' + rows +
+      '<div style="font-size:11px;color:#7f9ab8;text-align:center;margin-top:2px;">press <b style="background:#22303f;border:1px solid #3a5570;border-radius:4px;padding:0 5px;">F</b> or <b style="background:#22303f;border:1px solid #3a5570;border-radius:4px;padding:0 5px;">Esc</b> to close</div>';
+    classesPanel.querySelectorAll('button[data-act]').forEach((b) => {
+      b.onclick = () => {
+        const id = b.dataset.id;
+        if (b.dataset.act === 'buy') {
+          const r = W.classes.buy(id);
+          if (!r.ok && r.reason === 'poor') { if (W.hud && W.hud.toast) W.hud.toast('Need ' + r.need + ' more 🪙'); }
+          else if (r.ok && W.hud && W.hud.toast) W.hud.toast('Unlocked ' + W.classes.DEFS[id].name + '! ' + W.classes.DEFS[id].emoji);
+        } else { W.classes.select(id); }
+        refreshClasses();
+      };
+    });
+  }
+  function openClasses() {
+    if (!classesPanel) classesPanel = makeClassesPanel();
+    refreshClasses();
+    classesOpen = true; classesPanel.style.display = 'block';
+    if (fPrompt) fPrompt.style.display = 'none';
+    if (hint) hint.style.display = 'none';
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function closeClasses() {
+    classesOpen = false;
+    if (classesPanel) classesPanel.style.display = 'none';
+    if (hint) hint.style.display = '';
+  }
+
   // tree-house dimensions (shared with the walkable-platform math in build())
   const TH_H = 4.5, TH_DW = 5, TH_RUN = 6.5, TH_RX = 1.6, TH_RW = 1.7;   // deck top, deck size, ramp run, ramp centre-x, ramp width
 
   // a cosy climbable tree house (trunk + railed deck + cabin + canopy + planked ramp), optional sign
-  function makeTreehouse(label) {
+  function makeTreehouse(label, hollow) {
     const g = new THREE.Group();
     const bark = new THREE.MeshStandardMaterial({ color: 0x5a3d22, roughness: 1, flatShading: true });
     const barkDk = new THREE.MeshStandardMaterial({ color: 0x442d18, roughness: 1, flatShading: true });
@@ -197,15 +287,17 @@
     wmesh(-(doorHalf + hw) / 2, czc + hd, seg, ch, TT); wmesh((doorHalf + hw) / 2, czc + hd, seg, ch, TT);  // front flanks
     wmesh(0, czc + hd, doorHalf * 2, ch - 1.9, TT, H + 1.9 + (ch - 1.9) / 2);   // lintel over the door
     // solid interior core (fills the room top-to-deck) so the cabin isn't a hollow shell
-    { const core = new THREE.Mesh(new THREE.BoxGeometry(cw - 0.34, ch - 0.02, cd - 0.34), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true })); core.position.set(0, H + (ch - 0.02) / 2, czc); core.castShadow = true; g.add(core); }
+    // — skipped for hollow houses (e.g. UPDATES) so someone can actually stand inside
+    if (!hollow) { const core = new THREE.Mesh(new THREE.BoxGeometry(cw - 0.34, ch - 0.02, cd - 0.34), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true })); core.position.set(0, H + (ch - 0.02) / 2, czc); core.castShadow = true; g.add(core); }
+    if (hollow) { const fl = new THREE.Mesh(new THREE.BoxGeometry(cw - 0.3, 0.08, cd - 0.3), plankDk); fl.position.set(0, H + 0.02, czc); fl.receiveShadow = true; g.add(fl); }   // an actual floor to stand on
     // door frame + a closed plank slab set flush in the doorway
     for (const sx of [-doorHalf, doorHalf]) { const j = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.9, TT + 0.06), frameM); j.position.set(sx, H + 0.95, czc + hd); g.add(j); }
     { const top = new THREE.Mesh(new THREE.BoxGeometry(doorHalf * 2 + 0.16, 0.12, TT + 0.06), frameM); top.position.set(0, H + 1.9, czc + hd); g.add(top); }
-    { const dg = new THREE.Group(); dg.position.set(-doorHalf + 0.04, H + 0.06, czc + hd); const dwd = doorHalf * 2 - 0.1;
+    if (!hollow) { const dg = new THREE.Group(); dg.position.set(-doorHalf + 0.04, H + 0.06, czc + hd); const dwd = doorHalf * 2 - 0.1;
       const slab = new THREE.Mesh(new THREE.BoxGeometry(dwd, 1.8, 0.07), plankDk); slab.position.set(dwd / 2, 0.9, 0); slab.castShadow = true; dg.add(slab);
       for (const sy of [0.5, 0.9, 1.3]) { const pl = new THREE.Mesh(new THREE.BoxGeometry(dwd - 0.06, 0.045, 0.09), frameM); pl.position.set(dwd / 2, sy, 0); dg.add(pl); }
       const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), glow); knob.position.set(dwd - 0.14, 0.9, 0.06); dg.add(knob);
-      dg.rotation.y = 0; g.add(dg); }   // closed, flush against the solid interior
+      dg.rotation.y = 0; g.add(dg); }   // closed door (hollow houses leave the doorway open so you can walk in)
     // side windows with muntins + a flower box under each
     for (const sx of [-hw, hw]) {
       const win = new THREE.Mesh(new THREE.BoxGeometry(TT + 0.05, 0.78, 0.78), glass); win.position.set(sx, H + 1.4, czc); g.add(win);
@@ -479,7 +571,7 @@
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const tx = Math.cos(a) * 15, tz = Math.sin(a) * 15;
-      const th = makeTreehouse(labels[i]);
+      const th = makeTreehouse(labels[i], i === 0);     // UPDATES house is hollow so the Keeper stands INSIDE it
       th.position.set(tx, 0, tz);
       const ry = Math.atan2(-tx, -tz);        // ramp/front faces the centre
       th.rotation.y = ry;
@@ -487,12 +579,21 @@
       group.add(th);
       if (i === 0) {                          // UPDATES house: the Update Keeper stands on its deck
         const dl = Math.hypot(tx, tz) || 1;
-        const bx = tx - tx / dl * 1.1, bz = tz - tz / dl * 1.1;   // on the deck, a touch toward the ramp/front
+        const bx = tx + tx / dl * 0.6, bz = tz + tz / dl * 0.6;   // standing INSIDE the hollow cabin, past the doorway
         banditPos = { x: bx, z: bz }; banditBaseY = TH_H;
         bandit = makeBandit();
         bandit.position.set(bx, TH_H, bz);
         bandit.rotation.y = Math.atan2(-bx, -bz);   // face the centre (where the player climbs up)
         group.add(bandit);
+      }
+      if (i === 2) {                          // CLASSES house: the class-shop wolf stands on its deck
+        const dl = Math.hypot(tx, tz) || 1;
+        const wx = tx - tx / dl * 1.1, wz = tz - tz / dl * 1.1;
+        wolfPos = { x: wx, z: wz }; wolfBaseY = TH_H;
+        wolf = makeWolf();
+        wolf.position.set(wx, TH_H, wz);
+        wolf.rotation.y = Math.atan2(-wx, -wz);
+        group.add(wolf);
       }
     }
     for (let r = 13; r < 230; r += 6.5) {
@@ -504,6 +605,12 @@
         group.add(makeTree(x, z, rnd(0.8, 1.9)));
       }
     }
+    // no hollow / see-through walls anywhere in the lobby — double-side every mesh material
+    group.traverse((o) => {
+      if (!o.isMesh) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) { if (m && 'side' in m && m.side !== THREE.BackSide) m.side = THREE.DoubleSide; }
+    });
     scene.add(group);
     hemi = new THREE.HemisphereLight(0xbfe0ff, 0x4a6b35, 1.05); scene.add(hemi);
     sun = new THREE.DirectionalLight(0xfff1d0, 1.15); sun.position.set(60, 130, 40); scene.add(sun);
@@ -554,7 +661,7 @@
     raf = requestAnimationFrame(step);
     tphase += 0.02;
     if (partyRunning) { updateParty(); if (performance.now() / 1000 >= partyEnd) { startGame(); } }
-    if (!menuOpen && !updatesOpen) {
+    if (!menuOpen && !updatesOpen && !classesOpen) {
       // arrow keys turn/look — works with NO mouse lock needed
       const LK = 2.0 / 60;
       if (keys.ArrowLeft) yaw += LK; if (keys.ArrowRight) yaw -= LK;
@@ -588,11 +695,24 @@
       bandit.position.y = banditBaseY + Math.sin(tphase * 2) * 0.05;
       bandit.rotation.y = Math.atan2(pos.x - banditPos.x, pos.z - banditPos.z);
       nearBandit = !menuOpen && pos.y > TH_H - 1 && Math.hypot(pos.x - banditPos.x, pos.z - banditPos.z) < 2.6;
-      if (fPrompt) fPrompt.style.display = (nearBandit && !updatesOpen) ? 'block' : 'none';
+    }
+    // the class wolf: bob, face the player, near-check when up on the CLASSES deck
+    if (wolf) {
+      wolf.position.y = wolfBaseY + Math.sin(tphase * 2 + 1) * 0.04;
+      wolf.rotation.y = Math.atan2(pos.x - wolfPos.x, pos.z - wolfPos.z);
+      nearWolf = !menuOpen && pos.y > TH_H - 1 && Math.hypot(pos.x - wolfPos.x, pos.z - wolfPos.z) < 2.6;
+    }
+    // shared [F] prompt — shows for whichever NPC you're standing beside
+    if (fPrompt) {
+      const show = (nearBandit && !updatesOpen) || (nearWolf && !classesOpen);
+      fPrompt.style.display = show ? 'block' : 'none';
+      if (show) fPrompt.innerHTML = nearWolf
+        ? 'Press <b style="background:#22303f;border:1px solid #8fbfff;border-radius:5px;padding:0 7px;">F</b> to open the 🐺 <b>Class Wolf</b> shop'
+        : 'Press <b style="background:#2a3320;border:1px solid #8fd36a;border-radius:5px;padding:0 7px;">F</b> to talk to the 🛡️ <b>Update Keeper</b>';
     }
     // stand on / climb the ramps + decks, with jumping (Space) and gravity
     const floorY = lobbyStand(pos.x, pos.z, pos.y - EYE) + EYE;
-    if (keys.Space && !menuOpen && !updatesOpen && pos.y <= floorY + 0.06 && vy <= 0.01) vy = 7.4;   // hop when grounded
+    if (keys.Space && !menuOpen && !updatesOpen && !classesOpen && pos.y <= floorY + 0.06 && vy <= 0.01) vy = 7.4;   // hop when grounded
     vy -= 24 / 60;                           // gravity (fixed ~60fps step)
     pos.y += vy / 60;
     if (pos.y <= floorY) { pos.y = floorY; vy = 0; }   // land, or ride ramps/decks up
@@ -605,16 +725,19 @@
   const onDown = (e) => {
     if (started) return; keys[e.code] = true;
     if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); }
-    if (e.code === 'KeyF' && !menuOpen) {                       // talk to the Update Keeper
+    if (e.code === 'KeyF' && !menuOpen) {                       // talk to the Update Keeper / the Class Wolf
       if (updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
+      else if (classesOpen) { e.stopImmediatePropagation(); closeClasses(); }
       else if (nearBandit) { e.stopImmediatePropagation(); openUpdates(); }
+      else if (nearWolf) { e.stopImmediatePropagation(); openClasses(); }
     } else if ((e.code === 'Escape' || e.code === 'KeyB') && updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
+    else if ((e.code === 'Escape' || e.code === 'KeyB') && classesOpen) { e.stopImmediatePropagation(); closeClasses(); }
     else if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); if (inBox) submitBox(); else submitPad(curPad); }
-    else if (e.code === 'Enter' && !menuOpen && !updatesOpen) { startGame(); }
+    else if (e.code === 'Enter' && !menuOpen && !updatesOpen && !classesOpen) { startGame(); }
     else if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; if (inBox) closeBox(); else closePad(); }
   };
   const onUp = (e) => { keys[e.code] = false; };
-  const onCanvasDown = () => { if (started || menuOpen || updatesOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };
+  const onCanvasDown = () => { if (started || menuOpen || updatesOpen || classesOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };
 
   function addControls() {
     document.addEventListener('mousemove', onMove);
@@ -637,6 +760,7 @@
       if (hint) hint.remove();
       if (fPrompt) fPrompt.remove();
       if (updatesPanel) updatesPanel.remove();
+      if (classesPanel) classesPanel.remove();
       if (partyBar) partyBar.remove();
       const tg = document.getElementById('lobbyTag'); if (tg) tg.remove();
       HUD_IDS.forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = hudPrev[id] || ''; });

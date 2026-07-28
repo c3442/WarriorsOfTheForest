@@ -8,6 +8,7 @@
 
   hud.init = function () {
     ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'bandaidNum', 'killNum',
+     'coinNum',
      'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
      'craftPanel', 'craftWood', 'crow3', 'crow6', 'crow7', 'axeLv', 'axeCost', 'keyHelp',
      'weaponIc', 'slotShell', 'shellNum',
@@ -41,6 +42,7 @@
     els.foeNum.textContent = s.foes;
     els.woodNum.textContent = s.wood;
     els.killNum.textContent = s.kills;
+    if (els.coinNum) els.coinNum.textContent = s.coins || 0;
     // hotbar weapon + shells
     if (els.weaponIc) els.weaponIc.textContent = { axe: '🪓', sword: '⚔️', katana: '🗡️', shotgun: '🔫', rifle: '🎯', bow: '🏹' }[W.player.currentWeapon] || '🪓';
     // ammo slot: arrows when the bow is out, shells for the shotgun, rounds for the rifle
