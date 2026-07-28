@@ -571,7 +571,7 @@
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const tx = Math.cos(a) * 15, tz = Math.sin(a) * 15;
-      const th = makeTreehouse(labels[i], i === 0);     // UPDATES house is hollow so the Keeper stands INSIDE it
+      const th = makeTreehouse(labels[i], i === 0 || i === 2);   // UPDATES & CLASSES houses are hollow so the Keeper / Wolf stand INSIDE them
       th.position.set(tx, 0, tz);
       const ry = Math.atan2(-tx, -tz);        // ramp/front faces the centre
       th.rotation.y = ry;
@@ -586,9 +586,9 @@
         bandit.rotation.y = Math.atan2(-bx, -bz);   // face the centre (where the player climbs up)
         group.add(bandit);
       }
-      if (i === 2) {                          // CLASSES house: the class-shop wolf stands on its deck
+      if (i === 2) {                          // CLASSES house: the class-shop wolf stands INSIDE the cabin
         const dl = Math.hypot(tx, tz) || 1;
-        const wx = tx - tx / dl * 1.1, wz = tz - tz / dl * 1.1;
+        const wx = tx + tx / dl * 0.6, wz = tz + tz / dl * 0.6;   // past the doorway, inside the hollow cabin
         wolfPos = { x: wx, z: wz }; wolfBaseY = TH_H;
         wolf = makeWolf();
         wolf.position.set(wx, TH_H, wz);

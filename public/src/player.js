@@ -1429,7 +1429,7 @@
     if (player.hunger <= 0) player.takeDamage(2.2 * dt);
     if (player.thirst <= 0) player.takeDamage(2.0 * dt);
     if (player.hunger > 40 && player.thirst > 25 && player._t - player.lastHurt > 4) {
-      player.health = U.clamp(player.health + 1.6 * dt, 0, 100);
+      player.health = U.clamp(player.health + 1.6 * dt, 0, player.maxHealth || 100);   // class cap (Scout regens to 60)
     }
     // resting at the base / village heals you very fast (2x the old rate)
     if (atBase && player._t - player.lastHurt > 1.5) {
