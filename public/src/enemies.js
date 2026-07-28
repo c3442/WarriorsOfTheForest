@@ -878,11 +878,11 @@
     }
     // v0.0 legacy mode: wolves & werewolves only — skip every bandit/bear/boss/raid/outpost spawner
     if (!W.LEGACY) {
-    // every day a growing band of bandits comes to fight you (one more each day).
+    // bandits stay away until day 8; from then a growing band comes to fight you daily.
     // Each kill counts toward Treeling Coins (5 bandits = 1 coin).
-    if (enemies._lastBanditDay !== dayNum && dayNum > 0) {
+    if (enemies._lastBanditDay !== dayNum && dayNum >= 8) {
       enemies._lastBanditDay = dayNum;
-      const wave = 1 + dayNum;                                   // day 1 -> 2, and +1 every day
+      const wave = 1 + (dayNum - 7);                             // day 8 -> 2, and +1 every day after
       for (let i = 0; i < wave; i++) enemies.spawnRaider(dayNum, center);
       if (W.hud && W.hud.banner) W.hud.banner('🗡️ BANDITS INCOMING', wave + ' bandits are coming to fight — every 5 you kill earns a 🪙 Treeling Coin!', '#ff9a4a');
     }
