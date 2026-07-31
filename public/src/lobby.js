@@ -530,7 +530,8 @@
     padTag(boxCount + 1);
     const b = ensureSubmitBtn(); if (b) b.textContent = '✓ SUBMIT — Player ' + (boxCount + 1) + ' of ' + partySize;
     toggleMenu(true);
-    if (hint) hint.innerHTML = '📦 <b>In the box</b> — customise <b>Player ' + (boxCount + 1) + '</b>, then <b>Submit</b> (Enter). Game starts when all <b>' + partySize + '</b> submit · <b>B</b> to leave';
+    const ni = document.getElementById('nameInput'); if (ni) setTimeout(() => { try { ni.focus(); ni.select(); } catch (e) {} }, 30);   // ready to type your name
+    if (hint) hint.innerHTML = '📦 <b>In the box</b> — <b>type your name</b> & pick your look, then <b>Submit</b>. Game starts when all <b>' + partySize + '</b> submit · <b>B</b> to leave';
   }
   function submitBox() {
     boxCount += 1; paintBoxCount();
@@ -723,7 +724,13 @@
   const onMove = (e) => { if (started || menuOpen || document.pointerLockElement !== canvas) return; yaw -= e.movementX * 0.0022; pitch = clamp(pitch - e.movementY * 0.0022, -1.4, 1.4); };
   const MOVE_KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, ShiftLeft: 1, Space: 1 };
   const onDown = (e) => {
-    if (started) return; keys[e.code] = true;
+    if (started) return;
+    // typing in the name box: let every key through (Enter finishes & submits)
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
+      if (e.code === 'Enter') { ae.blur(); } else { return; }
+    }
+    keys[e.code] = true;
     if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); }
     if (e.code === 'KeyF' && !menuOpen) {                       // talk to the Update Keeper / the Class Wolf
       if (updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
