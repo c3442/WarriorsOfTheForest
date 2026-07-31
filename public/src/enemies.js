@@ -932,9 +932,9 @@
     // bears prowl the woods/grassland, day & night
     enemies.bearTimer = (enemies.bearTimer || 0) - dt;
     const bears = enemies.list.filter((e) => e.kind === 'bear' && e.alive).length;
-    if (W.world.desertAt(center.x, center.z) < 0.5 && bears < 4 && enemies.bearTimer <= 0) {
+    if (W.world.desertAt(center.x, center.z) < 0.5 && bears < 8 && enemies.bearTimer <= 0) {
       enemies.spawnBear(center, dayNum);
-      enemies.bearTimer = U.rand(8, 16);
+      enemies.bearTimer = U.rand(3.5, 8);
     }
     // bandit outposts post guards that defend them when you come near
     if (W.world.outposts && W.world.outposts.length) {
