@@ -2096,6 +2096,53 @@
     });
   }
 
+  // A ring of breakable sandbags around the camp. Low enough to JUMP over (top ~1.15,
+  // and jump apex ~1.55m), but solid on the ground — so bandits pile up and smash through it.
+  function buildSandbagWall(scene) {
+    const R = 13, SEG = 60;                    // ring radius, number of sandbag piles
+    const bagCols = [0xbfa86a, 0xac9459, 0xccb87c, 0xb59b60];
+    const bagMats = bagCols.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true }));
+    for (let i = 0; i < SEG; i++) {
+      const a = (i / SEG) * Math.PI * 2;
+      const x = Math.cos(a) * R, z = Math.sin(a) * R;
+      const g = new THREE.Group();
+      // a little pyramid of sandbags: 3 on the bottom, 2 mid, 1 top
+      const rows = [[-0.5, 0, 0.5], [-0.25, 0.25], [0]];
+      for (let row = 0; row < rows.length; row++) {
+        const y = 0.19 + row * 0.36;
+        for (const bx of rows[row]) {
+          const bag = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.32, 0.72), bagMats[(row + (bx > 0 ? 1 : 0) + i) % bagMats.length]);
+          bag.position.set(bx, y, (U.rand(-1, 1)) * 0.05);
+          bag.rotation.set(U.rand(-0.05, 0.05), U.rand(-0.12, 0.12), U.rand(-0.05, 0.05));
+          bag.castShadow = true; bag.receiveShadow = true;
+          g.add(bag);
+        }
+      }
+      const baseY = world.heightAt(x, z);
+      g.position.set(x, baseY, z);
+      g.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));   // run along the ring (tangent)
+      scene.add(g);
+      const col = { x, z, r: 0.7, top: 1.15, ref: g };         // top: hop over it
+      world.colliders.push(col);
+      world.sandbags.push({ x, z, group: g, hp: 40, maxHp: 40, col, baseY });
+    }
+  }
+
+  // A bandit chews the sandbag pile down; when it's gone the collider + mesh are removed,
+  // opening a breach in the wall. Called from enemies.update for each attacking bandit.
+  world.damageSandbag = function (sb, dmg) {
+    if (!sb || sb.hp <= 0) return;
+    sb.hp -= dmg;
+    const frac = Math.max(0, sb.hp / sb.maxHp);
+    sb.group.scale.y = 0.15 + 0.85 * frac;                     // pile sinks/flattens as it's torn apart
+    sb.group.position.y = sb.baseY - (1 - (0.15 + 0.85 * frac)) * 0.15;
+    if (sb.hp <= 0) {
+      if (sb.group.parent) sb.group.parent.remove(sb.group);
+      const ci = world.colliders.indexOf(sb.col); if (ci >= 0) world.colliders.splice(ci, 1);
+      const si = world.sandbags.indexOf(sb); if (si >= 0) world.sandbags.splice(si, 1);
+    }
+  };
+
   world.init = function (scene) {
     genLakes();                        // carve lakes before the terrain reads heights
     buildTerrain(scene);
@@ -2108,6 +2155,7 @@
     // v0.0 legacy mode: a bare forest — no camp, village, outposts, hotels, chests or horses
     if (!W.LEGACY) {
       buildCamp(scene);
+      buildSandbagWall(scene);         // breakable sandbag ring — jump over it, bandits smash through
       buildVillage(scene);
       buildBanditOutposts(scene);
       buildLakeHotels(scene);          // tiny luxury hotels on the lake shores

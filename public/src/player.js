@@ -17,6 +17,8 @@
     sitting: false, _seat: null, _seatHint: false,
     hasShotgun: false, shells: 0,
     hasRifle: false, rounds: 0,                                                // rifle is a rare 5% chest find
+    hasDeagle: false, deagleRounds: 0,                                         // Desert Eagle — from your starter box (7 rounds, 150 dmg)
+    hasFists: true, hasAxe: false, wolfMeat: 0,                                // you start bare-fisted; the box grants the axe & meat
     hasBow: false, arrowCount: 0, bowColor: 0x7a4a24, arrowColor: 0xe6c54a,   // bow is chest-only; arrows are limited ammo
     saplings: 0,
     berries: 0, berryMax: 5,
@@ -26,7 +28,7 @@
     banditKills: 0, treelingCoins: 0,                 // 5 bandit kills -> 1 Treeling Coin
     attackDmg: 2, attackRange: 4.0, armor: 1.0,        // upgraded by crafting
     axeLevel: 0,
-    craftOpen: false, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'axe',
+    craftOpen: false, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'fists',
     yaw: 0, pitch: 0,
     vy: 0, grounded: true,
     lastHurt: -99, lastAttack: -99,
@@ -49,16 +51,18 @@
     player.arrows = [];                 // arrows currently in flight (colours chosen in the menu)
     player._dmgNums = [];               // floating Fortnite-style damage numbers
 
+    buildFists(camera);
     buildAxe(camera);
     buildSword(camera);
     buildKatana(camera);
     buildShotgun(camera);
     buildRifle(camera);
+    buildDeagle(camera);
     buildBow(camera);
     buildShield(camera);
     buildBottle(camera);
     buildHeldBerry(camera);
-    equipWeapon('axe');                 // start with the axe — the bow is found in chests
+    equipWeapon('fists');               // start bare-fisted — open your starter box for the axe & Deagle
     player.dropped = [];
 
     // --- input: WASD move, trackpad/mouse look, click attack, etc. ---
@@ -68,7 +72,7 @@
       if (e.code === 'KeyQ' && !e.repeat) player.pressAttack();
       if (e.code === 'KeyX') player.switchWeapon();
       if (e.code === 'KeyE') player.eat();
-      if (e.code === 'KeyF') player.drink();
+      if (e.code === 'KeyF') player.interactF();
       if (e.code === 'KeyG') player.grab();
       if (e.code === 'KeyH') player.dropBerry();
       if (e.code === 'KeyB') player.useBandaid();
@@ -250,6 +254,45 @@
     player.rifle = g;
   }
 
+  // Bare fists — a simple gloved hand shown when you carry no weapon.
+  function buildFists(camera) {
+    const g = new THREE.Group();
+    const skin = new THREE.MeshStandardMaterial({ color: 0xd6a878, roughness: 1 });
+    const sleeve = new THREE.MeshStandardMaterial({ color: 0x5a7a3a, roughness: 1 });
+    const fist = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.18, 0.24), skin); fist.position.set(0, 0, -0.06); g.add(fist);
+    for (let i = 0; i < 4; i++) { const kn = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.06), skin); kn.position.set(-0.07 + i * 0.047, 0.05, -0.19); g.add(kn); }
+    const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.18), sleeve); wrist.position.set(0, -0.02, 0.12); g.add(wrist);
+    g.position.set(0.34, -0.42, -0.5);
+    g.rotation.set(-0.1, -0.1, 0);
+    g.visible = false;
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
+    camera.add(g);
+    player.fists = g;
+  }
+
+  // A Desert Eagle — a heavy chrome pistol (your starter-box sidearm).
+  function buildDeagle(camera) {
+    const g = new THREE.Group();
+    const chrome = new THREE.MeshStandardMaterial({ color: 0xbfc4cc, roughness: 0.25, metalness: 0.85 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x23262c, roughness: 0.5, metalness: 0.5 });
+    const gripM = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.9 });
+    const slide = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.11, 0.5), chrome); slide.position.set(0, 0.02, -0.16); g.add(slide);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.16, 10), chrome); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.02, -0.44); g.add(barrel);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.24, 0.12), gripM); grip.position.set(0, -0.16, 0.08); grip.rotation.x = 0.28; g.add(grip);
+    const guard = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.014, 6, 12), dark); guard.position.set(0, -0.05, -0.04); g.add(guard);
+    const trig = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.06, 0.02), dark); trig.position.set(0, -0.06, -0.03); g.add(trig);
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 0.03), dark); sight.position.set(0, 0.09, -0.35); g.add(sight);
+    g.position.set(0.3, -0.36, -0.55);
+    g.rotation.set(-0.03, 0, 0);
+    g.scale.setScalar(1.0);
+    g.visible = false;
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
+    camera.add(g);
+    player.deagle = g;
+  }
+
   function buildBow(camera) {
     const g = new THREE.Group();
     const bcol = (player.bowColor != null ? player.bowColor : 0x7a4a24);
@@ -331,18 +374,20 @@
     player.shield3d = g;
   }
 
-  const WEAPON_OBJ = () => ({ axe: player.axe, sword: player.sword, katana: player.katana, shotgun: player.shotgun, rifle: player.rifle, bow: player.bow });
+  const WEAPON_OBJ = () => ({ fists: player.fists, axe: player.axe, sword: player.sword, katana: player.katana, shotgun: player.shotgun, rifle: player.rifle, deagle: player.deagle, bow: player.bow });
   function equipWeapon(which) {
-    const have = { axe: true, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, shotgun: !!player.hasShotgun, rifle: !!player.hasRifle };
-    if (!have[which]) which = 'axe';
+    const have = { fists: true, axe: !!player.hasAxe, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, shotgun: !!player.hasShotgun, rifle: !!player.hasRifle, deagle: !!player.hasDeagle };
+    if (!have[which]) which = player.hasAxe ? 'axe' : 'fists';
     player._bowDrawing = false; player._bowCharge = 0; player._bowSnap = undefined;   // cancel any draw
     if (player.bowNock && player._nockHome) { player.bowNock.visible = true; player.bowNock.position.copy(player._nockHome); }
     const objs = WEAPON_OBJ();
+    if (player.fists) player.fists.visible = which === 'fists';
     if (player.katana) player.katana.visible = which === 'katana';
     player.axe.visible = which === 'axe';
     if (player.sword) player.sword.visible = which === 'sword';
     if (player.shotgun) player.shotgun.visible = which === 'shotgun';
     if (player.rifle) player.rifle.visible = which === 'rifle';
+    if (player.deagle) player.deagle.visible = which === 'deagle';
     if (player.bow) player.bow.visible = which === 'bow';
     const w = objs[which];
     player.weapon = w;
@@ -356,18 +401,19 @@
 
   // X cycles through the weapons you own (bow → axe → sword → shotgun).
   player.switchWeapon = function () {
-    const order = [];
+    const order = ['fists'];
     if (player.hasBow) order.push('bow');
-    order.push('axe');
+    if (player.hasAxe) order.push('axe');
     if (player.hasSword) order.push('sword');
     if (player.hasKatana) order.push('katana');
     if (player.hasShotgun) order.push('shotgun');
     if (player.hasRifle) order.push('rifle');
-    if (order.length === 1) { W.hud.toast('Craft a Sword or find the bandit’s shotgun'); return; }
+    if (player.hasDeagle) order.push('deagle');
+    if (order.length === 1) { W.hud.toast('Open your starter box (F) for the Deagle & axe'); return; }
     const i = order.indexOf(player.currentWeapon);
     equipWeapon(order[(i + 1) % order.length]);
     if (W.sfx) W.sfx.select();
-    W.hud.toast({ bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', shotgun: '🔫 Sawed-off shotgun', rifle: '🎯 Rifle' }[player.currentWeapon] + ' equipped');
+    W.hud.toast({ fists: '👊 Fists', bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', shotgun: '🔫 Sawed-off shotgun', rifle: '🎯 Rifle', deagle: '🔫 Desert Eagle' }[player.currentWeapon] + ' equipped');
   };
 
   const BOTTLE_HOME = new THREE.Vector3(-0.42, -0.4, -0.7);
@@ -458,10 +504,11 @@
 
     if (player.currentWeapon === 'shotgun') { fireShotgun(); return; }
     if (player.currentWeapon === 'rifle') { fireRifle(); return; }
+    if (player.currentWeapon === 'deagle') { fireDeagle(); return; }
 
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
-    ray.far = player.attackRange;
+    ray.far = player.currentWeapon === 'fists' ? 2.6 : player.attackRange;
 
     const targets = [];
     W.world.trees.forEach((t) => { if (t.userData.alive) targets.push(t); });
@@ -625,6 +672,41 @@
     W.hud.toast('🎯 ' + player.rounds + ' rounds left');
   }
 
+  // The Desert Eagle — a hard-hitting hitscan pistol (150 dmg, 7-round mag).
+  function fireDeagle() {
+    if (player.deagleRounds <= 0) { W.hud.toast('Deagle empty 🔫 — out of rounds'); return; }
+    player.deagleRounds -= 1;
+    if (W.sfx && W.sfx.shotgun) W.sfx.shotgun();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera({ x: 0, y: 0 }, player.camera);
+    ray.far = 80;
+    const targets = [];
+    W.enemies.list.forEach((e) => { if (e.alive) targets.push(e.group); });
+    const hits = ray.intersectObjects(targets, true);
+    if (hits.length) {
+      const root = findRoot(hits[0].object);
+      if (root && root.userData.type === 'enemy') {
+        const e = W.enemies.list.find((x) => x.group === root);
+        const headY = root.position.y + (W.enemies.headY ? W.enemies.headY(e) : 1.7);
+        const head = Math.abs(hits[0].point.y - headY) < 0.5;
+        let dmg = 150; if (head) dmg = Math.round(dmg * 1.5);
+        if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
+        else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
+        player.popDamage(root.position, dmg, head);
+        if (head && W.hud) W.hud.toast('🎯 HEADSHOT! ' + dmg);
+      }
+    }
+    const dir = player.camera.getWorldDirection(new THREE.Vector3());
+    const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.6);
+    const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 24),
+      new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.65, fog: false }));
+    tracer.position.copy(start.clone().addScaledVector(dir, 12));
+    tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir.clone().normalize());
+    player.scene.add(tracer);
+    setTimeout(() => player.scene.remove(tracer), 70);
+    W.hud.toast('🔫 ' + player.deagleRounds + '/7 rounds');
+  }
+
   // The bow: looses a coloured arrow that flies and hits a foe.
   const ARROW_FWD = new THREE.Vector3(0, 0, -1);
   function fireArrow(charge) {
@@ -757,6 +839,68 @@
     return null;
   }
 
+  // --- your personal STARTER BOX: spawns at your feet with your name; press F to open ---
+  let boxPromptEl = null;
+  function boxPrompt() {
+    if (boxPromptEl) return boxPromptEl;
+    boxPromptEl = document.createElement('div');
+    boxPromptEl.id = 'starterBoxPrompt';
+    boxPromptEl.style.cssText = 'position:fixed;left:50%;bottom:120px;transform:translateX(-50%);z-index:9;display:none;' +
+      'background:rgba(12,16,10,.82);border:2px solid #ffd873;border-radius:10px;padding:8px 16px;' +
+      "font:bold 15px 'Trebuchet MS',sans-serif;color:#ffe9b0;text-shadow:0 1px 2px #000;pointer-events:none;white-space:nowrap;";
+    document.body.appendChild(boxPromptEl);
+    return boxPromptEl;
+  }
+  function makeStarterBoxMesh(name) {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x9c6631, roughness: 0.9, flatShading: true });
+    const woodDk = new THREE.MeshStandardMaterial({ color: 0x6f4622, roughness: 1, flatShading: true });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xffcf4a, emissive: 0xffb020, emissiveIntensity: 0.5, roughness: 0.4, metalness: 0.5 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7, 0.9), wood); body.position.y = 0.35; body.castShadow = true; g.add(body);
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.16, 0.98), woodDk); lid.position.y = 0.78; g.add(lid);
+    for (const sx of [-0.45, 0.45]) for (const sz of [-0.45, 0.45]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.72, 0.08), woodDk); p.position.set(sx, 0.36, sz); g.add(p); }
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.06), gold); lock.position.set(0, 0.5, 0.47); g.add(lock);
+    const cv = document.createElement('canvas'); cv.width = 320; cv.height = 84;
+    const c = cv.getContext('2d');
+    c.fillStyle = 'rgba(20,24,14,.92)'; c.fillRect(6, 8, 308, 68);
+    c.strokeStyle = '#ffd873'; c.lineWidth = 4; c.strokeRect(6, 8, 308, 68);
+    c.font = "bold 22px 'Trebuchet MS',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#ffe9b0'; c.fillText('📦 ' + name, 160, 30);
+    c.font = "bold 15px 'Trebuchet MS',sans-serif"; c.fillStyle = '#bcd48a'; c.fillText('press F to open', 160, 56);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+    spr.scale.set(1.7, 0.45, 1); spr.position.y = 1.45; g.add(spr);
+    g.userData.tag = spr;
+    return g;
+  }
+  player.spawnStarterBox = function (name) {
+    if (player.starterBox && player.starterBox.group) player.scene.remove(player.starterBox.group);
+    const nm = (name || 'You').toString().slice(0, 12);
+    const dir = new THREE.Vector3(); player.camera.getWorldDirection(dir); dir.y = 0;
+    if (dir.lengthSq() < 0.01) dir.set(0, 0, -1); dir.normalize();
+    const bx = player.pos.x + dir.x * 2.0, bz = player.pos.z + dir.z * 2.0;
+    const g = makeStarterBoxMesh(nm);
+    g.position.set(bx, W.world.heightAt(bx, bz), bz);
+    player.scene.add(g);
+    player.starterBox = { group: g, x: bx, z: bz, opened: false };
+  };
+  function openStarterBox() {
+    const b = player.starterBox; if (!b || b.opened) return;
+    b.opened = true;
+    player.hasDeagle = true; player.deagleRounds = 7;
+    player.hasAxe = true;
+    player.wolfMeat += 5;
+    equipWeapon('deagle');
+    if (W.sfx && W.sfx.select) W.sfx.select();
+    if (W.hud) { W.hud.banner('📦 STARTER KIT', 'Desert Eagle · Axe · 5 Wolf Meat', '#ffd873'); W.hud.toast('🔫 Deagle (7)  ·  🪓 Axe  ·  🍖 x5 wolf meat'); }
+    if (boxPromptEl) boxPromptEl.style.display = 'none';
+    player.scene.remove(b.group);
+  }
+  player.interactF = function () {
+    const b = player.starterBox;
+    if (b && !b.opened && Math.hypot(player.pos.x - b.x, player.pos.z - b.z) < 3.0) { openStarterBox(); return; }
+    player.drink();
+  };
+
   player.eat = function () {
     if (!player.alive || !player.active) return;
     // harvest a ripe crop from a nearby farm plot first
@@ -777,7 +921,15 @@
       const d = U.dist2(player.pos.x, player.pos.z, b.x, b.z);
       if (d < bestD) { bestD = d; best = b; }
     }
-    if (!best) return;
+    if (!best) {
+      if (player.wolfMeat > 0) {                          // no crop/berry nearby — eat wolf meat from your pack
+        player.wolfMeat -= 1;
+        player.hunger = U.clamp(player.hunger + 40, 0, 100);
+        if (W.sfx) W.sfx.eat();
+        W.hud.toast('Ate wolf meat 🍖 +40 food (' + player.wolfMeat + ' left)');
+      }
+      return;
+    }
     best.ready = false;
     best.mesh.userData.berries.forEach((berry) => { berry.visible = false; });
     player.hunger = U.clamp(player.hunger + 35, 0, 100);
@@ -1307,6 +1459,14 @@
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
     if (player._dmgNums && player._dmgNums.length) updateDamageNums(dt);
     if (player._treeBars && player._treeBars.length) updateTreeBars();
+    // personal starter box: bob its tag & show the [F] prompt when you're beside it
+    if (player.starterBox && !player.starterBox.opened) {
+      const b = player.starterBox;
+      if (b.group.userData.tag) b.group.userData.tag.position.y = 1.45 + Math.sin(player._t * 3) * 0.06;
+      const near = player.active && Math.hypot(player.pos.x - b.x, player.pos.z - b.z) < 3.2;
+      boxPrompt().style.display = near ? 'block' : 'none';
+      if (near) boxPromptEl.innerHTML = 'Press <b style="background:#3a2f10;border:1px solid #ffd873;border-radius:5px;padding:0 7px;">F</b> to open your 📦 box';
+    } else if (boxPromptEl && boxPromptEl.style.display !== 'none') { boxPromptEl.style.display = 'none'; }
     if (!player.alive) return;
     if (player.ghost) { updateGhost(dt); return; }
     if (player.downed) {
@@ -1576,9 +1736,10 @@
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
       sitting: false, _seat: null, _seatHint: false,
       hasShotgun: false, shells: 0, hasRifle: false, rounds: 0, hasBow: false, arrowCount: 0, saplings: 0,
+      hasDeagle: false, deagleRounds: 0, hasFists: true, hasAxe: false, wolfMeat: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: START_WOOD, kills: 0, banditKills: 0, treelingCoins: 0, vy: 0,
-      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'axe',
+      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'fists',
     });
   };
 

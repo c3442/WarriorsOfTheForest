@@ -44,16 +44,17 @@
     els.killNum.textContent = s.kills;
     if (els.coinNum) els.coinNum.textContent = s.coins || 0;
     // hotbar weapon + shells
-    if (els.weaponIc) els.weaponIc.textContent = { axe: '🪓', sword: '⚔️', katana: '🗡️', shotgun: '🔫', rifle: '🎯', bow: '🏹' }[W.player.currentWeapon] || '🪓';
-    // ammo slot: arrows when the bow is out, shells for the shotgun, rounds for the rifle
+    if (els.weaponIc) els.weaponIc.textContent = { fists: '👊', axe: '🪓', sword: '⚔️', katana: '🗡️', shotgun: '🔫', rifle: '🎯', deagle: '🔫', bow: '🏹' }[W.player.currentWeapon] || '👊';
+    // ammo slot: arrows when the bow is out, shells for the shotgun, rounds for the rifle/Deagle
     const bowOut = W.player.currentWeapon === 'bow' && W.player.hasBow;
     const gunOut = W.player.currentWeapon === 'shotgun' && W.player.hasShotgun;
     const rifleOut = W.player.currentWeapon === 'rifle' && W.player.hasRifle;
+    const deagleOut = W.player.currentWeapon === 'deagle' && W.player.hasDeagle;
     if (els.slotShell) {
-      els.slotShell.classList.toggle('hidden', !bowOut && !gunOut && !rifleOut);
+      els.slotShell.classList.toggle('hidden', !bowOut && !gunOut && !rifleOut && !deagleOut);
       const ic = els.slotShell.querySelector('.ic'); if (ic) ic.textContent = bowOut ? '🏹' : rifleOut ? '🎯' : '🔫';
     }
-    if (els.shellNum) els.shellNum.textContent = bowOut ? (W.player.arrowCount || 0) : rifleOut ? (W.player.rounds || 0) : (W.player.shells || 0);
+    if (els.shellNum) els.shellNum.textContent = bowOut ? (W.player.arrowCount || 0) : rifleOut ? (W.player.rounds || 0) : deagleOut ? (W.player.deagleRounds || 0) : (W.player.shells || 0);
     if (hud._inv) hud.refreshInv();          // keep the inventory live while open
     hud.drawMinimap();
   };

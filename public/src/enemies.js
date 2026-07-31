@@ -950,6 +950,23 @@
       }
     }
     } // end !W.LEGACY (v0.0 spawns wolves & werewolves only)
+
+    // Foes smash through the camp's sandbag wall when they pile up against it.
+    const sandbags = W.world.sandbags;
+    if (sandbags && sandbags.length) {
+      for (const e of enemies.list) {
+        if (!e.alive) continue;
+        const px = e.group.position.x, pz = e.group.position.z;
+        for (let k = sandbags.length - 1; k >= 0; k--) {
+          const sb = sandbags[k];
+          if (Math.abs(px - sb.x) < 1.4 && Math.abs(pz - sb.z) < 1.4 && Math.hypot(px - sb.x, pz - sb.z) < 1.35) {
+            W.world.damageSandbag(sb, 20 * dt);   // chew it down; removed when destroyed (opens a breach)
+            break;                                // one bag per bandit per frame
+          }
+        }
+      }
+    }
+
     if (!isNight) {
       for (const e of enemies.list.slice()) {
         // wolves/zombies burn off at dawn; bandits, outlaws, bears & Buffington roam day & night

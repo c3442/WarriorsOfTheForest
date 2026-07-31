@@ -167,7 +167,11 @@
     ready = true;
     scene = W.player.scene;
     const p = W.player; if (p.sack == null) { p.sack = []; p.sackCap = START_CAP; }   // start WITH a sack
+    // a little starter loot already in the sack so it's tangible the moment you load in
+    if (!p._sackGiven) { p._sackGiven = true; p.sack.push({ e: '🪙', n: 'Coin' }, { e: '🍯', n: 'Honey' }); }
     buildHud(); refreshPill();
+    // welcome message announcing the starting sack
+    setTimeout(() => { if (W.hud && W.hud.toast) W.hud.toast('🎒 You got a Sack! Holds ' + START_CAP + ' items — press ` (or tap 🎒) to open'); }, 1600);
     spawnWorld();
     requestAnimationFrame(loop);
     setTimeout(addMobile, 900); setTimeout(addMobile, 2600);
