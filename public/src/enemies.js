@@ -389,7 +389,7 @@
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a + Math.PI;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    const e = { id, group: g, kind: 'buffington', alive: true, hp: 15000, maxHp: 15000, speed: 2.4, dmg: 700,
+    const e = { id, group: g, kind: 'buffington', alive: true, hp: 15000, maxHp: 15000, speed: 2.4, dmg: 70,
       lastAttack: -99, t: 0, isBoss: true, buffBoss: true, abilityCD: 3, abilityIdx: 0, tauntCD: U.rand(3, 6), healCD: 0, cast: null };
     enemies.list.push(e); enemies.buff = e;
     if (W.hud) W.hud.banner('💪 SIR BUFFINGTON APPEARS', 'Behold his perfectly normal muscles!', '#ff9a3a');

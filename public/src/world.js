@@ -19,6 +19,7 @@
     craftTables: [], // {x,z} workbenches you must stand near to craft
     tents: [],       // {group,x,z,quat,Wd,Dp,Hw,color,zipped,...} zip-up shelters
     campfires: [],   // {x,z} safe-haven fires (camp + crafted ones)
+    sandbags: [],    // {x,z,group,hp,maxHp,col} the breakable sandbag wall around camp
     seats: [],       // {x,y,z,yaw} chairs you can sit on
     pickups: [],     // {x,z,mesh,kind} items dropped in the world (e.g. shotgun)
     outposts: [],    // {x,z,found} bandit outposts (guarded camps; found once discovered)
