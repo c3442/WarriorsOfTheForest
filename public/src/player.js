@@ -77,13 +77,13 @@
       if (e.code === 'KeyH') player.dropBerry();
       if (e.code === 'KeyB') player.useBandaid();
       if (e.code === 'KeyZ') player.zipTent();
-      if (e.code === 'KeyK') player.sleep();
+      if (e.code === 'KeyK') { if (!(W.sack && W.sack.dropFromSack && W.sack.dropFromSack())) player.sleep(); }   // drop a sacked item, else sleep
       if (e.code === 'KeyR') player.sit();
       if (e.code === 'KeyU') player.plant();
       if (e.code === 'KeyM') player.toggleMount();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyV') player.teleportVillage();
-      if (e.code === 'KeyJ') W.hud.showKeyHelp(true);
+      if (e.code === 'KeyJ') { if (!(W.sack && W.sack.pocketLookedAt && W.sack.pocketLookedAt())) W.hud.showKeyHelp(true); }   // pocket the item you're eyeing, else show controls
       if (e.code === 'KeyI') player.toggleInventory();
       if (e.code === 'KeyC') {
         if (player.building) { player.cancelBuild(); return; }   // C also cancels a pending build
@@ -100,6 +100,8 @@
         else if (e.code === 'BracketLeft') player.craft('katana');
       } else if (player.buildOpen && /^Digit[1-9]$/.test(e.code)) {
         player.pickBuild(+e.code.slice(5) - 1);
+      } else if (/^Digit[0-9]$/.test(e.code)) {                 // number keys pick a hotbar slot (1-9, 0)
+        const d = e.code.slice(5); player.selectSlot(d === '0' ? 9 : (+d - 1));
       }
     });
     window.addEventListener('keyup', (e) => {
@@ -416,6 +418,31 @@
     W.hud.toast({ fists: '👊 Fists', bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', shotgun: '🔫 Sawed-off shotgun', rifle: '🎯 Rifle', deagle: '🔫 Desert Eagle' }[player.currentWeapon] + ' equipped');
   };
 
+  // --- 10-slot number-key hotbar (press 1-9,0) --------------------------------
+  // Fixed layout: sack (opens the bag/inventory), then your weapons. Slots for
+  // gear you haven't found yet are locked/dimmed. Resource counts (wood etc.)
+  // live in the inventory (press I).
+  const HOTBAR = [
+    { key: 'sack', ic: '🎒', name: 'Sack' },
+    { key: 'axe', ic: '🪓', name: 'Axe' },
+    { key: 'deagle', ic: '🔫', name: 'Desert Eagle' },
+    { key: 'bow', ic: '🏹', name: 'Bow' },
+    { key: 'shotgun', ic: '🔫', name: 'Shotgun' },
+    { key: 'rifle', ic: '🎯', name: 'Rifle' },
+    { key: 'sword', ic: '⚔️', name: 'Sword' },
+    { key: 'katana', ic: '🗡️', name: 'Katana' },
+    null, null,
+  ];
+  const OWN_FLAG = { axe: 'hasAxe', deagle: 'hasDeagle', bow: 'hasBow', shotgun: 'hasShotgun', rifle: 'hasRifle', sword: 'hasSword', katana: 'hasKatana' };
+  player.hotbar = HOTBAR;
+  player.slotOwned = (s) => !!s && (s.key === 'sack' || !!player[OWN_FLAG[s.key]]);
+  player.selectSlot = function (i) {
+    const s = HOTBAR[i]; if (!s) return;
+    if (s.key === 'sack') { player.toggleInventory(); return; }           // slot 1: open the bag / see your wood etc.
+    if (!player.slotOwned(s)) { W.hud.toast(s.name + ' — not found yet'); return; }
+    equipWeapon(s.key); if (W.sfx) W.sfx.select();
+  };
+
   const BOTTLE_HOME = new THREE.Vector3(-0.42, -0.4, -0.7);
   function buildBottle(camera) {
     const g = new THREE.Group();
@@ -543,7 +570,9 @@
       const wood = W.world.chopTree(root, dmg);
       showTreeHealth(root, dmg);                            // floating damage + a health bar
       if (wood) {
-        player.wood += wood; W.hud.toast('+' + wood + ' wood');
+        // the felled tree's wood drops on the ground — look at it & press J to sack it
+        if (W.sack && W.sack.dropWoodAt) { W.sack.dropWoodAt(root.position.x, root.position.z, wood); W.hud.toast('🪵 Timber! ' + wood + ' wood on the ground — look & press J'); }
+        else { player.wood += wood; W.hud.toast('+' + wood + ' wood'); }
         if (W.net && W.net.role) W.net.sendChop(W.world.treeIndex(root));
         const sap = rollSaplings();                         // each felled tree may drop saplings
         if (sap > 0) { player.saplings += sap; W.hud.toast('🌱 +' + sap + ' sapling' + (sap === 1 ? '' : 's') + (sap >= 100 ? ' JACKPOT!! 🎉' : '')); }

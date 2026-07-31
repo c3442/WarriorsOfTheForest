@@ -164,7 +164,11 @@
     started = true; paused = false;
     W.player.active = true;
     if (W.classes) { const d = W.classes.applyToPlayer(W.player); if (d && d.id !== 'villager' && W.hud) W.hud.banner(d.emoji + ' ' + d.name.toUpperCase(), d.blurb, '#8fbfff'); }
-    if (W.player.spawnStarterBox) W.player.spawnStarterBox(myName());   // personal starter box (press F: Deagle + axe + 5 wolf meat)
+    if (W.player.spawnStarterBox) {                                     // personal starter box (press F: Deagle + axe + 5 wolf meat)
+      const ni = document.getElementById('nameInput');
+      const nm = ((ni && ni.value.trim()) || 'Player').slice(0, 12);
+      W.player.spawnStarterBox(nm);
+    }
     document.getElementById('startOverlay').classList.add('hidden');
     renderer.domElement.focus();
     renderer.domElement.requestPointerLock();

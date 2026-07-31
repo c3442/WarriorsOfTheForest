@@ -16,6 +16,9 @@
 
   let scene = null, ready = false, open = false;
   const loots = [], uppers = [];
+  const dropped = [];                 // physical items lying on the ground (chopped wood, dropped sack items)
+  let highlighted = null;             // the ground item you're currently looking at (outlined blue)
+  const _ray = new THREE.Raycaster(); _ray.far = 6.5;   // "look at it" reach
   let last = performance.now() / 1000;
   const now = () => performance.now() / 1000;
   const rnd = (a, b) => a + Math.random() * (b - a);
@@ -80,6 +83,7 @@
     requestAnimationFrame(loop);
     const t = now(); const dt = Math.min(0.1, t - last); last = t;
     tickPickups(dt);
+    updateDropped(dt);
   }
   function tickPickups(dt) {
     const p = sack(); if (!p || !p.active || !p.alive) return;
@@ -107,8 +111,77 @@
   }
   function toast(m) { if (W.hud && W.hud.toast) W.hud.toast(m); }
 
+  // ---- physical dropped items (chopped wood etc.) ---------------------------
+  const logGeo = new THREE.CylinderGeometry(0.13, 0.15, 0.62, 8);
+  const logMat = new THREE.MeshStandardMaterial({ color: 0x8a5a2e, roughness: 1, flatShading: true });
+  // a wooden log lying on the ground, with a hidden blue outline shell for the "look at it" highlight
+  function makeDrop(item, x, z) {
+    const y = W.world.heightAt(x, z) + 0.16;
+    const m = new THREE.Mesh(logGeo, logMat);
+    m.position.set(x, y, z); m.rotation.set(Math.PI / 2, Math.random() * 6.28, 0); m.castShadow = true; m.receiveShadow = true;
+    const outline = new THREE.Mesh(logGeo, new THREE.MeshBasicMaterial({ color: 0x3b8bff, side: THREE.BackSide }));
+    outline.scale.set(1.35, 1.15, 1.35); outline.visible = false; outline.raycast = function () {}; m.add(outline);
+    scene.add(m);
+    return { mesh: m, outline, item, x, z, y0: y, t: Math.random() * 6 };
+  }
+  // called by player.js when a tree is felled — scatter its wood as logs on the ground
+  function dropWoodAt(x, z, n) {
+    const logs = Math.max(1, Math.min(6, Math.round(n / 2)));      // a few logs; each carries a share of the wood
+    for (let i = 0; i < logs; i++) {
+      const a = Math.random() * Math.PI * 2, r = rnd(0.6, 2.2);
+      const lx = x + Math.cos(a) * r, lz = z + Math.sin(a) * r;
+      const w = Math.floor(n / logs) + (i < n % logs ? 1 : 0);
+      dropped.push(Object.assign(makeDrop({ e: '🪵', n: 'Wood', wood: Math.max(1, w) }, lx, lz), {}));
+    }
+  }
+  // each frame: bob the logs, and raycast from the camera to outline the one you're looking at
+  function updateDropped(dt) {
+    const p = P(); const cam = p && p.camera;
+    for (const d of dropped) { d.t += dt; d.mesh.position.y = d.y0 + Math.sin(d.t * 2) * 0.04; }
+    let look = null;
+    if (cam && p.active && p.alive && dropped.length) {
+      _ray.setFromCamera({ x: 0, y: 0 }, cam);
+      const hit = _ray.intersectObjects(dropped.map((d) => d.mesh), false)[0];
+      if (hit) look = dropped.find((d) => d.mesh === hit.object) || null;
+    }
+    if (look !== highlighted) {
+      if (highlighted) highlighted.outline.visible = false;
+      highlighted = look;
+      if (highlighted) highlighted.outline.visible = true;
+    }
+    refreshPrompt();
+  }
+  // J: pocket the item you're looking at into the sack (wood also credits your wood pile)
+  function pocketLookedAt() {
+    const p = sack(); if (!p || !highlighted) return false;
+    if (p.sack.length >= p.sackCap) { toast('🎒 Sack full! Find a sack upgrader'); return true; }
+    const it = highlighted.item;
+    p.sack.push({ e: it.e, n: it.n, drop: { wood: it.wood || 0 } });
+    if (it.wood) p.wood += it.wood;                               // wood becomes usable once sacked
+    scene.remove(highlighted.mesh);
+    const di = dropped.indexOf(highlighted); if (di >= 0) dropped.splice(di, 1);
+    highlighted = null;
+    toast('🎒 Sacked ' + it.e + ' ' + it.n + (it.wood ? ' (+' + it.wood + ' wood)' : '') + '  (' + p.sack.length + '/' + p.sackCap + ')');
+    refreshPill(); if (open) refreshPanel(); refreshPrompt();
+    return true;
+  }
+  // K: drop the most-recently-sacked physical item back onto the ground at your feet
+  function dropFromSack() {
+    const p = sack(); if (!p) return false;
+    let idx = -1;
+    for (let i = p.sack.length - 1; i >= 0; i--) { if (p.sack[i].drop) { idx = i; break; } }
+    if (idx < 0) return false;                                    // nothing droppable -> let K fall through (sleep)
+    const it = p.sack.splice(idx, 1)[0];
+    if (it.drop.wood) p.wood = Math.max(0, p.wood - it.drop.wood);
+    const sin = Math.sin(p.yaw || 0), cos = Math.cos(p.yaw || 0);
+    dropped.push(makeDrop({ e: it.e, n: it.n, wood: it.drop.wood }, p.pos.x - sin * 1.2, p.pos.z - cos * 1.2));
+    toast('⬇️ Dropped ' + it.e + ' ' + it.n + (it.drop.wood ? ' (-' + it.drop.wood + ' wood)' : ''));
+    refreshPill(); if (open) refreshPanel();
+    return true;
+  }
+
   // ---- HUD ------------------------------------------------------------------
-  let pill = null, panel = null, grid = null;
+  let pill = null, panel = null, grid = null, prompt = null;
   function buildHud() {
     const css = document.createElement('style');
     css.textContent = `
@@ -136,6 +209,16 @@
     panel = document.createElement('div'); panel.id = 'sackPanel';
     panel.innerHTML = '<div class="st">🎒 SACK</div><div id="sackGrid"></div><div class="sh">walk over 💎 loot to grab · find 🎒➕ upgraders in buildings · <b>`</b> or tap the pill to close</div>';
     document.body.appendChild(panel); grid = panel.querySelector('#sackGrid');
+    prompt = document.createElement('div'); prompt.id = 'sackPrompt';
+    prompt.style.cssText = 'position:fixed;left:50%;top:58%;transform:translateX(-50%);z-index:7;display:none;' +
+      'background:rgba(14,26,44,.82);border:2px solid #3b8bff;border-radius:11px;padding:7px 15px;' +
+      "font:bold 15px 'Trebuchet MS',sans-serif;color:#dcefff;text-shadow:0 1px 2px #000;white-space:nowrap;pointer-events:none;";
+    document.body.appendChild(prompt);
+  }
+  function refreshPrompt() {
+    if (!prompt) return;
+    if (highlighted) { const it = highlighted.item; prompt.style.display = 'block'; prompt.innerHTML = 'Press <b style="background:#173a5e;border:1px solid #3b8bff;border-radius:5px;padding:0 6px;">J</b> to sack the ' + it.e + ' <b>' + it.n + '</b>'; }
+    else prompt.style.display = 'none';
   }
   function refreshPill() { const p = sack(); const n = document.getElementById('sackN'); if (p && n) n.textContent = p.sack.length + '/' + p.sackCap; }
   function refreshPanel() {
@@ -175,6 +258,8 @@
     setTimeout(addMobile, 900); setTimeout(addMobile, 2600);
     W.sack = { count: () => (P() ? P().sack.length : 0), cap: () => (P() ? P().sackCap : 0), toggle,
                loots: () => loots.length, uppers: () => uppers.length,
+               dropWoodAt, pocketLookedAt, dropFromSack,        // tree-drop + look-J-pocket + K-drop
+               looking: () => (highlighted ? highlighted.item : null), droppedCount: () => dropped.length,
                _tick: (dt) => tickPickups(dt || 0.016),
                _lootPos: () => (loots[0] ? { x: loots[0].mesh.position.x, z: loots[0].mesh.position.z } : null),
                _upPos: () => (uppers[0] ? { x: uppers[0].group.position.x, z: uppers[0].group.position.z } : null) };

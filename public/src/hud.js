@@ -25,6 +25,35 @@
     els.stFill = els.st.querySelector('i');
     els.fdFill = els.fd.querySelector('i');
     els.thFill = els.th.querySelector('i');
+    hud.buildHotbar();
+  };
+
+  // --- 10-slot number-key hotbar (built dynamically over #hotbar) --------------
+  hud.buildHotbar = function () {
+    const hb = document.getElementById('hotbar'); if (!hb) return;
+    hb.innerHTML = ''; hud._hb = [];
+    for (let i = 0; i < 10; i++) {
+      const cell = document.createElement('div'); cell.className = 'slot';
+      const num = document.createElement('span'); num.textContent = (i === 9 ? 0 : i + 1);
+      num.style.cssText = 'position:absolute;left:3px;top:-1px;font-size:11px;font-weight:bold;color:#ffe08a;text-shadow:1px 1px 0 #000;';
+      const ic = document.createElement('span'); ic.className = 'ic';
+      const ammo = document.createElement('span'); ammo.className = 'ct';
+      cell.appendChild(num); cell.appendChild(ic); cell.appendChild(ammo);
+      hb.appendChild(cell); hud._hb.push({ cell, ic, ammo });
+    }
+  };
+  hud.refreshHotbar = function () {
+    const p = W.player; if (!hud._hb || !p || !p.hotbar) return;
+    const ammoFor = { deagle: p.deagleRounds, shotgun: p.shells, rifle: p.rounds, bow: p.arrowCount };
+    for (let i = 0; i < 10; i++) {
+      const s = p.hotbar[i], c = hud._hb[i], owned = p.slotOwned(s);
+      c.ic.textContent = s ? s.ic : '';
+      c.cell.style.opacity = (s && owned) ? '1' : '0.32';
+      const sel = s && s.key === p.currentWeapon;
+      c.cell.style.borderColor = sel ? '#ffe08a' : '#8b8b8b';
+      c.cell.style.boxShadow = sel ? '0 0 8px rgba(255,224,138,.6)' : 'none';
+      c.ammo.textContent = (s && owned && (s.key in ammoFor)) ? (ammoFor[s.key] || 0) : '';
+    }
   };
 
   hud.update = function (s) {
@@ -43,18 +72,7 @@
     els.woodNum.textContent = s.wood;
     els.killNum.textContent = s.kills;
     if (els.coinNum) els.coinNum.textContent = s.coins || 0;
-    // hotbar weapon + shells
-    if (els.weaponIc) els.weaponIc.textContent = { fists: '👊', axe: '🪓', sword: '⚔️', katana: '🗡️', shotgun: '🔫', rifle: '🎯', deagle: '🔫', bow: '🏹' }[W.player.currentWeapon] || '👊';
-    // ammo slot: arrows when the bow is out, shells for the shotgun, rounds for the rifle/Deagle
-    const bowOut = W.player.currentWeapon === 'bow' && W.player.hasBow;
-    const gunOut = W.player.currentWeapon === 'shotgun' && W.player.hasShotgun;
-    const rifleOut = W.player.currentWeapon === 'rifle' && W.player.hasRifle;
-    const deagleOut = W.player.currentWeapon === 'deagle' && W.player.hasDeagle;
-    if (els.slotShell) {
-      els.slotShell.classList.toggle('hidden', !bowOut && !gunOut && !rifleOut && !deagleOut);
-      const ic = els.slotShell.querySelector('.ic'); if (ic) ic.textContent = bowOut ? '🏹' : rifleOut ? '🎯' : '🔫';
-    }
-    if (els.shellNum) els.shellNum.textContent = bowOut ? (W.player.arrowCount || 0) : rifleOut ? (W.player.rounds || 0) : deagleOut ? (W.player.deagleRounds || 0) : (W.player.shells || 0);
+    hud.refreshHotbar();     // 10-slot number-key hotbar (icons, ammo, selection)
     if (hud._inv) hud.refreshInv();          // keep the inventory live while open
     hud.drawMinimap();
   };
