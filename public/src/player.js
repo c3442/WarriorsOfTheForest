@@ -1514,6 +1514,12 @@
     const plume = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.05), cloth); plume.position.set(0, 1.62, -0.02); g.add(plume);
     const sword = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.62, 0.05), blade); sword.position.set(0.34, 1.06, 0.14); g.add(sword);
     const guard = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.05), dark); guard.position.set(0.34, 0.78, 0.14); g.add(guard);
+    // left-arm heraldic shield — steel plate, red cross, shiny centre boss
+    const shieldMat = new THREE.MeshStandardMaterial({ color: 0x707784, metalness: 0.55, roughness: 0.45, flatShading: true });
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.5, 0.06), shieldMat); shield.position.set(-0.36, 0.98, 0.16); shield.rotation.y = 0.18; shield.castShadow = true; g.add(shield);
+    const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42, 0.02), cloth); crossV.position.set(-0.36, 0.98, 0.2); crossV.rotation.y = 0.18; g.add(crossV);
+    const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.02), cloth); crossH.position.set(-0.36, 1.0, 0.2); crossH.rotation.y = 0.18; g.add(crossH);
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), blade); boss.position.set(-0.36, 0.98, 0.22); g.add(boss);
     g.userData.legs = legs;
     return g;
   }
