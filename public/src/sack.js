@@ -124,14 +124,13 @@
     scene.add(m);
     return { mesh: m, outline, item, x, z, y0: y, t: Math.random() * 6 };
   }
-  // called by player.js when a tree is felled — scatter its wood as logs on the ground
+  // called by player.js when a tree is felled — one log per wood, so N wood = N sack slots
   function dropWoodAt(x, z, n) {
-    const logs = Math.max(1, Math.min(6, Math.round(n / 2)));      // a few logs; each carries a share of the wood
+    const logs = Math.max(1, Math.min(12, Math.round(n)));         // one log = one wood = one sack slot
     for (let i = 0; i < logs; i++) {
-      const a = Math.random() * Math.PI * 2, r = rnd(0.6, 2.2);
+      const a = Math.random() * Math.PI * 2, r = rnd(0.6, 2.4);
       const lx = x + Math.cos(a) * r, lz = z + Math.sin(a) * r;
-      const w = Math.floor(n / logs) + (i < n % logs ? 1 : 0);
-      dropped.push(Object.assign(makeDrop({ e: '🪵', n: 'Wood', wood: Math.max(1, w) }, lx, lz), {}));
+      dropped.push(makeDrop({ e: '🪵', n: 'Wood', wood: 1 }, lx, lz));
     }
   }
   // each frame: bob the logs, and raycast from the camera to outline the one you're looking at

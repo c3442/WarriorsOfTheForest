@@ -21,13 +21,13 @@
       speedMult: 1.35, spawnHealth: 60, sightMult: 1.6,
     },
     king: {
-      id: 'king', name: 'King', emoji: '👑', cost: 50,
-      blurb: 'Summon 15 loyal knights to fight for you. Regal but slow.',
-      perks: ['Summon 15 knights (press K)', '−25% move speed', 'Commands the battlefield'],
-      speedMult: 0.75, knights: 15,
+      id: 'king', name: 'King', emoji: '👑', cost: 500,
+      blurb: 'Summon 50 loyal knights to fight for you. Regal but slow.',
+      perks: ['Summons 50 knights that guard & fight for you', '−25% move speed', 'Commands the battlefield'],
+      speedMult: 0.75, knights: 50,
     },
     hunter: {
-      id: 'hunter', name: 'Hunter', emoji: '🔫', cost: 500,
+      id: 'hunter', name: 'Hunter', emoji: '🔫', cost: 1000,
       blurb: 'Starts with a rifle and can tame wild bears with meat.',
       perks: ['Starts with a rifle (120 rounds)', 'Can tame bears 🐻', 'Taming meat drops from wolves'],
       rifle: 120, tameBears: true,

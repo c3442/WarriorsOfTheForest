@@ -4,9 +4,8 @@
   const U = W.util;
   const C = W.CONFIG;
 
-  // Owner-only head start: only the owner's browser (localStorage set via ?owner=lin8up) begins with wood.
-  let START_WOOD = 0;
-  try { if (localStorage.getItem('wotf_owner') === 'lin8up') START_WOOD = 5000; } catch (e) {}
+  // Everyone starts with nothing — all your gear (axe, Deagle, meat) comes from the starter crate.
+  const START_WOOD = 0;
 
   const player = {
     active: false,
@@ -916,10 +915,10 @@
     b.opened = true;
     player.hasDeagle = true; player.deagleRounds = 7;
     player.hasAxe = true;
-    player.wolfMeat += 5;
+    player.cookedMeat += 5;                                   // 5 ready-to-eat cooked meat (eat with E)
     equipWeapon('deagle');
     if (W.sfx && W.sfx.select) W.sfx.select();
-    if (W.hud) { W.hud.banner('📦 STARTER KIT', 'Desert Eagle · Axe · 5 Wolf Meat', '#ffd873'); W.hud.toast('🔫 Deagle (7)  ·  🪓 Axe  ·  🍖 x5 wolf meat'); }
+    if (W.hud) { W.hud.banner('📦 STARTER KIT', 'Desert Eagle · Axe · 5 Cooked Meat', '#ffd873'); W.hud.toast('🔫 Deagle (7)  ·  🪓 Axe  ·  🍖 x5 cooked meat'); }
     if (boxPromptEl) boxPromptEl.style.display = 'none';
     player.scene.remove(b.group);
   }
@@ -1376,6 +1375,7 @@
   player.sleep = function () {
     if (!player.alive || player.downed || !player.active) return;
     if (player.sleeping) { player.wake(true); return; }   // press again to get up early
+    if (W.fire && !W.fire.lit()) { W.hud.toast('🔥 The fire is out — feed it wood before you can sleep'); return; }
     if (!W.world.canSleep(player.pos)) { W.hud.toast('Get in a tent or hotel to sleep 🛏️'); return; }
     if (W.world.stuffiesBroken) {
       const left = 5 - (W.world._dayCount - W.world._stuffieBreakDay);
@@ -1496,19 +1496,86 @@
     if (player.ghostT >= GHOST_TIME) { player.ghost = false; showGhostHud(false); player.alive = false; W.onDeath && W.onDeath(); }
   }
 
+  // --- Knights of the King: a summoned royal guard that follows you & fights ---
+  function makeKnight() {
+    const g = new THREE.Group();
+    const steel = new THREE.MeshStandardMaterial({ color: 0x9098a4, metalness: 0.5, roughness: 0.5, flatShading: true });
+    const cloth = new THREE.MeshStandardMaterial({ color: 0x9a2b2b, roughness: 1, flatShading: true });    // royal red tabard
+    const skin = new THREE.MeshStandardMaterial({ color: 0xd6a878, roughness: 1 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.6, metalness: 0.4 });
+    const blade = new THREE.MeshStandardMaterial({ color: 0xd8dde6, metalness: 0.6, roughness: 0.3 });
+    const legs = [];
+    for (const sx of [-0.11, 0.11]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.16), dark); l.position.set(sx, 0.3, 0); l.castShadow = true; g.add(l); legs.push(l); }
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.6, 0.28), steel); torso.position.y = 0.9; torso.castShadow = true; g.add(torso);
+    const tab = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.31), cloth); tab.position.set(0, 0.86, 0.0); g.add(tab);
+    for (const sx of [-0.3, 0.3]) { const a = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.13), steel); a.position.set(sx, 0.9, 0.02); g.add(a); legs.push(a); }
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), skin); head.position.y = 1.36; g.add(head);
+    const helm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.28), steel); helm.position.y = 1.46; g.add(helm);
+    const plume = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.05), cloth); plume.position.set(0, 1.62, -0.02); g.add(plume);
+    const sword = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.62, 0.05), blade); sword.position.set(0.34, 1.06, 0.14); g.add(sword);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.05), dark); guard.position.set(0.34, 0.78, 0.14); g.add(guard);
+    g.userData.legs = legs;
+    return g;
+  }
+  player.summonKnights = function () {
+    const n = player.knightSummons || 0; if (!n || !player.scene) return;
+    player.knights = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, r = 2.4 + (i % 6) * 0.85;
+      const kx = player.pos.x + Math.cos(a) * r, kz = player.pos.z + Math.sin(a) * r;
+      const g = makeKnight();
+      g.position.set(kx, W.world.heightAt(kx, kz), kz);
+      player.scene.add(g);
+      player.knights.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r });
+    }
+    if (W.hud && W.hud.banner) W.hud.banner('👑 KNIGHTS OF THE KING', n + ' knights rally to your banner!', '#ffe08a');
+  };
+  player.stepKnights = function (dt) {
+    const ks = player.knights; if (!ks || !ks.length) return;
+    const foes = (W.enemies && W.enemies.list) || [];
+    const host = !(W.net && W.net.role === 'client');
+    for (const k of ks) {
+      k.t += dt; const g = k.g;
+      let tgt = null, bd = 20;
+      for (const e of foes) { if (!e.alive) continue; const d = Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z); if (d < bd) { bd = d; tgt = e; } }
+      let tx, tz;
+      if (tgt) { tx = tgt.group.position.x; tz = tgt.group.position.z; }
+      else { tx = player.pos.x + Math.cos(k.a + player._t * 0.15) * k.r; tz = player.pos.z + Math.sin(k.a + player._t * 0.15) * k.r; }
+      const dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz) || 1;
+      const reach = tgt ? 1.7 : 0.5;
+      if (d > reach) {
+        const sp = (tgt ? 6.5 : 5.0) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
+        g.rotation.y = Math.atan2(dx, dz);
+        const sw = Math.sin(k.t * 11) * 0.5, lg = g.userData.legs;
+        if (lg) { lg[0].rotation.x = sw; lg[1].rotation.x = -sw; lg[2].rotation.x = -sw; lg[3].rotation.x = sw; }
+      } else if (tgt) {
+        g.rotation.y = Math.atan2(dx, dz);
+        k.atk -= dt;
+        if (k.atk <= 0) { k.atk = 0.8; if (host && W.enemies.damage) W.enemies.damage(tgt.group, 6, { x: g.position.x, z: g.position.z }); }
+      }
+      g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(k.t * 8)) * 0.04;
+    }
+  };
+
   player.update = function (dt) {
     player._t += dt;
+    if (player.knightSummons > 0 && !player.knights) player.summonKnights();   // rally the King's guard once
+    if (player.knights) player.stepKnights(dt);
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
     if (player._dmgNums && player._dmgNums.length) updateDamageNums(dt);
     if (player._treeBars && player._treeBars.length) updateTreeBars();
-    // personal starter box: bob its tag & show the [F] prompt when you're beside it
-    if (player.starterBox && !player.starterBox.opened) {
-      const b = player.starterBox;
-      if (b.group.userData.tag) b.group.userData.tag.position.y = 1.45 + Math.sin(player._t * 3) * 0.06;
-      const near = player.active && Math.hypot(player.pos.x - b.x, player.pos.z - b.z) < 3.2;
-      boxPrompt().style.display = near ? 'block' : 'none';
-      if (near) boxPromptEl.innerHTML = 'Press <b style="background:#3a2f10;border:1px solid #ffd873;border-radius:5px;padding:0 7px;">F</b> to open your 📦 box';
-    } else if (boxPromptEl && boxPromptEl.style.display !== 'none') { boxPromptEl.style.display = 'none'; }
+    // context [F] prompt: open your starter box, or cook raw meat at a campfire
+    const box = player.starterBox;
+    if (box && !box.opened && box.group.userData.tag) box.group.userData.tag.position.y = 1.45 + Math.sin(player._t * 3) * 0.06;
+    let fHtml = null;
+    const kb = (t) => 'Press <b style="background:#3a2f10;border:1px solid #ffd873;border-radius:5px;padding:0 7px;">F</b> ' + t;
+    if (player.active && box && !box.opened && Math.hypot(player.pos.x - box.x, player.pos.z - box.z) < 3.2) {
+      fHtml = kb('to open your 📦 box');
+    } else if (player.active && player.wolfMeat > 0 && nearCampfire()) {
+      fHtml = kb('to cook 🥩 x' + player.wolfMeat + ' at the fire');
+    }
+    if (fHtml) { boxPrompt().style.display = 'block'; boxPromptEl.innerHTML = fHtml; }
+    else if (boxPromptEl && boxPromptEl.style.display !== 'none') { boxPromptEl.style.display = 'none'; }
     if (!player.alive) return;
     if (player.ghost) { updateGhost(dt); return; }
     if (player.downed) {
@@ -1614,6 +1681,7 @@
 
     // --- stats ---
     const atBase = W.world.nearCamp(player.pos);   // the camp is a safe haven
+    const fireLit = !W.fire || W.fire.lit();        // ...but only while the camp fire is fed
 
     // stamina: infinite at base, otherwise drains while sprinting / recovers at rest
     if (atBase) player.stamina = 100;
@@ -1623,7 +1691,8 @@
     // hunger & thirst: recover fast at base (10x), otherwise tick down
     if (atBase) {
       player.hunger = U.clamp(player.hunger + 25 * dt, 0, 100);
-      player.thirst = U.clamp(player.thirst + 25 * dt, 0, 100);
+      // thirst only recovers at camp while the fire is lit; if it's out, it drains as usual
+      player.thirst = U.clamp(player.thirst + (fireLit ? 25 : -1.15) * dt, 0, 100);
     } else {
       player.hunger = U.clamp(player.hunger - 0.45 * dt, 0, 100);                   // lasts longer
       player.thirst = U.clamp(player.thirst - 1.15 * dt, 0, 100);
@@ -1633,8 +1702,8 @@
     if (player.hunger > 40 && player.thirst > 25 && player._t - player.lastHurt > 4) {
       player.health = U.clamp(player.health + 1.6 * dt, 0, player.maxHealth || 100);   // class cap (Scout regens to 60)
     }
-    // resting at the base / village heals you very fast (2x the old rate)
-    if (atBase && player._t - player.lastHurt > 1.5) {
+    // resting at the base heals you very fast — but only while the camp fire is lit
+    if (atBase && fireLit && player._t - player.lastHurt > 1.5) {
       player.health = U.clamp(player.health + 70 * dt, 0, 100);
     }
 
@@ -1778,7 +1847,7 @@
       sleeping: false, sleepT: 0, hugStuffie: null, building: null, invOpen: false,
       sitting: false, _seat: null, _seatHint: false,
       hasShotgun: false, shells: 0, hasRifle: false, rounds: 0, hasBow: false, arrowCount: 0, saplings: 0,
-      hasDeagle: false, deagleRounds: 0, hasFists: true, hasAxe: false, wolfMeat: 0,
+      hasDeagle: false, deagleRounds: 0, hasFists: true, hasAxe: false, wolfMeat: 0, cookedMeat: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: START_WOOD, kills: 0, banditKills: 0, treelingCoins: 0, vy: 0,
       attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'fists',
