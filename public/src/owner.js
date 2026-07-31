@@ -420,10 +420,29 @@
     document.body.appendChild(bar);
   }
 
+  // The maker can gift a teammate 100 Treeling Coins: walk up to a player and press A.
+  // (A also strafes — this only fires when a co-op teammate is within reach.)
+  let lastGift = 0;
+  function giftNearbyPlayer() {
+    const p = W.player; if (!p || !p.pos || !p.active) return;
+    if (!(W.net && W.net.remote && W.net.sendGiftTo)) return;      // needs an active co-op session
+    if (now() - lastGift < 1.0) return;
+    let best = null, bd = 4.0;
+    for (const id in W.net.remote) {
+      const r = W.net.remote[id];
+      if (r && r.pose) { const d = Math.hypot(r.pose.x - p.pos.x, r.pose.z - p.pos.z); if (d < bd) { bd = d; best = id; } }
+    }
+    if (!best) return;
+    lastGift = now();
+    W.net.sendGiftTo(best, 100);
+    if (W.hud && W.hud.toast) W.hud.toast('🪙 Gave 100 coins to your teammate!');
+  }
+
   window.addEventListener('keydown', (e) => {
     if (W.builder && W.builder.isOn && W.builder.isOn()) return;   // don't fire while building
     if (e.code === 'KeyP') { e.stopImmediatePropagation(); fireBlaster(); }
     else if (e.code === 'KeyY' && !e.repeat) { e.stopImmediatePropagation(); throwGrenade(); }
+    else if (e.code === 'KeyA' && !e.repeat) { giftNearbyPlayer(); }   // don't stop propagation — A still strafes
   }, true);
 
   function addMobile() {
@@ -454,6 +473,12 @@
     if (W.builder && W.builder.addModelPreset) loadPack(); else setTimeout(loadPack, 1200);
     buildHud();
     requestAnimationFrame(loop);
+    // the maker has INFINITE Treeling Coins — keep the wallet & counter topped up
+    setInterval(() => {
+      if (!W.player) return;
+      W.player.treelingCoins = 999999;
+      if (W.classes && W.classes.setCoins && W.classes.coins() !== 999999) W.classes.setCoins(999999);
+    }, 1500);
     setTimeout(addMobile, 900); setTimeout(addMobile, 2600);
     if (W.hud && W.hud.toast) W.hud.toast('👑 Owner pack unlocked — P blaster · Y grenade · custom blocks in Build (`)');
     W.owner = {

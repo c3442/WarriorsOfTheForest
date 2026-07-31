@@ -199,8 +199,18 @@
       W.world.applyTentZip(m.idx, m.zipped);
     } else if (m.t === 'build') {
       W.world.buildById(m.id, m.x, m.z, m.yaw);
+    } else if (m.t === 'gift') {
+      const coins = m.coins || 0;
+      const total = (W.classes && W.classes.addCoins) ? W.classes.addCoins(coins) : ((W.player.treelingCoins || 0) + coins);
+      if (W.player) W.player.treelingCoins = total;
+      if (W.hud && W.hud.toast) W.hud.toast('🪙 The maker gave you ' + coins + ' coins! (' + total + ')');
     }
   }
+
+  // Gift a specific teammate some Treeling Coins (maker-only, host->client).
+  net.sendGiftTo = function (peerId, coins) {
+    for (const c of net._conns) { if (c.peer === peerId && c.open) c.send({ t: 'gift', coins: coins | 0 }); }
+  };
 
   // A downed teammate within reach (so a bandaid can revive them).
   net.anyDownedNear = function (pos, range) {

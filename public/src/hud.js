@@ -12,7 +12,7 @@
      'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
      'craftPanel', 'craftWood', 'crow3', 'crow6', 'crow7', 'axeLv', 'axeCost', 'keyHelp',
      'weaponIc', 'slotShell', 'shellNum',
-     'invPanel', 'invWood', 'invBerries', 'invBandaids', 'invWater', 'invAxe', 'invShells', 'invSaplings',
+     'invPanel', 'invWood', 'invBerries', 'invBandaids', 'invWater', 'invAxe', 'invShells', 'invSaplings', 'invRawMeat', 'invCookedMeat',
      'invSwordSlot', 'invArmorSlot', 'invShieldSlot', 'invShotgunSlot',
      'sleepOverlay', 'sleepCount', 'sleepWait', 'buildHint', 'buildHintName', 'minimap',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
@@ -164,6 +164,8 @@
     els.invAxe.textContent = p.axeLevel;
     els.invShells.textContent = p.shells;
     if (els.invSaplings) els.invSaplings.textContent = p.saplings || 0;
+    if (els.invRawMeat) els.invRawMeat.textContent = p.wolfMeat || 0;
+    if (els.invCookedMeat) els.invCookedMeat.textContent = p.cookedMeat || 0;
     els.invSwordSlot.classList.toggle('empty', !p.hasSword);
     els.invArmorSlot.classList.toggle('empty', !p.hasArmor);
     els.invShieldSlot.classList.toggle('empty', !p.hasShield);

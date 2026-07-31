@@ -18,7 +18,7 @@
     hasShotgun: false, shells: 0,
     hasRifle: false, rounds: 0,                                                // rifle is a rare 5% chest find
     hasDeagle: false, deagleRounds: 0,                                         // Desert Eagle — from your starter box (7 rounds, 150 dmg)
-    hasFists: true, hasAxe: false, wolfMeat: 0,                                // you start bare-fisted; the box grants the axe & meat
+    hasFists: true, hasAxe: false, wolfMeat: 0, cookedMeat: 0,                 // you start bare-fisted; wolfMeat = raw (cook it), cookedMeat = edible
     hasBow: false, arrowCount: 0, bowColor: 0x7a4a24, arrowColor: 0xe6c54a,   // bow is chest-only; arrows are limited ammo
     saplings: 0,
     berries: 0, berryMax: 5,
@@ -853,10 +853,9 @@
     }
     const bonus = kind === 'werewolf' ? 2 : 1;
     if (Math.random() < 0.6) player.wood += bonus;
-    if (Math.random() < 0.45) {
-      player.hunger = U.clamp(player.hunger + 10 * bonus, 0, 100);
-      W.hud.toast('+meat 🍖');
-    }
+    // wolves & their kin drop RAW meat into your sack — cook it at a fire before it feeds you
+    const meat = { wolf: 1, werewolf: 2, bear: 3 }[kind] || 0;
+    if (meat) { player.wolfMeat += meat; W.hud.toast('🥩 +' + meat + ' raw wolf meat — cook it at a fire'); }
   };
 
   function findRoot(obj) {
@@ -924,9 +923,21 @@
     if (boxPromptEl) boxPromptEl.style.display = 'none';
     player.scene.remove(b.group);
   }
+  function nearCampfire() {
+    const fires = W.world && W.world.campfires; if (!fires) return false;
+    for (const f of fires) if (Math.hypot(player.pos.x - f.x, player.pos.z - f.z) < 3.2) return true;
+    return false;
+  }
+  function cookMeat() {
+    const n = player.wolfMeat; if (n <= 0) return;
+    player.wolfMeat = 0; player.cookedMeat += n;
+    if (W.sfx && W.sfx.eat) W.sfx.eat();
+    if (W.hud) W.hud.toast('🍖🔥 Cooked ' + n + ' wolf meat — eat with E');
+  }
   player.interactF = function () {
     const b = player.starterBox;
     if (b && !b.opened && Math.hypot(player.pos.x - b.x, player.pos.z - b.z) < 3.0) { openStarterBox(); return; }
+    if (player.wolfMeat > 0 && nearCampfire()) { cookMeat(); return; }
     player.drink();
   };
 
@@ -951,11 +962,13 @@
       if (d < bestD) { bestD = d; best = b; }
     }
     if (!best) {
-      if (player.wolfMeat > 0) {                          // no crop/berry nearby — eat wolf meat from your pack
-        player.wolfMeat -= 1;
+      if (player.cookedMeat > 0) {                         // eat COOKED meat from your pack (raw won't feed you)
+        player.cookedMeat -= 1;
         player.hunger = U.clamp(player.hunger + 40, 0, 100);
         if (W.sfx) W.sfx.eat();
-        W.hud.toast('Ate wolf meat 🍖 +40 food (' + player.wolfMeat + ' left)');
+        W.hud.toast('Ate cooked meat 🍖 +40 food (' + player.cookedMeat + ' left)');
+      } else if (player.wolfMeat > 0) {
+        W.hud.toast('🥩 Raw meat — cook it at a campfire first (stand by a fire & press F)');
       }
       return;
     }
