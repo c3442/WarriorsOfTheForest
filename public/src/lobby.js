@@ -116,7 +116,7 @@
       'background:rgba(14,20,12,.96);border:2px solid #6f8a3a;border-radius:14px;padding:18px 20px;' +
       "font-family:'Trebuchet MS',sans-serif;color:#eaf4dd;box-shadow:0 16px 50px rgba(0,0,0,.6);backdrop-filter:blur(3px);";
     const versions = [
-      { v: 'v0.1', tag: 'Current', legacy: false, desc: 'The full game — camp, village, bandits, bears, hotels, tree houses, the realism pass & more.', cur: true },
+      { v: 'v0.1.1', tag: 'Current', legacy: false, desc: 'The full game — camp, village, bandits, bears, hotels, tree houses, the realism pass & more.', cur: true },
       { v: 'v0.0', tag: 'Original', legacy: true, desc: 'The very first build: a bare forest — no camp, just wolves & werewolves.' },
     ];
     let rows = '';
@@ -651,7 +651,7 @@
   function startGame(legacy) {
     if (started || starting) return; starting = true;
     W.LEGACY = !!legacy;        // v0.0 launcher passes true -> world/enemies build the bare legacy mode
-    const vt = document.getElementById('verTag'); if (vt) vt.textContent = legacy ? 'v0.0' : 'v0.1';
+    const vt = document.getElementById('verTag'); if (vt) vt.textContent = legacy ? 'v0.0' : 'v0.1.1';
     if (document.pointerLockElement) document.exitPointerLock();
     const solo = document.getElementById('soloBtn');
     if (solo) solo.click();     // -> beginGame -> overlay gets .hidden -> teardown()
