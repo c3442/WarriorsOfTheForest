@@ -80,6 +80,18 @@
     const codeInput = document.getElementById('codeInput');
     const nameInput = document.getElementById('nameInput');
     const myName = () => (nameInput.value.trim() || 'Player').slice(0, 12);
+    // you MUST pick a name before playing — returns the name, or null (and nags) if blank
+    const needName = () => {
+      const nm = nameInput.value.trim();
+      if (!nm) {
+        setStatus('✍️ Pick a name first!');
+        nameInput.style.borderColor = '#ff5b6b'; nameInput.focus();
+        try { nameInput.animate([{ transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(0)' }], { duration: 180 }); } catch (e) {}
+        return null;
+      }
+      return nm.slice(0, 12);
+    };
+    nameInput.addEventListener('input', () => { nameInput.style.borderColor = ''; });
 
     // --- skin (boy/girl) + axe-colour picks ---
     W.player.skin = W.player.skin || 'boy';
@@ -118,9 +130,10 @@
     mkPick('bowPick', WOODS, W.player.bowColor, (h) => { W.player.bowColor = h; });
     mkPick('arrowPick', SHAFTS, W.player.arrowColor, (h) => { W.player.arrowColor = h; });
 
-    soloBtn.onclick = () => beginGame((Math.random() * 1e9) | 0);
+    soloBtn.onclick = () => { if (!needName()) return; W.net.myName = myName(); beginGame((Math.random() * 1e9) | 0); };
 
     hostBtn.onclick = () => {
+      if (!needName()) return;
       W.net.myName = myName();
       setStatus('Creating room…');
       W.net.host({
@@ -135,6 +148,7 @@
     };
 
     joinBtn.onclick = () => {
+      if (!needName()) return;
       const code = codeInput.value.toUpperCase().trim();
       if (code.length < 4) { setStatus('Enter the host’s 5-letter code.'); return; }
       W.net.myName = myName();
