@@ -57,7 +57,7 @@
   };
 
   hud.update = function (s) {
-    els.hpFill.style.width = s.health + '%';
+    els.hpFill.style.width = (s.health / (s.maxHealth || 100) * 100) + '%';
     els.stFill.style.width = s.stamina + '%';
     els.fdFill.style.width = s.hunger + '%';
     els.thFill.style.width = s.thirst + '%';

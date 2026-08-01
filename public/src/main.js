@@ -257,7 +257,7 @@
       wasNight = night;
 
       W.hud.update({
-        health: Math.round(W.player.health), stamina: Math.round(W.player.stamina),
+        health: Math.round(W.player.health), maxHealth: W.player.maxHealth || 100, stamina: Math.round(W.player.stamina),
         hunger: Math.round(W.player.hunger), thirst: Math.round(W.player.thirst),
         bottle: W.player.bottle, bottleMax: W.player.bottleMax,
         berries: W.player.berries, berryMax: W.player.berryMax,

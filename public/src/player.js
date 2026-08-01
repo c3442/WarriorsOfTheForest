@@ -92,6 +92,11 @@
         player.craftOpen = !player.craftOpen; W.hud.toggleCraft(player.craftOpen); refreshCraft();
       }
       if (e.code === 'KeyL') player.toggleBuildMenu();
+      // King: 0 opens the knight command menu; while it's open, 1–5 pick a formation
+      if (player.knights && player.knights.length && !player.craftOpen && !player.buildOpen) {
+        if (e.code === 'Digit0') { player.toggleKnightMenu(); return; }
+        if (player._knightMenuOpen && /^Digit[1-5]$/.test(e.code)) { player.knightCommand(+e.code.slice(5)); return; }
+      }
       if (player.craftOpen) {
         if (/^Digit[0-9]$/.test(e.code)) player.craft(e.code.slice(5));
         else if (e.code === 'Minus') player.craft('tent');
@@ -1352,9 +1357,9 @@
       W.hud.toast('Revived a teammate! 🩹');
       return;
     }
-    if (player.health < 100) {
+    if (player.health < (player.maxHealth || 100)) {
       player.bandaids -= 1;
-      player.health = U.clamp(player.health + 50, 0, 100);
+      player.health = U.clamp(player.health + 50, 0, player.maxHealth || 100);
       W.hud.toast('Patched up 🩹 +50 health');
     } else { W.hud.toast('Already full health'); }
   };
@@ -1405,7 +1410,7 @@
   player.wake = function (early) {
     if (!player.sleeping) return;
     if (!early && player.hugStuffie) {
-      player.health = U.clamp(player.health + 20, 0, 100);
+      player.health = U.clamp(player.health + 20, 0, player.maxHealth || 100);
       W.hud.toast('Slept cosy with a stuffie 🧸 +20 health');
     }
     player.sleeping = false; player.sleepT = 0; player.hugStuffie = null;
@@ -1534,21 +1539,62 @@
       player.scene.add(g);
       player.knights.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r });
     }
-    if (W.hud && W.hud.banner) W.hud.banner('👑 KNIGHTS OF THE KING', n + ' knights rally to your banner!', '#ffe08a');
+    player.knightMode = 'follow';
+    if (W.hud && W.hud.banner) W.hud.banner('👑 KNIGHTS OF THE KING', n + ' knights rally! Press 0 for commands', '#ffe08a');
+  };
+
+  // --- Knight command menu (press 0) + formations ---------------------------
+  function buildKnightMenu() {
+    const d = document.createElement('div');
+    d.id = 'knightMenu';
+    d.style.cssText = 'position:fixed;left:50%;bottom:120px;transform:translateX(-50%);z-index:9;display:none;' +
+      'background:rgba(20,16,6,.93);border:2px solid #ffe08a;border-radius:12px;padding:12px 16px;' +
+      "font:bold 14px 'Trebuchet MS',sans-serif;color:#ffe6a8;text-shadow:0 1px 2px #000;text-align:center;box-shadow:0 10px 34px rgba(0,0,0,.6);";
+    const opts = ['1 · Follow', '2 · Teleport to me', '3 · Line', '4 · Circle', '5 · Square'];
+    d.innerHTML = '<div style="font-size:16px;color:#ffd24a;margin-bottom:9px;letter-spacing:1px;">👑 KNIGHT COMMANDS</div>' +
+      '<div style="display:flex;gap:9px;flex-wrap:wrap;justify-content:center;">' +
+      opts.map((t) => '<span style="background:rgba(255,224,138,.14);border:1px solid #7a6a3a;border-radius:7px;padding:7px 11px;">' + t + '</span>').join('') +
+      '</div><div style="font-size:11px;color:#c9b98a;margin-top:8px;">press <b>1–5</b> to command · <b>0</b> to close</div>';
+    document.body.appendChild(d);
+    player._knightMenuEl = d;
+  }
+  player.toggleKnightMenu = function () {
+    if (!player._knightMenuEl) buildKnightMenu();
+    player._knightMenuOpen = !player._knightMenuOpen;
+    player._knightMenuEl.style.display = player._knightMenuOpen ? 'block' : 'none';
+  };
+  player.closeKnightMenu = function () { player._knightMenuOpen = false; if (player._knightMenuEl) player._knightMenuEl.style.display = 'none'; };
+  player.knightCommand = function (nkey) {
+    if (nkey === 2) {                                            // teleport all knights to the King
+      const ks = player.knights || [];
+      for (const k of ks) { const a = Math.random() * Math.PI * 2, r = 1.4 + Math.random() * 1.8; const kx = player.pos.x + Math.cos(a) * r, kz = player.pos.z + Math.sin(a) * r; k.g.position.set(kx, W.world.heightAt(kx, kz), kz); }
+      if (W.hud) W.hud.toast('👑 Knights teleported to you!');
+    } else {
+      const modes = { 1: 'follow', 3: 'line', 4: 'circle', 5: 'square' };
+      if (modes[nkey]) { player.knightMode = modes[nkey]; if (W.hud) W.hud.toast('👑 Knights: ' + modes[nkey] + (nkey === 1 ? '' : ' formation')); }
+    }
+    player.closeKnightMenu();
   };
   player.stepKnights = function (dt) {
     const ks = player.knights; if (!ks || !ks.length) return;
     const foes = (W.enemies && W.enemies.list) || [];
     const host = !(W.net && W.net.role === 'client');
-    for (const k of ks) {
-      k.t += dt; const g = k.g;
-      let tgt = null, bd = 20;
+    const n = ks.length, mode = player.knightMode || 'follow';
+    const yaw = player.yaw || 0;
+    const fdx = -Math.sin(yaw), fdz = -Math.cos(yaw), rdx = -fdz, rdz = fdx;   // King's forward + right
+    for (let i = 0; i < n; i++) {
+      const k = ks[i]; k.t += dt; const g = k.g;
+      // in follow mode knights sweep the field (20m); in formation they only stab adjacent foes
+      let tgt = null, bd = (mode === 'follow') ? 20 : 2.4;
       for (const e of foes) { if (!e.alive) continue; const d = Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z); if (d < bd) { bd = d; tgt = e; } }
       let tx, tz;
       if (tgt) { tx = tgt.group.position.x; tz = tgt.group.position.z; }
-      else { tx = player.pos.x + Math.cos(k.a + player._t * 0.15) * k.r; tz = player.pos.z + Math.sin(k.a + player._t * 0.15) * k.r; }
+      else if (mode === 'circle') { const R = Math.max(4, n * 0.145), ang = (i / n) * Math.PI * 2; tx = player.pos.x + Math.cos(ang) * R; tz = player.pos.z + Math.sin(ang) * R; }
+      else if (mode === 'square') { const S = Math.max(4, n * 0.23), half = S / 2, per = (i / n) * 4, seg = Math.floor(per), f = per - seg; let sx, sz; if (seg === 0) { sx = -half + f * S; sz = -half; } else if (seg === 1) { sx = half; sz = -half + f * S; } else if (seg === 2) { sx = half - f * S; sz = half; } else { sx = -half; sz = half - f * S; } tx = player.pos.x + sx; tz = player.pos.z + sz; }
+      else if (mode === 'line') { const side = (i - (n - 1) / 2) * 0.8; tx = player.pos.x + rdx * side + fdx * 3; tz = player.pos.z + rdz * side + fdz * 3; }
+      else { tx = player.pos.x + Math.cos(k.a + player._t * 0.15) * k.r; tz = player.pos.z + Math.sin(k.a + player._t * 0.15) * k.r; }   // follow: gentle orbit
       const dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz) || 1;
-      const reach = tgt ? 1.7 : 0.5;
+      const reach = tgt ? 1.7 : 0.4;
       if (d > reach) {
         const sp = (tgt ? 6.5 : 5.0) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
         g.rotation.y = Math.atan2(dx, dz);
@@ -1558,6 +1604,8 @@
         g.rotation.y = Math.atan2(dx, dz);
         k.atk -= dt;
         if (k.atk <= 0) { k.atk = 0.8; if (host && W.enemies.damage) W.enemies.damage(tgt.group, 6, { x: g.position.x, z: g.position.z }); }
+      } else if (mode !== 'follow') {
+        g.rotation.y = Math.atan2(g.position.x - player.pos.x, g.position.z - player.pos.z);   // hold: face outward
       }
       g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(k.t * 8)) * 0.04;
     }
@@ -1710,7 +1758,7 @@
     }
     // resting at the base heals you very fast — but only while the camp fire is lit
     if (atBase && fireLit && player._t - player.lastHurt > 1.5) {
-      player.health = U.clamp(player.health + 70 * dt, 0, 100);
+      player.health = U.clamp(player.health + 70 * dt, 0, player.maxHealth || 100);
     }
 
     // --- apply to camera ---

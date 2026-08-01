@@ -32,8 +32,14 @@
       perks: ['Starts with a rifle (120 rounds)', 'Can tame bears 🐻', 'Taming meat drops from wolves'],
       rifle: 120, tameBears: true,
     },
+    ranger: {
+      id: 'ranger', name: 'Ranger', emoji: '🎯', cost: 250,
+      blurb: 'A crack shot with a bottomless Desert Eagle and iron constitution.',
+      perks: ['Desert Eagle with ∞ rounds (9,999,999)', '+100 max health (200 total)', 'Spawns locked & loaded'],
+      spawnHealth: 200, deagle: 9999999,
+    },
   };
-  const ORDER = ['scout', 'king', 'hunter'];   // the shop list (villager is the free default)
+  const ORDER = ['scout', 'ranger', 'king', 'hunter'];   // the shop list (villager is the free default)
 
   function num(k, d) { const v = parseInt(LS.getItem(k), 10); return isNaN(v) ? d : v; }
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }
@@ -69,6 +75,7 @@
       p.maxHealth = d.spawnHealth || 100;
       if (d.spawnHealth) p.health = d.spawnHealth;
       if (d.rifle) { p.hasRifle = true; p.rounds = d.rifle; }
+      if (d.deagle) { p.hasDeagle = true; p.deagleRounds = d.deagle; }   // Ranger: bottomless Deagle
       p.canTameBears = !!d.tameBears;
       p.knightSummons = d.knights || 0;
       p.treelingCoins = classes.coins();   // seed the in-game counter from the saved wallet
