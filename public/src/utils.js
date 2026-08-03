@@ -4,7 +4,7 @@
 
   W.CONFIG = {
     WORLD_RADIUS: 1500,    // playable area radius — a vast 1500x1500 world
-    TREE_COUNT: 3400,
+    TREE_COUNT: 2900,   // perf: fewer trees = fewer draw calls (still a dense forest)
     ROCK_COUNT: 320,
     BUSH_COUNT: 620,
     EYE_HEIGHT: 1.7,

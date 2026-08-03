@@ -1537,7 +1537,7 @@
       const g = makeKnight();
       g.position.set(kx, W.world.heightAt(kx, kz), kz);
       player.scene.add(g);
-      player.knights.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r });
+      player.knights.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r, hp: 26, maxHp: 26 });
     }
     player.knightMode = 'follow';
     if (W.hud && W.hud.banner) W.hud.banner('👑 KNIGHTS OF THE KING', n + ' knights rally! Press 0 for commands', '#ffe08a');
@@ -1585,7 +1585,7 @@
     for (let i = 0; i < n; i++) {
       const k = ks[i]; k.t += dt; const g = k.g;
       // in follow mode knights sweep the field (20m); in formation they only stab adjacent foes
-      let tgt = null, bd = (mode === 'follow') ? 20 : 2.4;
+      let tgt = null, bd = (mode === 'follow') ? 36 : 5;   // aggressive: hunt foes from much farther
       for (const e of foes) { if (!e.alive) continue; const d = Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z); if (d < bd) { bd = d; tgt = e; } }
       let tx, tz;
       if (tgt) { tx = tgt.group.position.x; tz = tgt.group.position.z; }
@@ -1596,18 +1596,28 @@
       const dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz) || 1;
       const reach = tgt ? 1.7 : 0.4;
       if (d > reach) {
-        const sp = (tgt ? 6.5 : 5.0) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
+        const sp = (tgt ? 9.0 : 5.0) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
         g.rotation.y = Math.atan2(dx, dz);
         const sw = Math.sin(k.t * 11) * 0.5, lg = g.userData.legs;
         if (lg) { lg[0].rotation.x = sw; lg[1].rotation.x = -sw; lg[2].rotation.x = -sw; lg[3].rotation.x = sw; }
       } else if (tgt) {
         g.rotation.y = Math.atan2(dx, dz);
         k.atk -= dt;
-        if (k.atk <= 0) { k.atk = 0.8; if (host && W.enemies.damage) W.enemies.damage(tgt.group, 6, { x: g.position.x, z: g.position.z }); }
+        if (k.atk <= 0) { k.atk = 0.5; if (host && W.enemies.damage) W.enemies.damage(tgt.group, 11, { x: g.position.x, z: g.position.z }); }
+        k.hp -= (tgt.dmg || 8) * dt * 0.45;                 // the foe fights back — knights can fall
+        if (k.hp <= 0) k.dead = true;
       } else if (mode !== 'follow') {
         g.rotation.y = Math.atan2(g.position.x - player.pos.x, g.position.z - player.pos.z);   // hold: face outward
       }
       g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(k.t * 8)) * 0.04;
+    }
+    // clear out any knights that fell in battle
+    if (ks.some((k) => k.dead)) {
+      for (const k of ks) { if (k.dead && k.g.parent) k.g.parent.remove(k.g); }
+      player.knights = ks.filter((k) => !k.dead);
+      if (W.hud && W.hud.toast && player._t - (player._knightFellT || 0) > 2.5) {
+        player._knightFellT = player._t; W.hud.toast('⚔️ Knights are falling! ' + player.knights.length + ' hold the line');
+      }
     }
   };
 

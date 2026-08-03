@@ -38,8 +38,14 @@
       perks: ['Desert Eagle with ∞ rounds (9,999,999)', '+100 max health (200 total)', 'Spawns locked & loaded'],
       spawnHealth: 200, deagle: 9999999,
     },
+    samurai: {
+      id: 'samurai', name: 'Samurai', emoji: '🗡️', cost: 500,
+      blurb: 'An armoured swordmaster — starts with a katana and 10,000 health, but heavy and slow.',
+      perks: ['Starts with a katana 🗡️', '10,000 health — nearly unkillable', '−50% move speed'],
+      spawnHealth: 10000, speedMult: 0.5, katana: true,
+    },
   };
-  const ORDER = ['scout', 'ranger', 'king', 'hunter'];   // the shop list (villager is the free default)
+  const ORDER = ['scout', 'ranger', 'samurai', 'king', 'hunter'];   // the shop list (villager is the free default)
 
   function num(k, d) { const v = parseInt(LS.getItem(k), 10); return isNaN(v) ? d : v; }
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }
@@ -76,6 +82,7 @@
       if (d.spawnHealth) p.health = d.spawnHealth;
       if (d.rifle) { p.hasRifle = true; p.rounds = d.rifle; }
       if (d.deagle) { p.hasDeagle = true; p.deagleRounds = d.deagle; }   // Ranger: bottomless Deagle
+      if (d.katana) { p.hasKatana = true; p.currentWeapon = 'katana'; }  // Samurai: starts with a katana
       p.canTameBears = !!d.tameBears;
       p.knightSummons = d.knights || 0;
       p.treelingCoins = classes.coins();   // seed the in-game counter from the saved wallet

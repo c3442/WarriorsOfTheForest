@@ -11,7 +11,7 @@
   function init() {
     const app = document.getElementById('app');
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));   // sharper (the tight far plane buys back the GPU budget)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.35));   // perf: fewer pixels to shade (~40% less fill vs 1.75)
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -43,8 +43,8 @@
     composer.addPass(bloom);
     // The composer bypasses the renderer's MSAA, so multisample its targets to smooth edges.
     if (composer.renderTarget1 && 'samples' in composer.renderTarget1) {
-      composer.renderTarget1.samples = 4;   // crisp edges (less pixely)
-      composer.renderTarget2.samples = 4;
+      composer.renderTarget1.samples = 2;   // perf: 2x MSAA (was 4x) — still smooths edges
+      composer.renderTarget2.samples = 2;
     }
 
     W.hud.init();

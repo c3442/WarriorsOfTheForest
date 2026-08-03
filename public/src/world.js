@@ -104,7 +104,7 @@
 
   function buildTerrain(scene) {
     const size = C.WORLD_RADIUS * 2.6;
-    const seg = 480;          // more segments to keep the vast terrain (and lakes) smooth
+    const seg = 384;          // perf: ~36% fewer terrain verts, still smooth for lakes/hills
     const geo = new THREE.PlaneGeometry(size, size, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
@@ -177,13 +177,13 @@
     g.add(trunk);
 
     const fColor = new THREE.Color(foliagePalette[U.randInt(0, foliagePalette.length - 1)]);
-    const tiers = (big ? U.randInt(4, 5) : U.randInt(3, 4));          // denser, fuller canopy
+    const tiers = (big ? U.randInt(3, 4) : U.randInt(2, 3));          // perf: fewer cones/tree = fewer draw calls
     for (let i = 0; i < tiers; i++) {
-      const r = (1.55 - i * 0.28) * scale;
+      const r = (1.55 - i * 0.30) * scale;
       // lower tiers sit in shade (darker), upper tiers catch light (lighter) -> depth
       const shade = 0.72 + 0.4 * (i / Math.max(1, tiers - 1));
       const tierCol = fColor.clone().multiplyScalar(shade).offsetHSL(U.rand(-0.02, 0.02), U.rand(-0.03, 0.05), 0);
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 1.7 * scale, 8),
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, 1.75 * scale, 6),
         new THREE.MeshStandardMaterial({ color: tierCol, roughness: 1, flatShading: true }));
       cone.position.y = trunkH + i * 0.85 * scale - 0.2;             // overlap tiers so no gaps
       cone.rotation.y = U.rand(0, Math.PI);                          // break up aligned facets
@@ -381,7 +381,7 @@
     // extra-dense canopy for the rainforest — sample directly in the west and pack
     // tightly (overlapping canopies read as thick jungle; skip the slow gap test).
     let rfPlaced = 0, rfTries = 0;
-    while (rfPlaced < 1600 && rfTries < 12000) {
+    while (rfPlaced < 850 && rfTries < 12000) {   // perf: lighter jungle (was 1600 extra trees)
       rfTries++;
       const x = -U.rand(C.WORLD_RADIUS * 0.34, C.WORLD_RADIUS * 0.98), z = U.rand(-C.WORLD_RADIUS * 0.56, C.WORLD_RADIUS * 0.56);
       if (Math.hypot(x, z) > C.WORLD_RADIUS) continue;
@@ -467,7 +467,7 @@
 
     world.sun = new THREE.DirectionalLight(0xfff1d0, 1.1);
     world.sun.castShadow = true;
-    world.sun.shadow.mapSize.set(2048, 2048);
+    world.sun.shadow.mapSize.set(1024, 1024);   // perf: 1/4 the shadow-map pixels (still soft via radius)
     const d = 70;
     Object.assign(world.sun.shadow.camera, { left: -d, right: d, top: d, bottom: -d, near: 1, far: 260 });
     world.sun.shadow.bias = -0.0005;
@@ -1588,7 +1588,7 @@
       const puffs = U.randInt(5, 9);
       for (let j = 0; j < puffs; j++) {
         const r = U.rand(7, 14);
-        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 2), mat);   // smoother, rounder puffs
+        const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), mat);   // perf: lighter cloud puffs
         puff.position.set(U.rand(-16, 16), U.rand(-2, 2), U.rand(-10, 10));
         puff.scale.y = 0.5;
         cloud.add(puff);
