@@ -478,6 +478,7 @@
       if (!W.player) return;
       W.player.treelingCoins = 999999;
       if (W.classes && W.classes.setCoins && W.classes.coins() !== 999999) W.classes.setCoins(999999);
+      if ((W.player.wood || 0) < 10000) W.player.wood = 10000;   // owner: always stocked with 10,000 wood
     }, 1500);
     setTimeout(addMobile, 900); setTimeout(addMobile, 2600);
     if (W.hud && W.hud.toast) W.hud.toast('👑 Owner pack unlocked — P blaster · Y grenade · custom blocks in Build (`)');

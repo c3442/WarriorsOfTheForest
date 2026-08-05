@@ -16,7 +16,10 @@
   let partySize = 4;                                          // how many players allowed (1-5) -> active squares
   let chosenPad = -1, filled = 0;                            // the ONE shared box everyone piles into, and how many are in it
   let inBox = false, boxCount = 0, boxCountCanvas = null, boxCountTex = null;   // the infinite-capacity JOIN BOX at the back
-  const BOX = { x: 0, z: -6, w: 6, d: 4 };                    // footprint of the walk-in box
+  const BOX = { x: 0, z: -6, w: 6, d: 4 };                    // footprint of the walk-in box (removed)
+  let confirmed = false, readyBox = -1, timerEl = null;      // auto-customise, then boxes open a player-count picker
+  let countOpen = false, countEl = null;                     // the "how many players 1-5" picker + 30s countdown
+  let lockedIn = false, joined = 0;                          // step in a box -> locked in (can't leave); press J to leave the party
   const HUD_IDS = ['minimap', 'stats', 'res', 'hotbar', 'info', 'tpVillage', 'cross', 'ownBar'];
   const hudPrev = {};
   const keys = {};
@@ -30,7 +33,7 @@
   const pos = { x: 0, y: EYE, z: 17 };            // spawn: standing back from the portal
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const rnd = (a, b) => a + Math.random() * (b - a);
-  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Space</b> jump · <b>Arrows/Mouse</b> look · walk into the <b style="color:#8fd36a">📦 JOIN BOX</b> at the back (<b>∞ players</b>), customise & <b style="color:#8fd36a">Submit</b> · press <b style="color:#8fe6ff">Enter</b> to PLAY';
+  const HINT_HTML = '🎮 <b>WASD</b> move · <b>Space</b> jump · walk into a numbered <b style="color:#8fe6ff">box</b>, then pick <b>how many players</b> (1–5) to start a 30s countdown';
 
   function makeTree(x, z, s) {
     const g = new THREE.Group();
@@ -116,7 +119,7 @@
       'background:rgba(14,20,12,.96);border:2px solid #6f8a3a;border-radius:14px;padding:18px 20px;' +
       "font-family:'Trebuchet MS',sans-serif;color:#eaf4dd;box-shadow:0 16px 50px rgba(0,0,0,.6);backdrop-filter:blur(3px);";
     const versions = [
-      { v: 'v0.1.1', tag: 'Current', legacy: false, desc: 'The full game — camp, village, bandits, bears, hotels, tree houses, the realism pass & more.', cur: true },
+      { v: 'v1.10', tag: 'Newest', legacy: false, desc: 'The full game — classes (Ninja, Samurai, Ranger…), King\'s knights, sandbag walls, Treeling coins, bandit raids & more.', cur: true },
       { v: 'v0.0', tag: 'Original', legacy: true, desc: 'The very first build: a bare forest — no camp, just wolves & werewolves.' },
     ];
     let rows = '';
@@ -379,118 +382,95 @@
 
   const fmt = (s) => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 
-  // the party maker's control: choose how long the lobby lasts (2:00 max), then START a countdown
-  function makePartyBar() {
-    partyBar = document.createElement('div');
-    partyBar.id = 'lobbyParty';
-    partyBar.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:12;display:flex;gap:6px;align-items:center;' +
-      'background:rgba(12,16,10,.72);border:2px solid rgba(150,180,110,.5);border-radius:12px;padding:7px 12px;' +
-      "font:bold 13px 'Trebuchet MS',sans-serif;color:#eaf4dd;text-shadow:0 1px 2px #000;backdrop-filter:blur(2px);";
-    const bstyle = 'background:#2a3320;border:1px solid #46562f;border-radius:6px;color:#dfeec8;font:bold 12px sans-serif;padding:3px 8px;cursor:pointer;';
-    // how many players are allowed in the party (1-5) -> lights up that many squares
-    const plbl = document.createElement('span'); plbl.textContent = '👥 Players:'; partyBar.appendChild(plbl);
-    [1, 2, 3, 4, 5].forEach((n) => {
-      const b = document.createElement('button'); b.textContent = n; b.dataset.size = n; b.style.cssText = bstyle;
-      b.onclick = () => { if (partyRunning) return; partySize = n; applyPadStates(); updateParty(); };
-      partyBar.appendChild(b);
-    });
-    const sep = document.createElement('span'); sep.textContent = '·'; sep.style.opacity = '.5'; partyBar.appendChild(sep);
-    const lbl = document.createElement('span'); lbl.textContent = '⏱ Length:'; partyBar.appendChild(lbl);
-    [['0:30', 30], ['1:00', 60], ['1:30', 90], ['2:00', 120]].forEach(([l, s]) => {
-      const b = document.createElement('button'); b.textContent = l; b.dataset.sec = s; b.style.cssText = bstyle;
-      b.onclick = () => { if (partyRunning) return; partyLen = s; updateParty(); };
-      partyBar.appendChild(b);
-    });
-    const start = document.createElement('button'); start.id = 'partyStart'; start.textContent = '▶ START';
-    start.style.cssText = bstyle + 'background:#3c7a2c;border-color:#8fd36a;color:#fff;';
-    start.onclick = () => startParty();
-    partyBar.appendChild(start);
-    const cd = document.createElement('span'); cd.id = 'partyCd'; cd.style.cssText = 'margin-left:6px;color:#8fe6ff;font-size:15px;min-width:44px;text-align:center;'; partyBar.appendChild(cd);
-    const rdy = document.createElement('span'); rdy.id = 'partyReady'; rdy.style.cssText = 'margin-left:10px;color:#8fd36a;font-size:14px;'; partyBar.appendChild(rdy);
-    document.body.appendChild(partyBar);
-    applyPadStates(); updateParty();
+  // (the old top party bar is gone — the ∞ START box arms a 2:00 timer instead)
+  // floating countdown (top-centre) — the party bar is gone
+  function updateTimerUI() {
+    if (!timerEl) return;
+    if (partyRunning) {
+      timerEl.style.display = 'block';
+      const left = fmt(partyEnd - performance.now() / 1000);
+      timerEl.innerHTML = '👥 <b style="color:#bfffca">' + joined + ' / ' + partySize + '</b> in party · ⏳ <b style="color:#8fe6ff;font-size:19px">' + left +
+        '</b> · <b style="color:#8fd36a">Enter</b> start · <b style="color:#ff9a9a">J</b> leave';
+    } else { timerEl.style.display = 'none'; }
   }
-  function updateReady() { const r = document.getElementById('partyReady'); if (r) r.textContent = '✓ In box ' + filled + '/' + partySize; }
-  function updateParty() {
-    if (!partyBar) return;
-    partyBar.querySelectorAll('button[data-sec]').forEach((b) => {
-      const on = +b.dataset.sec === partyLen;
-      b.style.background = on ? '#6a8a3a' : '#2a3320'; b.style.borderColor = on ? '#cff0a0' : '#46562f';
-    });
-    partyBar.querySelectorAll('button[data-size]').forEach((b) => {
-      const on = +b.dataset.size === partySize;
-      b.style.background = on ? '#3a6a8a' : '#2a3320'; b.style.borderColor = on ? '#a0d8f0' : '#46562f';
-    });
-    const cd = document.getElementById('partyCd');
-    if (cd) cd.textContent = partyRunning ? '⏳ ' + fmt(partyEnd - performance.now() / 1000) : fmt(partyLen);
-    const s = document.getElementById('partyStart'); if (s) s.textContent = partyRunning ? '● LIVE' : '▶ START';
-  }
-  // paint one pad's glow: grey=locked, cyan=open, green=the chosen shared box (brighter when hovered)
+  // paint one small box's glow: cyan=open customise spot, green=the one you're standing in
   function paintPad(p, i, hovered) {
     const m = p.mesh && p.mesh.userData.glow; if (!m) return;
-    if (!p.active) { m.material.color.setHex(0x4a4f42); m.material.emissive.setHex(0x1a1e16); m.material.emissiveIntensity = 0.12; }
-    else if (i === chosenPad) { m.material.color.setHex(0x36e05a); m.material.emissive.setHex(0x36e05a); m.material.emissiveIntensity = hovered ? 2.0 : 1.1; }
+    if (i === curPad) { m.material.color.setHex(0x36e05a); m.material.emissive.setHex(0x36e05a); m.material.emissiveIntensity = hovered ? 2.0 : 1.2; }
     else { m.material.color.setHex(0x2bd4ff); m.material.emissive.setHex(0x2bd4ff); m.material.emissiveIntensity = hovered ? 1.9 : 0.7; }
   }
-  // A square is joinable when it's within the party size AND either no box has been
-  // chosen yet, or it IS the chosen box — once one box is claimed, the rest lock.
-  function refreshActive() { pads.forEach((p, i) => { p.active = i < partySize && (chosenPad < 0 || i === chosenPad); }); }
-  // Changing the party size clears the roster so everyone re-piles into a fresh box.
-  function applyPadStates() {
-    chosenPad = -1; filled = 0;
-    refreshActive();
-    pads.forEach((p, i) => paintPad(p, i, false));
-    updateReady();
-  }
-  // A player customised and submitted. The first submit claims the shared box;
-  // every later player must submit in that SAME box, filling it up. Full -> start.
-  function submitPad(i) {
-    if (i < 0 || !pads[i] || i >= partySize) return;
-    if (chosenPad < 0) { chosenPad = i; filled = 1; }                 // first player claims the box
-    else if (i !== chosenPad) {                                       // wrong box — send them to the shared one
-      if (W.hud && W.hud.toast) W.hud.toast('Everyone piles into the SAME box — head to square ' + (chosenPad + 1) + '! 📦');
-      return;
-    } else if (filled < partySize) { filled += 1; }                  // another player joins the box
-    refreshActive();
-    leftPad = i; updateReady();
-    pads.forEach((p, k) => paintPad(p, k, false));
-    if (W.hud && W.hud.toast) W.hud.toast('✓ Player ' + filled + ' in the box (' + filled + '/' + partySize + ')');
-    closePad();
-    if (filled >= partySize) { if (hint) hint.innerHTML = '🚀 <b>Box full — entering the forest…</b>'; startGame(); }
-    else if (hint) hint.innerHTML = '🙌 <b>' + filled + '/' + partySize + ' in square ' + (chosenPad + 1) + '</b> — next player, step into the <b style="color:#8fe6ff">same box</b> and Submit';
-  }
-  function startParty() {
+  function refreshActive() { pads.forEach((p) => { p.active = confirmed; }); }   // boxes open once you've customised
+  function applyPadStates() { refreshActive(); pads.forEach((p, i) => paintPad(p, i, false)); }
+  function startCountdown(sec) {
     if (partyRunning) return;
-    partyRunning = true; partyEnd = performance.now() / 1000 + Math.min(120, partyLen);
-    updateParty();
-    if (hint) hint.innerHTML = '🎉 <b>Party started!</b> Run onto a numbered <b style="color:#8fe6ff">square</b> to join · <b>B</b> to leave · game begins when the timer ends';
+    partyRunning = true; partyEnd = performance.now() / 1000 + sec;
+    updateTimerUI();
   }
 
-  // entering / leaving a square opens the per-player customise panel
-  function padTag(n) {
+  // --- Auto customise on entry: name + look, then CONFIRM ---
+  function openCustomise() {
     const menu = document.getElementById('menu'); if (!menu) return;
     let t = document.getElementById('lobbyTag');
     if (!t) { t = document.createElement('div'); t.id = 'lobbyTag'; t.style.cssText = 'font:bold 16px "Trebuchet MS",sans-serif;color:#8fe6ff;letter-spacing:1px;margin-bottom:4px;'; menu.insertBefore(t, menu.firstChild); }
-    t.textContent = '🙂 PLAYER ' + n + ' — pick your look';
-  }
-  function ensureSubmitBtn() {
-    const menu = document.getElementById('menu'); if (!menu) return null;
+    t.textContent = '🙂 CUSTOMISE YOUR HERO — name & look';
     let b = document.getElementById('lobbySubmit');
     if (!b) {
       b = document.createElement('button'); b.id = 'lobbySubmit'; b.className = 'btn';
       b.style.cssText = 'background:#3c7a2c;border:2px solid #8fd36a;color:#fff;font:bold 15px "Trebuchet MS",sans-serif;border-radius:9px;padding:8px 18px;margin-top:8px;cursor:pointer;';
-      b.onclick = () => (inBox ? submitBox() : submitPad(curPad));
       menu.appendChild(b);
     }
-    return b;
-  }
-  function enterPad(i) {
-    padTag(filled + 1);                       // this square customises the NEXT player to join the box
-    const b = ensureSubmitBtn(); if (b) b.textContent = '✓ SUBMIT — Player ' + (filled + 1) + ' of ' + partySize;
+    b.textContent = '✓ CONFIRM'; b.onclick = confirmLook;
     toggleMenu(true);
-    if (hint) hint.innerHTML = '✨ <b>Square ' + (i + 1) + '</b> — customise <b>Player ' + (filled + 1) + '</b>, then <b>Submit</b> (Enter) · <b>B</b> to leave';
+    const ni = document.getElementById('nameInput'); if (ni) setTimeout(() => { try { ni.focus(); ni.select(); } catch (e) {} }, 40);
   }
-  function closePad() { toggleMenu(false); if (hint && !partyRunning) hint.innerHTML = HINT_HTML; }
+  function confirmLook() {
+    const ni = document.getElementById('nameInput');
+    if (ni && !ni.value.trim()) { if (W.hud && W.hud.toast) W.hud.toast('✍️ Type a name first!'); try { ni.focus(); } catch (e) {} return; }
+    confirmed = true; toggleMenu(false); applyPadStates();
+    if (hint) hint.innerHTML = HINT_HTML;
+  }
+
+  // --- Numbered boxes: walk into one -> pick how many players (1-5) -> 30s countdown -> start ---
+  function makeCountPicker() {
+    countEl = document.createElement('div');
+    countEl.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:13;display:none;text-align:center;' +
+      'background:rgba(14,20,12,.96);border:2px solid #8fd36a;border-radius:14px;padding:16px 22px;' +
+      "font:bold 15px 'Trebuchet MS',sans-serif;color:#eaf4dd;box-shadow:0 14px 44px rgba(0,0,0,.6);";
+    let btns = '';
+    for (let n = 1; n <= 5; n++) btns += '<button data-count="' + n + '" style="width:54px;height:54px;margin:4px;font-size:24px;font-weight:bold;background:#2a3320;border:2px solid #6f8a3a;border-radius:10px;color:#eaffe0;cursor:pointer;">' + n + '</button>';
+    countEl.innerHTML = '<div style="font-size:17px;color:#8fd36a;margin-bottom:10px;">🔒 HOW MANY PLAYERS?</div><div>' + btns + '</div><div style="font-size:11px;color:#9fb488;margin-top:8px;">press <b>1–5</b> to start a 30s countdown · press <b style="color:#ff9a9a">J</b> to leave the box</div>';
+    countEl.querySelectorAll('button[data-count]').forEach((b) => { b.onclick = () => pickCount(+b.dataset.count); });
+    document.body.appendChild(countEl);
+  }
+  function openCountPicker() {
+    if (partyRunning || !confirmed) return;      // customise first, and don't reopen once counting down
+    lockedIn = true; joined = 1;                 // stepping in the box locks you in — you can't walk out until you press J
+    countOpen = true; if (countEl) countEl.style.display = 'block';
+    if (document.pointerLockElement) document.exitPointerLock();
+    if (hint) hint.innerHTML = '🔒 <b>Locked in the box</b> — pick players <b>1</b>–<b>5</b>, or press <b style="color:#ff9a9a">J</b> to leave';
+  }
+  function closeCountPicker() {
+    countOpen = false; if (countEl) countEl.style.display = 'none';
+    if (hint && !partyRunning && !lockedIn) hint.innerHTML = HINT_HTML;
+  }
+  // press J while locked in a box — leave the party: unlock, cancel the countdown, walk back into a box to play
+  function leaveParty() {
+    if (!lockedIn) return;
+    lockedIn = false; joined = 0; partyRunning = false;
+    closeCountPicker(); updateTimerUI();
+    if (W.hud && W.hud.toast) W.hud.toast('🚪 You left the party — step back into a box to play');
+    if (hint) hint.innerHTML = '🚪 <b>You left the party</b> — walk back into a <b style="color:#8fe6ff">box</b> to play';
+  }
+  function pickCount(n) {
+    if (!countOpen) return;
+    partySize = n; closeCountPicker();
+    if (n === 1) { if (W.hud && W.hud.toast) W.hud.toast('🎮 Solo — entering the forest…'); startGame(); return; }   // 1 player -> start instantly
+    startCountdown(30);
+    if (W.hud && W.hud.toast) W.hud.toast('👥 ' + n + ' players — starting in 30s!');
+    if (hint) hint.innerHTML = '⏳ <b>Starting in 30s…</b> (press <b>Enter</b> to start now)';
+  }
+
+  // --- the ∞ JOIN BOX at the back: the Animal-Hostal start zone (first player arms a 2:00 timer, host starts anytime) ---
 
   // --- the infinite-capacity JOIN BOX at the back of the clearing ---
   function paintBoxCount() {
@@ -516,37 +496,19 @@
     wall(-(1.3 + stub / 2), d / 2, stub, t); wall(1.3 + stub / 2, d / 2, stub, t);
     for (const sx of [-w / 2, w / 2]) for (const sz of [-d / 2, d / 2]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, wallH + 0.6, 7), woodDk); p.position.set(sx, (wallH + 0.6) / 2 + 0.18, sz); p.castShadow = true; g.add(p); }
     // header sign + live player count floating over the box
-    const lab = makeSign('JOIN · ∞ PLAYERS'); lab.position.set(0, 3.1, -d / 2 - 0.05); lab.scale.set(4.2, 1.25, 1); g.add(lab);
+    const lab = makeSign('▶ START · ∞ PLAYERS'); lab.position.set(0, 3.1, -d / 2 - 0.05); lab.scale.set(4.2, 1.25, 1); g.add(lab);
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 92; boxCountCanvas = cv;
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
     boxCountTex = spr.material.map; spr.scale.set(3.0, 1.08, 1); spr.position.set(0, 2.15, 0); g.add(spr);
     paintBoxCount();
     return g;
   }
-  function enterBox() {
-    // the first player to step into the ∞ box arms a 2:00 countdown; the game
-    // starts when it ends (or sooner if the box fills / someone hits PLAY)
-    if (!partyRunning) { partyLen = 120; startParty(); if (W.hud && W.hud.toast) W.hud.toast('⏳ 2:00 timer started — pile into the box!'); }
-    padTag(boxCount + 1);
-    const b = ensureSubmitBtn(); if (b) b.textContent = '✓ SUBMIT — Player ' + (boxCount + 1) + ' of ' + partySize;
-    toggleMenu(true);
-    const ni = document.getElementById('nameInput'); if (ni) setTimeout(() => { try { ni.focus(); ni.select(); } catch (e) {} }, 30);   // ready to type your name
-    if (hint) hint.innerHTML = '📦 <b>In the box</b> — <b>type your name</b> & pick your look, then <b>Submit</b>. Game starts when all <b>' + partySize + '</b> submit · <b>B</b> to leave';
+  function enterStartZone() {                         // ∞ box = Animal-Hostal start zone
+    boxCount = 1; paintBoxCount();
+    if (!partyRunning) { partyLen = 120; startParty(); if (W.hud && W.hud.toast) W.hud.toast('⏳ 2:00 countdown started — press Enter to START now'); }
+    if (hint) hint.innerHTML = '📦 <b>In the START box</b> — press <b style="color:#8fd36a">Enter</b> to begin now · game auto-starts when the timer ends';
   }
-  function submitBox() {
-    boxCount += 1; paintBoxCount();
-    toggleMenu(false);
-    // auto-start the moment the party is complete: 1 submit for solo, everyone for a party
-    if (boxCount >= partySize) {
-      if (W.hud && W.hud.toast) W.hud.toast('✓ Party ready (' + boxCount + '/' + partySize + ')');
-      if (hint) hint.innerHTML = '🚀 <b>Everyone submitted — entering the forest…</b>';
-      startGame();
-    } else {
-      if (W.hud && W.hud.toast) W.hud.toast('✓ Player ' + boxCount + ' submitted (' + boxCount + '/' + partySize + ')');
-      if (hint) hint.innerHTML = '👥 <b>' + boxCount + '/' + partySize + ' submitted</b> — next player, step into the box & Submit';
-    }
-  }
-  function closeBox() { toggleMenu(false); if (hint && !partyRunning) hint.innerHTML = HINT_HTML; }
+  function leaveStartZone() { boxCount = 0; paintBoxCount(); if (hint && !menuOpen) hint.innerHTML = HINT_HTML; }
 
   function build() {
     group = new THREE.Group();
@@ -561,9 +523,9 @@
     for (let i = 0; i < 5; i++) {
       const px = -4.6 + i * 2.3, pz = 5.5;
       const pad = makePad(i + 1); pad.position.set(px, 0.2, pz); group.add(pad);
-      pads.push({ mesh: pad, x: px, z: pz, active: i < partySize });
+      pads.push({ mesh: pad, x: px, z: pz, active: true });
     }
-    // the walk-in JOIN BOX at the back — unlimited players
+    // the ∞ START box at the back — walk in to arm the 2:00 timer / start the game
     inBox = false; boxCount = 0;
     group.add(makeJoinBox());
     // 4 tree houses ringing the clearing, ramps + signs facing inward
@@ -640,6 +602,16 @@
     document.body.appendChild(fPrompt);
   }
 
+  // floating 2:00 countdown (top-centre) — appears once someone's armed it in the ∞ START box
+  function makeTimerUI() {
+    timerEl = document.createElement('div');
+    timerEl.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:12;display:none;' +
+      'background:rgba(12,16,10,.82);border:2px solid #8fd36a;border-radius:12px;padding:8px 18px;text-align:center;' +
+      "font:bold 15px 'Trebuchet MS',sans-serif;color:#eaf4dd;text-shadow:0 1px 2px #000;cursor:pointer;";
+    timerEl.onclick = () => { if (partyRunning) startGame(); };   // click the timer to start now too
+    document.body.appendChild(timerEl);
+  }
+
   function toggleMenu(openState) {
     menuOpen = (openState === undefined) ? !menuOpen : openState;
     const menu = document.getElementById('menu');
@@ -651,7 +623,8 @@
   function startGame(legacy) {
     if (started || starting) return; starting = true;
     W.LEGACY = !!legacy;        // v0.0 launcher passes true -> world/enemies build the bare legacy mode
-    const vt = document.getElementById('verTag'); if (vt) vt.textContent = legacy ? 'v0.0' : 'v0.1.1';
+    const ni = document.getElementById('nameInput'); if (ni && !ni.value.trim()) ni.value = 'Player';   // never block the start
+    const vt = document.getElementById('verTag'); if (vt) vt.textContent = legacy ? 'v0.0' : 'v1.10';
     if (document.pointerLockElement) document.exitPointerLock();
     const solo = document.getElementById('soloBtn');
     if (solo) solo.click();     // -> beginGame -> overlay gets .hidden -> teardown()
@@ -661,8 +634,8 @@
     if (started) return;
     raf = requestAnimationFrame(step);
     tphase += 0.02;
-    if (partyRunning) { updateParty(); if (performance.now() / 1000 >= partyEnd) { startGame(); } }
-    if (!menuOpen && !updatesOpen && !classesOpen) {
+    if (partyRunning) { updateTimerUI(); if (performance.now() / 1000 >= partyEnd) { startGame(); } }
+    if (!menuOpen && !updatesOpen && !classesOpen && !countOpen && !lockedIn) {
       // arrow keys turn/look — works with NO mouse lock needed
       const LK = 2.0 / 60;
       if (keys.ArrowLeft) yaw += LK; if (keys.ArrowRight) yaw -= LK;
@@ -678,19 +651,19 @@
         const r = Math.hypot(pos.x, pos.z); if (r > 215) { pos.x *= 215 / r; pos.z *= 215 / r; }
       }
     }
-    // which numbered square am I standing on? (locked squares can't be joined)
+    // which box am I standing on? -> open the "how many players?" picker
     let on = -1;
     for (let i = 0; i < pads.length; i++) { if (pads[i].active && Math.abs(pos.x - pads[i].x) < 0.95 && Math.abs(pos.z - pads[i].z) < 0.95) { on = i; break; } }
     pads.forEach((p, i) => paintPad(p, i, i === on));
     if (on !== curPad) {
       curPad = on;
-      if (on >= 0) { if (on !== leftPad) enterPad(on); }
-      else { leftPad = -1; if (menuOpen) closePad(); }
+      if (on >= 0) openCountPicker();   // stepped into a box -> pick player count
+      else if (!inBox) closeCountPicker();
     }
-    // the infinite JOIN BOX at the back — walk in to add a player, walk out to close
+    // the ∞ box at the back also opens the player-count picker
     const inNow = Math.abs(pos.x - BOX.x) < BOX.w / 2 && Math.abs(pos.z - BOX.z) < BOX.d / 2;
-    if (inNow && !inBox) { inBox = true; enterBox(); }
-    else if (!inNow && inBox) { inBox = false; closeBox(); }
+    if (inNow && !inBox) { inBox = true; openCountPicker(); }
+    else if (!inNow && inBox) { inBox = false; if (curPad < 0) closeCountPicker(); }
     // the Update Keeper bandit: gently bob, face the player, show an [F] prompt when you're up on his deck
     if (bandit) {
       bandit.position.y = banditBaseY + Math.sin(tphase * 2) * 0.05;
@@ -713,7 +686,7 @@
     }
     // stand on / climb the ramps + decks, with jumping (Space) and gravity
     const floorY = lobbyStand(pos.x, pos.z, pos.y - EYE) + EYE;
-    if (keys.Space && !menuOpen && !updatesOpen && !classesOpen && pos.y <= floorY + 0.06 && vy <= 0.01) vy = 7.4;   // hop when grounded
+    if (keys.Space && !menuOpen && !updatesOpen && !classesOpen && !lockedIn && pos.y <= floorY + 0.06 && vy <= 0.01) vy = 7.4;   // hop when grounded
     vy -= 24 / 60;                           // gravity (fixed ~60fps step)
     pos.y += vy / 60;
     if (pos.y <= floorY) { pos.y = floorY; vy = 0; }   // land, or ride ramps/decks up
@@ -732,6 +705,9 @@
     }
     keys[e.code] = true;
     if (MOVE_KEYS[e.code]) { e.preventDefault(); e.stopImmediatePropagation(); }
+    if (countOpen && /^Digit[1-5]$/.test(e.code)) { e.stopImmediatePropagation(); pickCount(+e.code.slice(5)); return; }   // pick player count
+    if (e.code === 'KeyJ' && lockedIn) { e.stopImmediatePropagation(); leaveParty(); return; }                            // J = leave the party / box
+    if (countOpen && (e.code === 'Escape' || e.code === 'KeyB')) { e.stopImmediatePropagation(); leaveParty(); return; }
     if (e.code === 'KeyF' && !menuOpen) {                       // talk to the Update Keeper / the Class Wolf
       if (updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
       else if (classesOpen) { e.stopImmediatePropagation(); closeClasses(); }
@@ -739,9 +715,8 @@
       else if (nearWolf) { e.stopImmediatePropagation(); openClasses(); }
     } else if ((e.code === 'Escape' || e.code === 'KeyB') && updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
     else if ((e.code === 'Escape' || e.code === 'KeyB') && classesOpen) { e.stopImmediatePropagation(); closeClasses(); }
-    else if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); if (inBox) submitBox(); else submitPad(curPad); }
-    else if (e.code === 'Enter' && !menuOpen && !updatesOpen && !classesOpen) { startGame(); }
-    else if ((e.code === 'KeyB' || e.code === 'Escape') && menuOpen) { e.stopImmediatePropagation(); leftPad = curPad; if (inBox) closeBox(); else closePad(); }
+    else if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); confirmLook(); }   // Enter = confirm your look
+    else if (e.code === 'Enter' && !menuOpen && !updatesOpen && !classesOpen && !countOpen && partyRunning) { startGame(); }   // start now (skip the countdown)
   };
   const onUp = (e) => { keys[e.code] = false; };
   const onCanvasDown = () => { if (started || menuOpen || updatesOpen || classesOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };
@@ -766,6 +741,8 @@
       if (sun) scene.remove(sun);
       if (hint) hint.remove();
       if (fPrompt) fPrompt.remove();
+      if (timerEl) timerEl.remove();
+      if (countEl) countEl.remove();
       if (updatesPanel) updatesPanel.remove();
       if (classesPanel) classesPanel.remove();
       if (partyBar) partyBar.remove();
@@ -798,7 +775,7 @@
       scene = W._scene; cam = W._cam;
       canvas = document.querySelector('#app canvas') || document.querySelector('canvas');
       if (!canvas) throw new Error('no canvas');
-      build(); makeHint(); makeFPrompt(); makePartyBar(); addControls(); slimOverlay(); step();
+      build(); makeHint(); makeFPrompt(); makeTimerUI(); makeCountPicker(); addControls(); slimOverlay(); openCustomise(); step();
     } catch (e) {
       // failsafe: never trap the player — restore the plain menu
       const menu = document.getElementById('menu'); if (menu) menu.style.display = '';

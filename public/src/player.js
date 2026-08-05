@@ -941,9 +941,55 @@
   player.interactF = function () {
     const b = player.starterBox;
     if (b && !b.opened && Math.hypot(player.pos.x - b.x, player.pos.z - b.z) < 3.0) { openStarterBox(); return; }
+    if (player.playerClass === 'ninja') { player.throwNinjaStar(); return; }   // Ninja: F hurls a shuriken
     if (player.wolfMeat > 0 && nearCampfire()) { cookMeat(); return; }
     player.drink();
   };
+
+  // --- Ninja stars (shuriken) ------------------------------------------------
+  function makeNinjaStar() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8b93a2, metalness: 0.7, roughness: 0.3, flatShading: true });
+    for (let a = 0; a < 4; a++) { const blade = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.02, 0.09), mat); blade.rotation.y = a * (Math.PI / 4); blade.castShadow = true; g.add(blade); }   // 8-point star
+    g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 8), new THREE.MeshStandardMaterial({ color: 0x2a2f38, metalness: 0.6, roughness: 0.4 })));
+    return g;
+  }
+  player.throwNinjaStar = function () {
+    if (!player.alive || !player.active) return;
+    if ((player._starCD || 0) > 0) return;
+    player._starCD = 0.24;                                    // rapid throws
+    const dir = player.camera.getWorldDirection(new THREE.Vector3());
+    const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.6); start.y -= 0.1;
+    const star = makeNinjaStar(); star.position.copy(start); player.scene.add(star);
+    if (!player._stars) player._stars = [];
+    player._stars.push({ mesh: star, vel: dir.clone().multiplyScalar(34), life: 0 });
+    if (W.sfx && W.sfx.swing) W.sfx.swing();
+  };
+  function updateStars(dt) {
+    if (player._starCD > 0) player._starCD -= dt;
+    const ss = player._stars; if (!ss || !ss.length) return;
+    for (let i = ss.length - 1; i >= 0; i--) {
+      const s = ss[i]; s.life += dt;
+      s.vel.y -= 9.8 * dt * 0.18;                             // slight drop
+      s.mesh.position.addScaledVector(s.vel, dt);
+      s.mesh.rotation.y += dt * 34;                           // spin
+      let done = false;
+      for (const e of W.enemies.list) {
+        if (!e.alive) continue;
+        const ep = e.group.position, hd = Math.hypot(s.mesh.position.x - ep.x, s.mesh.position.z - ep.z);
+        if (hd < 1.0 && s.mesh.position.y > ep.y - 0.2 && s.mesh.position.y < ep.y + 2.9) {
+          const dmg = 16;
+          if (W.net && W.net.role === 'client') W.net.sendHit(e.group.userData.id, dmg);
+          else { const killed = W.enemies.damage(e.group, dmg, player.pos); if (killed) player.creditKill(e.group.userData.kind); }
+          player.popDamage(e.group.position, dmg);
+          if (W.sfx && W.sfx.hit) W.sfx.hit();
+          done = true; break;
+        }
+      }
+      const groundY = W.world.heightAt(s.mesh.position.x, s.mesh.position.z);
+      if (done || s.life > 2.6 || s.mesh.position.y < groundY - 0.1) { player.scene.remove(s.mesh); ss.splice(i, 1); }
+    }
+  }
 
   player.eat = function () {
     if (!player.alive || !player.active) return;
@@ -1626,6 +1672,7 @@
     if (player.knightSummons > 0 && !player.knights) player.summonKnights();   // rally the King's guard once
     if (player.knights) player.stepKnights(dt);
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
+    updateStars(dt);                                               // ninja stars in flight (+ throw cooldown)
     if (player._dmgNums && player._dmgNums.length) updateDamageNums(dt);
     if (player._treeBars && player._treeBars.length) updateTreeBars();
     // context [F] prompt: open your starter box, or cook raw meat at a campfire
@@ -1761,6 +1808,7 @@
       player.hunger = U.clamp(player.hunger - 0.45 * dt, 0, 100);                   // lasts longer
       player.thirst = U.clamp(player.thirst - 1.15 * dt, 0, 100);
     }
+    if (player.playerClass === 'ninja') player.thirst = 100;                        // Ninja never thirsts (F throws stars, not drink)
     if (player.hunger <= 0) player.takeDamage(2.2 * dt);
     if (player.thirst <= 0) player.takeDamage(2.0 * dt);
     if (player.hunger > 40 && player.thirst > 25 && player._t - player.lastHurt > 4) {

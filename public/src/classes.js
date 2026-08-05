@@ -44,8 +44,20 @@
       perks: ['Starts with a katana 🗡️', '10,000 health — nearly unkillable', '−50% move speed'],
       spawnHealth: 10000, speedMult: 0.5, katana: true,
     },
+    ninja: {
+      id: 'ninja', name: 'Ninja', emoji: '🥷', cost: 400,
+      blurb: 'A blur of shadow — blindingly fast and deadly with shuriken, but frail.',
+      perks: ['5× move speed', 'Throw ninja stars with F ⭐', 'Fragile — only 50 health'],
+      spawnHealth: 50, speedMult: 5, ninja: true,
+    },
+    lumberjack: {
+      id: 'lumberjack', name: 'Lumberjack', emoji: '🪓', cost: 150,
+      blurb: 'A burly woodsman whose axe is an absolute monster — it one-shots most foes and fells trees in a single swing.',
+      perks: ['Starts with an OP mega-axe 🪓', 'Massive melee damage (one-shots most foes)', 'Fells any tree in one hit'],
+      axe: true, attackDmg: 500, axeLevel: 40,
+    },
   };
-  const ORDER = ['scout', 'ranger', 'samurai', 'king', 'hunter'];   // the shop list (villager is the free default)
+  const ORDER = ['lumberjack', 'scout', 'ninja', 'ranger', 'samurai', 'king', 'hunter'];   // the shop list (villager is the free default)
 
   function num(k, d) { const v = parseInt(LS.getItem(k), 10); return isNaN(v) ? d : v; }
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }
@@ -83,6 +95,9 @@
       if (d.rifle) { p.hasRifle = true; p.rounds = d.rifle; }
       if (d.deagle) { p.hasDeagle = true; p.deagleRounds = d.deagle; }   // Ranger: bottomless Deagle
       if (d.katana) { p.hasKatana = true; p.currentWeapon = 'katana'; }  // Samurai: starts with a katana
+      if (d.axe) { p.hasAxe = true; p.currentWeapon = 'axe'; }           // Lumberjack: starts with the axe
+      if (d.attackDmg) p.attackDmg = d.attackDmg;                        // OP melee damage
+      if (d.axeLevel) p.axeLevel = d.axeLevel;                           // fells trees fast
       p.canTameBears = !!d.tameBears;
       p.knightSummons = d.knights || 0;
       p.treelingCoins = classes.coins();   // seed the in-game counter from the saved wallet
