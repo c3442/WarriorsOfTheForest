@@ -191,31 +191,89 @@
     document.body.appendChild(p);
     return p;
   }
-  function refreshClasses() {
-    if (!classesPanel || !W.classes) return;
+  let classesView = null;   // null = the class LIST; a class id = that class's ability detail
+  let lastUpgrade = null;   // {id, lvl, list[]} — shows "what upgraded" after an upgrade
+  // describe what a Lv2/Lv3 upgrade improves for a class
+  function upgradeSummary(id, lvl) {
+    const d = W.classes.DEFS[id]; const hb = lvl === 2 ? 1.8 : 3.2, sb = lvl === 2 ? 1.3 : 1.7; const out = [];
+    out.push('🩹 Max health ×' + hb);
+    out.push('🏃 Move speed ×' + sb);
+    if (d.knights) out.push('⚔️ Knight guard ×' + hb + ' (' + Math.round(d.knights * hb) + ' knights)');
+    if (d.rifle) out.push('🎯 Rifle ammo ×' + hb);
+    if (d.reviveChance) out.push('✨ Revive chance → ' + Math.round(Math.min(1, d.reviveChance + (lvl - 1) * 0.22) * 100) + '%');
+    if (d.attackDmg) out.push('💥 Attack damage ×' + (lvl === 2 ? 1.6 : 2.5));
+    if (d.engineer) out.push('🗼 ' + (4 + lvl * 2) + ' sentries + ×' + lvl + ' trap/turret damage');
+    return out;
+  }
+  const kbd = (t) => '<b style="background:#22303f;border:1px solid #3a5570;border-radius:4px;padding:0 5px;">' + t + '</b>';
+  // the Buy / Equip / Equipped action for a class
+  function classAction(id) {
+    const K = W.classes, d = K.DEFS[id], owned = K.owned(id), equipped = K.selected() === id, afford = K.coins() >= d.cost;
+    if (equipped) return '<div style="text-align:center;padding:11px;background:rgba(60,140,80,.18);border:2px solid #8fd36a;border-radius:10px;color:#8fd36a;font-weight:bold;font-size:15px;">✓ EQUIPPED</div>';
+    if (owned) return '<button data-act="select" data-id="' + id + '" style="width:100%;background:#2f5a8a;border:2px solid #8fbfff;color:#fff;font:bold 15px sans-serif;border-radius:10px;padding:11px;cursor:pointer;">⚔️ EQUIP THIS CLASS</button>';
+    return '<button data-act="buy" data-id="' + id + '" ' + (afford ? '' : 'disabled') + ' style="width:100%;background:' + (afford ? '#3c7a2c' : '#33383f') + ';border:2px solid ' + (afford ? '#8fd36a' : '#556') + ';color:' + (afford ? '#fff' : '#9aa') + ';font:bold 15px sans-serif;border-radius:10px;padding:11px;cursor:' + (afford ? 'pointer' : 'not-allowed') + ';">' + (afford ? '🪙 Unlock for ' + d.cost : '🔒 Need ' + (d.cost - K.coins()) + ' more 🪙') + '</button>';
+  }
+  function renderClassList() {
     const K = W.classes, coins = K.coins(), sel = K.selected();
     let rows = '';
     K.ORDER.forEach((id) => {
-      const d = K.DEFS[id], owned = K.owned(id), equipped = sel === id, afford = coins >= d.cost;
-      const perks = d.perks.map((x) => '<li>' + x + '</li>').join('');
-      const btn = equipped
-        ? '<span style="color:#8fd36a;font-weight:bold;font-size:14px;">✓ EQUIPPED</span>'
-        : owned
-          ? '<button data-act="select" data-id="' + id + '" style="background:#2f5a8a;border:2px solid #8fbfff;color:#fff;font:bold 13px sans-serif;border-radius:8px;padding:8px 14px;cursor:pointer;">EQUIP</button>'
-          : '<button data-act="buy" data-id="' + id + '" ' + (afford ? '' : 'disabled') + ' style="background:' + (afford ? '#3c7a2c' : '#3a3f46') + ';border:2px solid ' + (afford ? '#8fd36a' : '#586' ) + ';color:' + (afford ? '#fff' : '#9aa') + ';font:bold 13px sans-serif;border-radius:8px;padding:8px 14px;cursor:' + (afford ? 'pointer' : 'not-allowed') + ';">🪙 ' + d.cost + '</button>';
-      rows += '<div style="display:flex;gap:12px;align-items:center;background:rgba(0,0,0,.3);border:1px solid ' + (equipped ? '#8fd36a' : '#2f4560') + ';border-radius:10px;padding:11px 12px;margin-bottom:10px;">' +
-        '<div style="font-size:30px;width:40px;text-align:center;">' + d.emoji + '</div>' +
-        '<div style="flex:1;"><div style="font-size:16px;font-weight:bold;color:#cfe4ff;">' + d.name + '</div>' +
-        '<div style="font-size:12px;color:#a9bdd6;margin:2px 0 4px;line-height:1.35;">' + d.blurb + '</div>' +
-        '<ul style="margin:0;padding-left:16px;font-size:11px;color:#8fd36a;line-height:1.4;">' + perks + '</ul></div>' +
-        '<div style="min-width:78px;text-align:center;">' + btn + '</div>' +
-      '</div>';
+      const d = K.DEFS[id], owned = K.owned(id), equipped = sel === id;
+      const rest = equipped ? 'rgba(60,140,80,.14)' : 'rgba(255,255,255,.03)';
+      const badge = equipped ? '<span style="color:#8fd36a;font-weight:bold;font-size:12px;">✓ EQUIPPED</span>'
+        : owned ? '<span style="color:#8fbfff;font-weight:bold;font-size:12px;">OWNED</span>'
+        : '<span style="color:#ffd873;font-weight:bold;font-size:14px;">🪙 ' + d.cost + '</span>';
+      rows += '<div data-view="' + id + '" style="display:flex;gap:12px;align-items:center;background:' + rest + ';border:1px solid ' + (equipped ? '#8fd36a' : '#2f4560') + ';border-radius:11px;padding:11px 14px;margin-bottom:8px;cursor:pointer;" ' +
+        'onmouseover="this.style.background=\'rgba(120,170,220,.16)\'" onmouseout="this.style.background=\'' + rest + '\'">' +
+        '<div style="font-size:29px;width:40px;text-align:center;">' + d.emoji + '</div>' +
+        '<div style="flex:1;min-width:0;"><div style="font-size:16px;font-weight:bold;color:#eaf2fb;">' + d.name + '</div>' +
+        '<div style="font-size:11.5px;color:#9fb4cc;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + d.blurb + '</div></div>' +
+        '<div style="text-align:right;min-width:66px;">' + badge + '</div>' +
+        '<div style="color:#5f7fa0;font-size:20px;">›</div></div>';
     });
-    classesPanel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
-      '<div style="font-size:18px;font-weight:bold;letter-spacing:1px;color:#8fbfff;">🐺 THE CLASS WOLF</div>' +
-      '<div style="font-size:15px;font-weight:bold;color:#ffd873;">🪙 ' + coins + ' treeling</div></div>' +
-      '<div style="font-size:12px;color:#9fb4cc;margin-bottom:12px;">"Choose your calling, warrior — the woods reward the bold."</div>' + rows +
-      '<div style="font-size:11px;color:#7f9ab8;text-align:center;margin-top:2px;">press <b style="background:#22303f;border:1px solid #3a5570;border-radius:4px;padding:0 5px;">F</b> or <b style="background:#22303f;border:1px solid #3a5570;border-radius:4px;padding:0 5px;">Esc</b> to close</div>';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+      '<div style="font-size:19px;font-weight:bold;letter-spacing:1px;color:#8fbfff;">🐺 THE CLASS WOLF</div>' +
+      '<div style="font-size:15px;font-weight:bold;color:#ffd873;">🪙 ' + coins + '</div></div>' +
+      '<div style="font-size:12px;color:#9fb4cc;margin-bottom:12px;">Tap a class to see its abilities.</div>' + rows +
+      '<div style="font-size:11px;color:#7f9ab8;text-align:center;margin-top:6px;">' + kbd('F') + ' / ' + kbd('Esc') + ' to close</div>';
+  }
+  // Level display + Upgrade button (Lv2 = 2x price, Lv3 = 5x price)
+  function upgradeAction(id) {
+    const K = W.classes; if (!K.owned(id)) return '';
+    const lv = K.level(id), stars = '★'.repeat(lv) + '☆'.repeat(3 - lv);
+    let btn;
+    if (lv >= 3) btn = '<div style="text-align:center;padding:9px;color:#ffd873;font-weight:bold;">★ MAX LEVEL ★</div>';
+    else {
+      const cost = K.upgradeCost(id), afford = K.coins() >= cost;
+      btn = '<button data-act="upgrade" data-id="' + id + '" ' + (afford ? '' : 'disabled') + ' style="width:100%;background:' + (afford ? '#a06a1a' : '#33383f') + ';border:2px solid ' + (afford ? '#ffd873' : '#556') + ';color:' + (afford ? '#fff' : '#9aa') + ';font:bold 14px sans-serif;border-radius:10px;padding:10px;margin-top:8px;cursor:' + (afford ? 'pointer' : 'not-allowed') + ';">' + (afford ? '⬆️ Upgrade to Lv' + (lv + 1) + ' — 🪙 ' + cost : '🔒 Lv' + (lv + 1) + ': need ' + (cost - K.coins()) + ' more 🪙') + '</button>';
+    }
+    return '<div style="margin-top:14px;font-size:12px;color:#ffd873;font-weight:bold;letter-spacing:1px;">LEVEL ' + lv + '/3 <span style="letter-spacing:2px;">' + stars + '</span> — higher = way stronger</div>' + btn;
+  }
+  function renderClassDetail(id) {
+    const K = W.classes, d = K.DEFS[id], owned = K.owned(id);
+    let upBox = '';
+    if (lastUpgrade && lastUpgrade.id === id) {
+      upBox = '<div style="background:rgba(60,140,80,.16);border:2px solid #8fd36a;border-radius:11px;padding:11px 13px;margin-bottom:13px;">' +
+        '<div style="font-size:14px;font-weight:bold;color:#8fd36a;margin-bottom:6px;">✓ UPGRADED TO LEVEL ' + lastUpgrade.lvl + '!</div>' +
+        '<div style="font-size:12.5px;color:#dfeaf5;line-height:1.7;">' + lastUpgrade.list.map((x) => '• ' + x).join('<br>') + '</div></div>';
+    }
+    const perks = d.perks.map((x) => '<li style="margin-bottom:6px;">' + x + '</li>').join('');
+    const tag = owned ? '<span style="font-size:12px;color:#8fbfff;border:1px solid #8fbfff;border-radius:5px;padding:1px 7px;margin-left:6px;vertical-align:middle;">OWNED</span>'
+      : '<span style="font-size:14px;color:#ffd873;margin-left:6px;">🪙 ' + d.cost + '</span>';
+    return '<button data-back="1" style="background:none;border:none;color:#8fbfff;font:bold 14px sans-serif;cursor:pointer;padding:0 0 10px;">‹ All classes</button>' + upBox +
+      '<div style="display:flex;gap:14px;align-items:center;margin-bottom:12px;">' +
+        '<div style="font-size:52px;line-height:1;">' + d.emoji + '</div>' +
+        '<div><div style="font-size:23px;font-weight:bold;color:#eaf2fb;">' + d.name + tag + '</div>' +
+        '<div style="font-size:12.5px;color:#9fb4cc;margin-top:4px;line-height:1.4;">' + d.blurb + '</div></div></div>' +
+      '<div style="font-size:12px;font-weight:bold;letter-spacing:1.5px;color:#8fd36a;margin:4px 0 8px;">⚡ ABILITIES</div>' +
+      '<ul style="margin:0 0 16px;padding-left:20px;font-size:14px;color:#dfeaf5;line-height:1.5;">' + perks + '</ul>' +
+      classAction(id) + upgradeAction(id);
+  }
+  function refreshClasses() {
+    if (!classesPanel || !W.classes) return;
+    if (classesView && !W.classes.DEFS[classesView]) classesView = null;
+    classesPanel.innerHTML = classesView ? renderClassDetail(classesView) : renderClassList();
+    classesPanel.querySelectorAll('[data-view]').forEach((el) => { el.onclick = () => { classesView = el.dataset.view; lastUpgrade = null; refreshClasses(); }; });
+    const back = classesPanel.querySelector('[data-back]'); if (back) back.onclick = () => { classesView = null; lastUpgrade = null; refreshClasses(); };
     classesPanel.querySelectorAll('button[data-act]').forEach((b) => {
       b.onclick = () => {
         const id = b.dataset.id;
@@ -223,13 +281,18 @@
           const r = W.classes.buy(id);
           if (!r.ok && r.reason === 'poor') { if (W.hud && W.hud.toast) W.hud.toast('Need ' + r.need + ' more 🪙'); }
           else if (r.ok && W.hud && W.hud.toast) W.hud.toast('Unlocked ' + W.classes.DEFS[id].name + '! ' + W.classes.DEFS[id].emoji);
-        } else { W.classes.select(id); }
+        } else if (b.dataset.act === 'upgrade') {
+          const r = W.classes.upgrade(id);
+          if (!r.ok && r.reason === 'poor') { if (W.hud && W.hud.toast) W.hud.toast('Need ' + r.need + ' more 🪙 to upgrade'); }
+          else if (r.ok) { lastUpgrade = { id: id, lvl: r.level, list: upgradeSummary(id, r.level) }; if (W.hud && W.hud.toast) W.hud.toast('⬆️ ' + W.classes.DEFS[id].name + ' → Lv' + r.level + '!'); }
+        } else { W.classes.select(id); if (W.hud && W.hud.toast) W.hud.toast('Equipped ' + W.classes.DEFS[id].name + ' ' + W.classes.DEFS[id].emoji); }
         refreshClasses();
       };
     });
   }
   function openClasses() {
     if (!classesPanel) classesPanel = makeClassesPanel();
+    classesView = null;
     refreshClasses();
     classesOpen = true; classesPanel.style.display = 'block';
     if (fPrompt) fPrompt.style.display = 'none';
@@ -714,7 +777,7 @@
       else if (nearBandit) { e.stopImmediatePropagation(); openUpdates(); }
       else if (nearWolf) { e.stopImmediatePropagation(); openClasses(); }
     } else if ((e.code === 'Escape' || e.code === 'KeyB') && updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
-    else if ((e.code === 'Escape' || e.code === 'KeyB') && classesOpen) { e.stopImmediatePropagation(); closeClasses(); }
+    else if ((e.code === 'Escape' || e.code === 'KeyB') && classesOpen) { e.stopImmediatePropagation(); if (classesView) { classesView = null; refreshClasses(); } else closeClasses(); }
     else if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); confirmLook(); }   // Enter = confirm your look
     else if (e.code === 'Enter' && !menuOpen && !updatesOpen && !classesOpen && !countOpen && partyRunning) { startGame(); }   // start now (skip the countdown)
   };

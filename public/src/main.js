@@ -60,9 +60,18 @@
     });
 
     // Pointer-capture drives play/pause: captured = playing, released (Esc) = paused.
+    // A double-click can briefly drop the lock; wait a moment before pausing so a fast
+    // re-lock (the 2nd click) doesn't flash the pause menu — only a real Esc-out pauses.
+    let _plTimer = null;
     document.addEventListener('pointerlockchange', () => {
       if (!started || !W.player.alive) return;
-      setPause(document.pointerLockElement !== renderer.domElement);
+      if (document.pointerLockElement === renderer.domElement) {
+        if (_plTimer) { clearTimeout(_plTimer); _plTimer = null; }
+        setPause(false);
+      } else {
+        if (_plTimer) clearTimeout(_plTimer);
+        _plTimer = setTimeout(() => { _plTimer = null; if (document.pointerLockElement !== renderer.domElement) setPause(true); }, 300);
+      }
     });
     window.addEventListener('resize', onResize);
     clock = new THREE.Clock();

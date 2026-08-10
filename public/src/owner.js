@@ -308,7 +308,7 @@
   const bolts = [], nades = [], fx = [];
 
   // ---- blaster --------------------------------------------------------------
-  const BLAST_CD = 0.13, BLAST_DMG = 34, BLAST_SPEED = 90;
+  const BLAST_CD = 0.1, BLAST_DMG = 500, BLAST_SPEED = 110;   // super blaster — shreds even Sir Buffington
   let lastBlast = 0;
   const boltGeo = new THREE.SphereGeometry(0.16, 8, 8);
   const boltMat = new THREE.MeshStandardMaterial({ color: 0x9ff0ff, emissive: 0x33ccff, emissiveIntensity: 1.6, roughness: 0.4 });
@@ -330,8 +330,9 @@
       for (const e of list) {
         if (!e.alive) continue;
         const ep = e.group.position;
-        if (Math.hypot(b.mesh.position.x - ep.x, b.mesh.position.z - ep.z) < 1.3 &&
-            b.mesh.position.y > ep.y - 0.3 && b.mesh.position.y < ep.y + 2.6) {
+        const big = e.buffBoss || e.isBoss;                    // bosses are huge — give bolts a fatter hitbox
+        if (Math.hypot(b.mesh.position.x - ep.x, b.mesh.position.z - ep.z) < (big ? 3.0 : 1.6) &&
+            b.mesh.position.y > ep.y - 0.4 && b.mesh.position.y < ep.y + (big ? 4.2 : 3.0)) {
           if (host && W.enemies.damage) W.enemies.damage(e.group, BLAST_DMG, { x: b.mesh.position.x, z: b.mesh.position.z });
           hit = true; break;
         }

@@ -1481,6 +1481,14 @@
     if (W.sfx) { if (player.health <= 0) W.sfx.die(); else W.sfx.hurt(); }
     if (player.health <= 0) {
       player.health = 0;
+      // Survivor class: chance to cheat death — spring back up instead of dying
+      if ((player.reviveChance || 0) > 0 && Math.random() < player.reviveChance) {
+        player.health = Math.round((player.maxHealth || 100) * 0.5);
+        player.lastHurt = player._t;
+        if (W.hud && W.hud.banner) W.hud.banner('✨ SURVIVOR!', 'You cheated death and sprang back up!', '#8fe6ff');
+        if (W.sfx && W.sfx.heal) W.sfx.heal();
+        return;
+      }
       if (W.net && W.net.role) {
         // co-op: turn into a ghost — reach a teammate within 15s to revive
         player.enterGhost();
@@ -1667,8 +1675,80 @@
     }
   };
 
+  // --- Engineer: fortify the base with barbed wire, spikes & sentry turrets ---
+  function makeBarbedSeg() {
+    const g = new THREE.Group();
+    const post = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, flatShading: true });
+    const wire = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.6, metalness: 0.4, flatShading: true });
+    for (const t of [-0.9, 0, 0.9]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.75, 6), post); p.position.set(t, 0.37, 0); p.castShadow = true; g.add(p); }
+    for (const hy of [0.3, 0.58]) { const w = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.03, 0.03), wire); w.position.set(0, hy, 0); g.add(w); }
+    for (let i = -3; i <= 3; i++) { const b = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.13, 4), wire); b.position.set(i * 0.3, 0.44, 0); b.rotation.z = Math.PI / 4; g.add(b); }
+    return g;
+  }
+  function makeSpikeCluster() {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x7a5a34, roughness: 1, flatShading: true });
+    for (let i = 0; i < 5; i++) { const s = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.9, 5), mat); s.position.set((Math.random() - 0.5) * 0.7, 0.45, (Math.random() - 0.5) * 0.7); s.rotation.set((Math.random() - 0.5) * 0.4, 0, (Math.random() - 0.5) * 0.4); s.castShadow = true; g.add(s); }
+    return g;
+  }
+  function makeSentry() {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a4326, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x33363b, roughness: 0.6, metalness: 0.4, flatShading: true });
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.5, 8), wood); post.position.y = 0.75; post.castShadow = true; g.add(post);
+    const head = new THREE.Group(); head.position.y = 1.6;
+    head.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.32, 0.5), dark));
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8), dark); barrel.rotation.x = Math.PI / 2; barrel.position.z = 0.42; head.add(barrel);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), new THREE.MeshStandardMaterial({ color: 0xff4a3a, emissive: 0xff2a1a, emissiveIntensity: 1.4 })); eye.position.set(0, 0.05, 0.28); head.add(eye);
+    g.add(head); g.userData.head = head;
+    return g;
+  }
+  player.fortifyBase = function () {
+    const S = player.scene, W2 = W.world; if (!S || !W2) return;
+    if (!W2.hazards) W2.hazards = [];
+    const lvl = player.classLevel || 1;                              // Lv2/Lv3 Engineer = deadlier defenses
+    const N = 44;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      let x = Math.cos(a) * 11, z = Math.sin(a) * 11;                 // barbed-wire ring (walk-through: hazard only, no collider)
+      const bw = makeBarbedSeg(); bw.position.set(x, W2.heightAt(x, z), z); bw.rotation.y = a + Math.PI / 2; S.add(bw);
+      W2.hazards.push({ x, z, r: 1.3, dps: 16 * lvl });
+      x = Math.cos(a) * 12.3; z = Math.sin(a) * 12.3;                 // spike ring outside it
+      const sp = makeSpikeCluster(); sp.position.set(x, W2.heightAt(x, z), z); S.add(sp);
+      W2.hazards.push({ x, z, r: 1.1, dps: 24 * lvl });
+    }
+    player._sentries = [];
+    const NS = 4 + lvl * 2;                                          // Lv1=6, Lv2=8, Lv3=10 sentries
+    for (let i = 0; i < NS; i++) {
+      const a = (i / NS) * Math.PI * 2 + 0.3, x = Math.cos(a) * 8.5, z = Math.sin(a) * 8.5, gy = W2.heightAt(x, z);
+      const g = makeSentry(); g.position.set(x, gy, z); S.add(g);                // no collider -> walk-through
+      player._sentries.push({ g, head: g.userData.head, x, z, y: gy + 1.6, cd: U.rand(0, 0.3) });
+    }
+    if (W.hud && W.hud.banner) W.hud.banner('🛠️ ENGINEER', 'Base fortified — barbed wire, spikes & ' + NS + ' sentries deployed!', '#ffd24a');
+  };
+  function stepSentries(dt) {
+    const ss = player._sentries; if (!ss || !ss.length) return;
+    const foes = (W.enemies && W.enemies.list) || [];
+    const host = !(W.net && W.net.role === 'client');
+    for (const t of ss) {
+      t.cd -= dt;
+      let best = null, bd = 28;
+      for (const e of foes) { if (!e.alive) continue; const d = Math.hypot(e.group.position.x - t.x, e.group.position.z - t.z); if (d < bd) { bd = d; best = e; } }
+      if (best) {
+        t.head.rotation.y = Math.atan2(best.group.position.x - t.x, best.group.position.z - t.z);
+        if (t.cd <= 0) {
+          t.cd = 0.32;                                                // rapid fire
+          const sdmg = 20 * (player.classLevel || 1);                 // sentries hit harder at higher Engineer levels
+          if (host && W.enemies.damage) { const killed = W.enemies.damage(best.group, sdmg, { x: t.x, z: t.z }); if (player.popDamage) player.popDamage(best.group.position, sdmg); if (killed && player.creditKill) player.creditKill(best.kind); }
+        }
+      }
+    }
+  }
+
   player.update = function (dt) {
     player._t += dt;
+    if (player.isEngineer && !player._fortified) { player._fortified = true; player.fortifyBase(); }   // build defenses once
+    if (player._sentries) stepSentries(dt);
     if (player.knightSummons > 0 && !player.knights) player.summonKnights();   // rally the King's guard once
     if (player.knights) player.stepKnights(dt);
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping

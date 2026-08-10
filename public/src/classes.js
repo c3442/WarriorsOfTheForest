@@ -5,14 +5,16 @@
 (function () {
   const W = (window.WOTF = window.WOTF || {});
   const LS = window.localStorage;
-  const KEY_COINS = 'wotf_treelings', KEY_OWNED = 'wotf_classes', KEY_SEL = 'wotf_class';
+  const KEY_COINS = 'wotf_treelings', KEY_OWNED = 'wotf_classes', KEY_SEL = 'wotf_class', KEY_LVLS = 'wotf_classlvls';
+  let OWNER = false; try { OWNER = LS.getItem('wotf_owner') === 'lin8up'; } catch (e) {}   // the maker has infinite coins
 
   // Class definitions. `villager` is the free default everyone starts with.
   const DEFS = {
     villager: {
-      id: 'villager', name: 'Villager', emoji: '🪓', cost: 0, free: true,
-      blurb: 'The plain woodsman — balanced stats, starts with an axe.',
-      perks: ['Balanced health & speed'],
+      id: 'villager', name: 'Survivor', emoji: '🪓', cost: 0, free: true,
+      blurb: 'The hardy woodsman — balanced stats, and a 50% chance to cheat death when killed.',
+      perks: ['Balanced health & speed', '50% chance to revive on death ✨'],
+      reviveChance: 0.5,
     },
     scout: {
       id: 'scout', name: 'Scout', emoji: '🏃', cost: 10,
@@ -47,8 +49,14 @@
     ninja: {
       id: 'ninja', name: 'Ninja', emoji: '🥷', cost: 400,
       blurb: 'A blur of shadow — blindingly fast and deadly with shuriken, but frail.',
-      perks: ['5× move speed', 'Throw ninja stars with F ⭐', 'Fragile — only 50 health'],
-      spawnHealth: 50, speedMult: 5, ninja: true,
+      perks: ['10× move speed', 'Throw ninja stars with F ⭐', 'Fragile — only 50 health'],
+      spawnHealth: 50, speedMult: 10, ninja: true,
+    },
+    engineer: {
+      id: 'engineer', name: 'Engineer', emoji: '🛠️', cost: 2500,
+      blurb: 'Master of defense — your base loads in pre-fortified with barbed wire, spikes and auto-sentries.',
+      perks: ['Base pre-built with barbed wire & spikes', 'Auto-firing sentry turrets 🗼', 'All defenses are walk-through for you'],
+      engineer: true,
     },
     lumberjack: {
       id: 'lumberjack', name: 'Lumberjack', emoji: '🪓', cost: 150,
@@ -57,21 +65,35 @@
       axe: true, attackDmg: 500, axeLevel: 40,
     },
   };
-  const ORDER = ['lumberjack', 'scout', 'ninja', 'ranger', 'samurai', 'king', 'hunter'];   // the shop list (villager is the free default)
+  const ORDER = ['lumberjack', 'scout', 'ninja', 'ranger', 'samurai', 'engineer', 'king', 'hunter'];   // the shop list (villager is the free default)
 
   function num(k, d) { const v = parseInt(LS.getItem(k), 10); return isNaN(v) ? d : v; }
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }
   function saveOwned(s) { LS.setItem(KEY_OWNED, JSON.stringify([...s])); }
 
-  // first run: seed a small stash so the Scout is affordable right away
-  if (LS.getItem(KEY_COINS) == null) LS.setItem(KEY_COINS, '30');
+  // start with no coins — earn them all by killing bandits (5 kills = 1 coin)
+  if (LS.getItem(KEY_COINS) == null) LS.setItem(KEY_COINS, '0');
 
   const classes = (W.classes = {
     DEFS, ORDER,
-    coins() { return num(KEY_COINS, 0); },
+    coins() { return OWNER ? 999999999 : num(KEY_COINS, 0); },   // owner: effectively infinite
     setCoins(n) { LS.setItem(KEY_COINS, String(Math.max(0, n | 0))); },
     addCoins(n) { const v = classes.coins() + (n | 0); classes.setCoins(v); return v; },
     owned(id) { return id === 'villager' || ownedSet().has(id); },
+    // --- class levels: Lv1 base, Lv2 = 2x price, Lv3 = 5x price, each way stronger ---
+    level(id) { let m; try { m = JSON.parse(LS.getItem(KEY_LVLS) || '{}'); } catch (e) { m = {}; } return Math.max(1, Math.min(3, m[id] || 1)); },
+    upgradeCost(id) { const d = DEFS[id]; if (!d) return null; const lv = classes.level(id); if (lv >= 3) return null; const base = d.cost || 100; return base * (lv === 1 ? 2 : 5); },
+    upgrade(id) {
+      const d = DEFS[id]; if (!d) return { ok: false, reason: 'unknown' };
+      if (!classes.owned(id)) return { ok: false, reason: 'notowned' };
+      const lv = classes.level(id); if (lv >= 3) return { ok: false, reason: 'maxed' };
+      const cost = classes.upgradeCost(id), c = classes.coins();
+      if (c < cost) return { ok: false, reason: 'poor', need: cost - c };
+      classes.setCoins(c - cost);
+      let m; try { m = JSON.parse(LS.getItem(KEY_LVLS) || '{}'); } catch (e) { m = {}; }
+      m[id] = lv + 1; LS.setItem(KEY_LVLS, JSON.stringify(m));
+      return { ok: true, level: lv + 1 };
+    },
     selected() { const s = LS.getItem(KEY_SEL); return s && DEFS[s] ? s : 'villager'; },
     select(id) { if (classes.owned(id)) { LS.setItem(KEY_SEL, id); return true; } return false; },
     // Try to buy a class. Returns {ok, reason, need}.
@@ -101,6 +123,21 @@
       p.canTameBears = !!d.tameBears;
       p.knightSummons = d.knights || 0;
       p.treelingCoins = classes.coins();   // seed the in-game counter from the saved wallet
+      if (OWNER) p.wood = 999999999999999999999999999999999999;   // maker perk: effectively infinite wood
+      p.reviveChance = d.reviveChance || 0;         // Survivor: chance to cheat death
+      p.isEngineer = !!d.engineer;                  // Engineer: fortify the base on spawn
+      // --- level scaling: Lv2/Lv3 make the class way better ---
+      const lvl = classes.level(d.id); p.classLevel = lvl;
+      if (lvl > 1) {
+        const hb = lvl === 2 ? 1.8 : 3.2;           // health & summon boost
+        const sb = lvl === 2 ? 1.3 : 1.7;           // speed boost
+        p.maxHealth = Math.round(p.maxHealth * hb); p.health = p.maxHealth;
+        if (p.speedMult) p.speedMult *= sb;
+        if (p.knightSummons) p.knightSummons = Math.round(p.knightSummons * hb);
+        if (p.rounds) p.rounds = Math.round(p.rounds * hb);
+        if (p.reviveChance) p.reviveChance = Math.min(1, p.reviveChance + (lvl - 1) * 0.22);
+        if (p.attackDmg) p.attackDmg = Math.round(p.attackDmg * (lvl === 2 ? 1.6 : 2.5));
+      }
       return d;
     },
   });

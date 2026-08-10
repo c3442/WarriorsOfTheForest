@@ -389,7 +389,7 @@
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a + Math.PI;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    const e = { id, group: g, kind: 'buffington', alive: true, hp: 15000, maxHp: 15000, speed: 2.4, dmg: 70,
+    const e = { id, group: g, kind: 'buffington', alive: true, hp: 40000, maxHp: 40000, speed: 2.4, dmg: 70,
       lastAttack: -99, t: 0, isBoss: true, buffBoss: true, abilityCD: 3, abilityIdx: 0, tauntCD: U.rand(3, 6), healCD: 0, cast: null };
     enemies.list.push(e); enemies.buff = e;
     if (W.hud) W.hud.banner('💪 SIR BUFFINGTON APPEARS', 'Behold his perfectly normal muscles!', '#ff9a3a');
@@ -398,6 +398,14 @@
   function buffDamageNear(x, z, radius, amount) {
     const ts = enemies._lastTargets || [];
     for (const t of ts) { if (Math.hypot(t.pos.x - x, t.pos.z - z) < radius) t.onBite(nAtk(amount)); }
+    // his shockwaves also smash the King's knights caught in the blast
+    const ks = W.player && W.player.knights;
+    if (ks) { for (const k of ks) { if (Math.hypot(k.g.position.x - x, k.g.position.z - z) < radius) { k.hp -= amount; if (k.hp <= 0) k.dead = true; } } }
+  }
+  function knightsNear(x, z, radius) {
+    const ks = W.player && W.player.knights; if (!ks) return 0;
+    let n = 0; for (const k of ks) if (Math.hypot(k.g.position.x - x, k.g.position.z - z) < radius) n++;
+    return n;
   }
   function spawnRing(x, y, z) {
     const m = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.18, 8, 24),
@@ -452,18 +460,25 @@
     e.tauntCD -= dt;
     if (e.tauntCD <= 0 && bestD < 44) { e.tauntCD = U.rand(6, 11); if (W.hud) W.hud.toast('💪 Sir Buffington: “' + BUFF_TAUNTS[U.randInt(0, BUFF_TAUNTS.length - 1)] + '”'); }
 
-    // heal: sit and eat a sandwich when badly hurt (long cooldown)
+    // heal: retreat & eat when hurt — smarter now (heals earlier, more often)
     if (e.healCD > 0) e.healCD -= dt;
-    if (!e.cast && e.hp < e.maxHp * 0.4 && e.healCD <= 0) {
-      e.cast = { name: 'eat', t: 0, tick: 0 }; e.healCD = 30;
-      if (W.hud) W.hud.toast('🥪 Sir Buffington sits down to eat a sandwich…');
+    if (!e.cast && e.hp < e.maxHp * 0.5 && e.healCD <= 0) {
+      e.cast = { name: 'eat', t: 0, tick: 0 }; e.healCD = 20;
+      if (W.hud) W.hud.toast('🥪 Sir Buffington backs off to eat a sandwich…');
     }
 
-    // begin an ability from the rotation
+    // SMART ability choice: AoE the swarm / close player, chuck chickens from afar,
+    // spin to close the gap, and rage faster the more hurt he is.
     e.abilityCD -= dt;
-    if (!e.cast && bestD < 26 && e.abilityCD <= 0) {
-      const name = BUFF_ROTATION[e.abilityIdx % BUFF_ROTATION.length]; e.abilityIdx++;
-      e.cast = { name, t: 0, tick: 0, did: false }; e.abilityCD = U.rand(2.4, 3.6);
+    const enraged = e.hp < e.maxHp * 0.35;
+    if (!e.cast && bestD < 28 && e.abilityCD <= 0) {
+      const swarm = knightsNear(g.position.x, g.position.z, 7);      // knights piling on him
+      let name;
+      if (swarm >= 5 || bestD < 6) name = U.chance(0.5) ? 'bellyBounce' : 'spinSmash';   // clear the crowd
+      else if (bestD > 15) name = U.chance(0.65) ? 'chickenThrow' : 'spinSmash';         // ranged / gap-close
+      else name = ['flex', 'spinSmash', 'bellyBounce', 'chickenThrow'][U.randInt(0, 3)]; // mix it up
+      e.cast = { name, t: 0, tick: 0, did: false };
+      e.abilityCD = U.rand(2.2, 3.4) * (enraged ? 0.55 : 1);         // enraged = abilities back-to-back
       g.rotation.y = Math.atan2(dx, dz);
     }
 
@@ -473,7 +488,7 @@
     g.rotation.y = Math.atan2(dx, dz);
     const reach = 2.8;
     if (d > reach) {
-      const nx = dx / d, nz = dz / d, spd = e.speed * (isNight() ? NIGHT_SPD : 1);
+      const nx = dx / d, nz = dz / d, spd = e.speed * (enraged ? 1.45 : 1) * (isNight() ? NIGHT_SPD : 1);   // enraged = charges faster
       g.position.x += nx * spd * dt; g.position.z += nz * spd * dt;
       const tmp = { x: g.position.x, z: g.position.z }; W.world.resolveCollision(tmp, 0.7); g.position.x = tmp.x; g.position.z = tmp.z;
       const swing = Math.sin(e.t * 6) * 0.5, bb = g.userData.legBases, legs = g.userData.legs;
@@ -512,7 +527,9 @@
       if (!c.did) { c.did = true; if (W.hud) W.hud.toast('🌀 AAAAAAAHHH!!!'); }
     } else if (c.name === 'eat') {
       g.scale.set(1.1, 0.7, 1.1);   // sit down
-      e.hp = Math.min(e.maxHp, e.hp + (55 / BUFF_DUR.eat) * dt);
+      e.hp = Math.min(e.maxHp, e.hp + (90 / BUFF_DUR.eat) * dt);           // smarter: heals more
+      const bx = g.position.x - tgt.pos.x, bz = g.position.z - tgt.pos.z, bd = Math.hypot(bx, bz) || 1;
+      g.position.x += (bx / bd) * 4.0 * dt; g.position.z += (bz / bd) * 4.0 * dt;   // back away while eating
       if (g.userData.armR) g.userData.armR.rotation.z = -0.9 + Math.sin(c.t * 8) * 0.3;   // munching
     }
     if (c.t >= dur) { e.cast = null; g.scale.set(1, 1, 1); if (g.userData.armL) { g.userData.armL.rotation.z = 0; g.userData.armR.rotation.z = 0; } if (c.name === 'eat' && W.hud) W.hud.toast('😤 Sir Buffington: “Delicious! Now where were we?”'); }
