@@ -319,7 +319,7 @@
     const pos = cam.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.8);
     const m = new THREE.Mesh(boltGeo, boltMat); m.position.copy(pos); scene.add(m);
     bolts.push({ mesh: m, vel: dir.multiplyScalar(BLAST_SPEED), life: 0 });
-    if (W.audio && W.audio.blip) W.audio.blip();
+    if (W.sfx && W.sfx.blast) W.sfx.blast();
   }
   function stepBolts(dt) {
     const host = !(W.net && W.net.role === 'client');
@@ -356,6 +356,7 @@
     nades.push({ mesh: m, vel, fuse: NADE_FUSE, spin: new THREE.Vector3(7, 5, 9) });
   }
   function explode(pos) {
+    if (W.sfx && W.sfx.boom) W.sfx.boom();
     // AoE damage with falloff
     const host = !(W.net && W.net.role === 'client');
     const list = (W.enemies && W.enemies.list) || [];

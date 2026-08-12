@@ -84,6 +84,17 @@
     step(right) { noise(0.06, right ? 0.13 : 0.11, 'lowpass', right ? 520 : 440, 180); },
     // portal / game start whoosh
     portal() { tone(300, 900, 0.5, 'sawtooth', 0.2); noise(0.5, 0.16, 'bandpass', 400, 2400); },
+    // --- extra juice -------------------------------------------------------
+    coin() { tone(880, 880, 0.06, 'square', 0.2); tone(1320, 1320, 0.13, 'square', 0.2, now() + 0.06); },   // treeling coin earned
+    gun() { noise(0.12, 0.7, 'lowpass', 4200, 300); tone(150, 55, 0.13, 'square', 0.42); },                  // pistol / rifle crack
+    star() { noise(0.16, 0.2, 'highpass', 3200, 6500); tone(1500, 700, 0.12, 'sine', 0.14); },               // ninja star whoosh
+    boom() { noise(0.5, 0.95, 'lowpass', 1400, 55); tone(85, 38, 0.6, 'sine', 0.52); tone(170, 48, 0.4, 'sawtooth', 0.3); },  // explosion
+    blast() { tone(950, 200, 0.13, 'square', 0.24); noise(0.09, 0.2, 'bandpass', 2200, 600); },              // blaster bolt
+    pew() { tone(1300, 520, 0.05, 'square', 0.12); },                                                        // sentry turret
+    levelup() { [523, 659, 880].forEach((f, i) => tone(f, f, 0.15, 'triangle', 0.22, now() + i * 0.1)); tone(1046, 1046, 0.34, 'sine', 0.2, now() + 0.32); },  // class upgrade
+    revive() { [440, 660, 880, 1320].forEach((f, i) => tone(f, f, 0.18, 'sine', 0.2, now() + i * 0.09)); },  // Survivor cheats death
+    roar() { tone(95, 58, 0.6, 'sawtooth', 0.42); noise(0.6, 0.34, 'lowpass', 720, 200); },                  // boss roar
+    jump() { tone(300, 660, 0.13, 'sine', 0.16); },                                                          // hop
   };
   W.sfx = sfx;
 

@@ -52,6 +52,12 @@
       perks: ['10× move speed', 'Throw ninja stars with F ⭐', 'Fragile — only 50 health'],
       spawnHealth: 50, speedMult: 10, ninja: true,
     },
+    vampire: {
+      id: 'vampire', name: 'Vampire', emoji: '🧛', cost: 75,
+      blurb: 'Reaps souls with a lifesteal scythe — frail in daylight, monstrous at night.',
+      perks: ['🌾 Vampire Scythe: slow, but hits for 250', '🩸 Lifesteal — heal for the damage you deal', '2× speed · 1,500 hp by day', '🌙 Night: 10,000 hp & 2× lifesteal', '☀️ Burns in sunlight (−2 hp/sec)'],
+      spawnHealth: 1500, speedMult: 2, attackDmg: 250, vampire: true, scythe: true,
+    },
     engineer: {
       id: 'engineer', name: 'Engineer', emoji: '🛠️', cost: 2500,
       blurb: 'Master of defense — your base loads in pre-fortified with barbed wire, spikes and auto-sentries.',
@@ -65,7 +71,7 @@
       axe: true, attackDmg: 500, axeLevel: 40,
     },
   };
-  const ORDER = ['lumberjack', 'scout', 'ninja', 'ranger', 'samurai', 'engineer', 'king', 'hunter'];   // the shop list (villager is the free default)
+  const ORDER = ['lumberjack', 'vampire', 'scout', 'ninja', 'ranger', 'samurai', 'engineer', 'king', 'hunter'];   // the shop list (villager is the free default)
 
   function num(k, d) { const v = parseInt(LS.getItem(k), 10); return isNaN(v) ? d : v; }
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }
@@ -117,6 +123,8 @@
       if (d.rifle) { p.hasRifle = true; p.rounds = d.rifle; }
       if (d.deagle) { p.hasDeagle = true; p.deagleRounds = d.deagle; }   // Ranger: bottomless Deagle
       if (d.katana) { p.hasKatana = true; p.currentWeapon = 'katana'; }  // Samurai: starts with a katana
+      if (d.scythe) { p.hasScythe = true; p.currentWeapon = 'scythe'; }  // Vampire: soul-reaping scythe
+      p.isVampire = !!d.vampire;
       if (d.axe) { p.hasAxe = true; p.currentWeapon = 'axe'; }           // Lumberjack: starts with the axe
       if (d.attackDmg) p.attackDmg = d.attackDmg;                        // OP melee damage
       if (d.axeLevel) p.axeLevel = d.axeLevel;                           // fells trees fast
@@ -138,6 +146,7 @@
         if (p.reviveChance) p.reviveChance = Math.min(1, p.reviveChance + (lvl - 1) * 0.22);
         if (p.attackDmg) p.attackDmg = Math.round(p.attackDmg * (lvl === 2 ? 1.6 : 2.5));
       }
+      if (p.isVampire) { const vm = lvl === 1 ? 1 : (lvl === 2 ? 1.8 : 3.2); p._vampDayHp = Math.round(1500 * vm); p._vampNightHp = Math.round(10000 * vm); }
       return d;
     },
   });

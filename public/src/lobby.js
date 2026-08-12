@@ -284,7 +284,7 @@
         } else if (b.dataset.act === 'upgrade') {
           const r = W.classes.upgrade(id);
           if (!r.ok && r.reason === 'poor') { if (W.hud && W.hud.toast) W.hud.toast('Need ' + r.need + ' more 🪙 to upgrade'); }
-          else if (r.ok) { lastUpgrade = { id: id, lvl: r.level, list: upgradeSummary(id, r.level) }; if (W.hud && W.hud.toast) W.hud.toast('⬆️ ' + W.classes.DEFS[id].name + ' → Lv' + r.level + '!'); }
+          else if (r.ok) { lastUpgrade = { id: id, lvl: r.level, list: upgradeSummary(id, r.level) }; if (W.sfx && W.sfx.levelup) W.sfx.levelup(); if (W.hud && W.hud.toast) W.hud.toast('⬆️ ' + W.classes.DEFS[id].name + ' → Lv' + r.level + '!'); }
         } else { W.classes.select(id); if (W.hud && W.hud.toast) W.hud.toast('Equipped ' + W.classes.DEFS[id].name + ' ' + W.classes.DEFS[id].emoji); }
         refreshClasses();
       };
@@ -693,10 +693,24 @@
     if (solo) solo.click();     // -> beginGame -> overlay gets .hidden -> teardown()
   }
 
+  // Join the shared public lobby so everyone here can see each other walk around.
+  function joinHub() {
+    if (!(W.net && W.net.joinHub)) return;
+    try {
+      W.net.joinHub({
+        scene: scene,
+        getPose: () => ({ x: pos.x, y: pos.y - EYE, z: pos.z, yaw: yaw }),   // feet position
+        getName: () => { const ni = document.getElementById('nameInput'); return ((ni && ni.value.trim()) || (W.net && W.net.myName) || 'Player').slice(0, 12); },
+        getSkin: () => (W.player && W.player.skin) || 'boy',
+      });
+    } catch (e) {}
+  }
+
   function step() {
     if (started) return;
     raf = requestAnimationFrame(step);
     tphase += 0.02;
+    if (W.net && W.net.hubTick) W.net.hubTick(1 / 60);   // sync + render other lobby players
     if (partyRunning) { updateTimerUI(); if (performance.now() / 1000 >= partyEnd) { startGame(); } }
     if (!menuOpen && !updatesOpen && !classesOpen && !countOpen && !lockedIn) {
       // arrow keys turn/look — works with NO mouse lock needed
@@ -749,7 +763,7 @@
     }
     // stand on / climb the ramps + decks, with jumping (Space) and gravity
     const floorY = lobbyStand(pos.x, pos.z, pos.y - EYE) + EYE;
-    if (keys.Space && !menuOpen && !updatesOpen && !classesOpen && !lockedIn && pos.y <= floorY + 0.06 && vy <= 0.01) vy = 7.4;   // hop when grounded
+    if (keys.Space && !menuOpen && !updatesOpen && !classesOpen && !lockedIn && pos.y <= floorY + 0.06 && vy <= 0.01) { vy = 7.4; if (W.sfx && W.sfx.jump) W.sfx.jump(); }   // hop when grounded
     vy -= 24 / 60;                           // gravity (fixed ~60fps step)
     pos.y += vy / 60;
     if (pos.y <= floorY) { pos.y = floorY; vy = 0; }   // land, or ride ramps/decks up
@@ -794,6 +808,7 @@
   function teardown() {
     if (started) return; started = true;
     cancelAnimationFrame(raf);
+    if (W.net && W.net.leaveHub) W.net.leaveHub();   // drop the public lobby before the game's own co-op takes over
     document.removeEventListener('mousemove', onMove);
     window.removeEventListener('keydown', onDown, true);
     window.removeEventListener('keyup', onUp);
@@ -838,7 +853,7 @@
       scene = W._scene; cam = W._cam;
       canvas = document.querySelector('#app canvas') || document.querySelector('canvas');
       if (!canvas) throw new Error('no canvas');
-      build(); makeHint(); makeFPrompt(); makeTimerUI(); makeCountPicker(); addControls(); slimOverlay(); openCustomise(); step();
+      build(); makeHint(); makeFPrompt(); makeTimerUI(); makeCountPicker(); addControls(); slimOverlay(); openCustomise(); joinHub(); step();
     } catch (e) {
       // failsafe: never trap the player — restore the plain menu
       const menu = document.getElementById('menu'); if (menu) menu.style.display = '';

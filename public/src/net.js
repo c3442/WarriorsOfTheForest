@@ -31,24 +31,37 @@
   function buildAvatar(skin) {
     const girl = skin === 'girl';
     const g = new THREE.Group();
-    const cloth = new THREE.MeshStandardMaterial({ color: girl ? 0xe85a9a : 0x3f6fc4, roughness: 1, flatShading: true });
-    const lower = new THREE.MeshStandardMaterial({ color: girl ? 0x7a3a8a : 0x3a4a6a, roughness: 1, flatShading: true });
-    const skinMat = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
-    const hairMat = new THREE.MeshStandardMaterial({ color: girl ? 0x6a3b1c : 0x352617, roughness: 1, flatShading: true });
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(girl ? 0.46 : 0.5, 0.72, 0.3), cloth);
-    torso.position.y = 1.05; torso.castShadow = true; g.add(torso);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), skinMat);
-    head.position.y = 1.62; head.castShadow = true; g.add(head);
-    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.38, girl ? 0.3 : 0.14, 0.38), hairMat);
-    hair.position.y = girl ? 1.71 : 1.76; g.add(hair);
-    if (girl) { const pony = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.5, 0.13), hairMat); pony.position.set(0, 1.42, -0.22); g.add(pony); }
+    const cloth = new THREE.MeshStandardMaterial({ color: girl ? 0xef5aa0 : 0x3f78d8, roughness: 0.85, flatShading: true });
+    const lower = new THREE.MeshStandardMaterial({ color: girl ? 0x6a3a8a : 0x2f3d63, roughness: 0.95, flatShading: true });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xf0c19a, roughness: 0.8 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: girl ? 0x7a4a1f : 0x33241a, roughness: 1, flatShading: true });
+    const boot = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 1, flatShading: true });
+    const belt = new THREE.MeshStandardMaterial({ color: 0x2a2016, roughness: 1, flatShading: true });
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1b1b24, roughness: 0.5 });
+    // torso + belt (+ a little skirt for the girl skin)
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(girl ? 0.5 : 0.54, 0.68, 0.32), cloth);
+    torso.position.y = 1.08; torso.castShadow = true; g.add(torso);
+    const bl = new THREE.Mesh(new THREE.BoxGeometry(girl ? 0.52 : 0.56, 0.12, 0.34), belt); bl.position.y = 0.76; g.add(bl);
+    if (girl) { const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.44, 0.34, 8), cloth); skirt.position.y = 0.6; skirt.castShadow = true; g.add(skirt); }
+    // head + hair + fringe + eyes
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), skinMat);
+    head.position.y = 1.64; head.castShadow = true; g.add(head);
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.41, girl ? 0.26 : 0.16, 0.41), hairMat);
+    hair.position.y = girl ? 1.76 : 1.81; g.add(hair);
+    const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.11, 0.06), hairMat); fringe.position.set(0, 1.73, 0.19); g.add(fringe);
+    if (girl) { const pony = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.48, 0.14), hairMat); pony.position.set(0, 1.48, -0.25); g.add(pony); }
+    for (const ex of [-0.08, 0.08]) { const eye = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.08, 0.03), eyeMat); eye.position.set(ex, 1.64, 0.19); g.add(eye); }
+    // legs + boots
     for (const sx of [-0.13, 0.13]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.7, 0.18), lower);
-      leg.position.set(sx, 0.35, 0); leg.castShadow = true; g.add(leg);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.58, 0.19), lower);
+      leg.position.set(sx, 0.34, 0); leg.castShadow = true; g.add(leg);
+      const bt = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.27), boot); bt.position.set(sx, 0.08, 0.03); g.add(bt);
     }
-    for (const sx of [-0.32, 0.32]) {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.6, 0.15), cloth);
-      arm.position.set(sx, 1.05, 0); g.add(arm);
+    // arms + hands
+    for (const sx of [-0.34, 0.34]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.16), cloth);
+      arm.position.set(sx, 1.12, 0); arm.castShadow = true; g.add(arm);
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.16), skinMat); hand.position.set(sx, 0.82, 0); g.add(hand);
     }
     g.userData.skin = girl ? 'girl' : 'boy';
     return g;
@@ -299,6 +312,99 @@
 
   net.sendChop = function (idx) {
     for (const conn of net._conns) { if (conn.open) conn.send({ t: 'chop', idx }); }
+  };
+
+  // --- Public lobby hub ------------------------------------------------------
+  // Everyone in the start lobby auto-joins ONE well-known P2P room so they can see
+  // each other walk around. The first player claims the hub id (becomes host and
+  // relays poses); the rest connect as clients. If the host leaves, a client claims it.
+  const HUB_ID = 'wotf-hub-1';
+  net.hub = { on: false, role: null, peer: null, conns: [], remote: {}, scene: null, me: null, acc: 0, getPose: null, getName: null, getSkin: null };
+
+  function hubAvatar(id) {
+    const h = net.hub, r = h.remote[id]; if (!r) return;
+    if (!r.avatar && h.scene) { r.avatar = buildAvatar(r.skin || 'boy'); h.scene.add(r.avatar); }
+    if (r.avatar && r.name && r.labelText !== r.name) {
+      if (r.label) r.avatar.remove(r.label);
+      r.label = makeLabel(r.name); r.labelText = r.name; r.avatar.add(r.label);
+    }
+  }
+  function hubSet(id, m) {
+    const h = net.hub; if (!id || id === h.me) return;   // never render myself
+    let r = h.remote[id]; if (!r) r = h.remote[id] = { pose: null, avatar: null, name: null, skin: 'boy', label: null, labelText: null };
+    r.pose = m;
+    if (m.skin && r.skin !== m.skin) { r.skin = m.skin; if (r.avatar && h.scene) { h.scene.remove(r.avatar); r.avatar = null; r.labelText = null; } }
+    if (m.name) r.name = m.name;
+    hubAvatar(id);
+  }
+  function hubRemove(id) {
+    const h = net.hub, r = h.remote[id];
+    if (r && r.avatar && h.scene) h.scene.remove(r.avatar);
+    delete h.remote[id];
+  }
+
+  net.joinHub = function (opts) {
+    const h = net.hub; if (h.on) return; h.on = true;
+    h.scene = opts.scene; h.getPose = opts.getPose; h.getName = opts.getName; h.getSkin = opts.getSkin;
+    tryHost();
+    function tryHost() {
+      if (!h.on) return;
+      h.role = 'host'; h.me = 'HOST';
+      const peer = new Peer(HUB_ID); h.peer = peer;
+      peer.on('error', (e) => { if (e && e.type === 'unavailable-id') { try { peer.destroy(); } catch (x) {} beClient(); } });
+      peer.on('connection', (conn) => {
+        h.conns.push(conn);
+        conn.on('data', (m) => {
+          if (m.t !== 'hp') return;
+          hubSet(conn.peer, m);
+          const relay = { t: 'hp', id: conn.peer, x: m.x, y: m.y, z: m.z, yaw: m.yaw, name: m.name, skin: m.skin };
+          for (const c of h.conns) { if (c !== conn && c.open) c.send(relay); }   // let the other clients see this one
+        });
+        conn.on('close', () => { h.conns = h.conns.filter((c) => c !== conn); hubRemove(conn.peer); for (const c of h.conns) { if (c.open) c.send({ t: 'bye', id: conn.peer }); } });
+      });
+    }
+    function beClient() {
+      if (!h.on) return;
+      h.role = 'client';
+      const peer = new Peer(); h.peer = peer;
+      peer.on('open', (myid) => {
+        h.me = myid;
+        const conn = peer.connect(HUB_ID, { reliable: true }); h.conns = [conn];
+        conn.on('data', (m) => { if (m.t === 'hp') hubSet(m.id, m); else if (m.t === 'bye') hubRemove(m.id); });
+        conn.on('close', () => { if (!h.on) return; for (const id in h.remote) hubRemove(id); h.conns = []; setTimeout(tryHost, 200 + Math.floor(Math.random() * 500)); });   // host vanished -> race to claim the hub
+      });
+      peer.on('error', () => {});
+    }
+  };
+
+  net.hubTick = function (dt) {
+    const h = net.hub; if (!h.on) return;
+    h.acc += dt;
+    if (h.acc >= 1 / 12 && h.getPose) {           // broadcast my pose ~12Hz
+      h.acc = 0;
+      const p = h.getPose();
+      if (p) {
+        const msg = { t: 'hp', x: p.x, y: p.y, z: p.z, yaw: p.yaw, name: (h.getName && h.getName()) || 'Player', skin: (h.getSkin && h.getSkin()) || 'boy' };
+        if (h.role === 'host') { msg.id = 'HOST'; for (const c of h.conns) { if (c.open) c.send(msg); } }
+        else { const c = h.conns[0]; if (c && c.open) c.send(msg); }
+      }
+    }
+    for (const id in h.remote) {                   // ease avatars toward their latest pose
+      const r = h.remote[id]; if (!r.pose || !r.avatar) continue;
+      const a = r.avatar, k = Math.min(1, dt * 12);
+      a.position.x += (r.pose.x - a.position.x) * k;
+      a.position.z += (r.pose.z - a.position.z) * k;
+      a.position.y += (r.pose.y - a.position.y) * k;
+      a.rotation.y = r.pose.yaw + Math.PI;
+    }
+  };
+
+  net.leaveHub = function () {
+    const h = net.hub; if (!h.on) return; h.on = false;
+    for (const id in h.remote) hubRemove(id);
+    try { for (const c of h.conns) { if (c && c.close) c.close(); } } catch (e) {}
+    try { if (h.peer) h.peer.destroy(); } catch (e) {}
+    h.conns = []; h.peer = null; h.role = null; h.me = null; h.scene = null;
   };
 
   W.net = net;

@@ -54,6 +54,7 @@
     buildAxe(camera);
     buildSword(camera);
     buildKatana(camera);
+    buildScythe(camera);
     buildShotgun(camera);
     buildRifle(camera);
     buildDeagle(camera);
@@ -220,6 +221,30 @@
     camera.add(g);
     player.katana = g;
   }
+  function buildScythe(camera) {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 1, flatShading: true });
+    const steel = new THREE.MeshStandardMaterial({ color: 0xd2d7df, roughness: 0.22, metalness: 0.78, flatShading: true });
+    const glow = new THREE.MeshStandardMaterial({ color: 0x8a1030, emissive: 0xd0204a, emissiveIntensity: 1.1, roughness: 0.4 });
+    // long wooden snath (the shaft), running up the screen
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.042, 2.1, 8), wood); pole.position.y = 0.5; g.add(pole);
+    // the classic curved crescent blade sweeping off the TOP of the shaft (a flattened torus arc)
+    const bladeGrp = new THREE.Group(); bladeGrp.position.set(0, 1.55, 0);
+    const blade = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.045, 5, 26, Math.PI * 0.92), steel);
+    blade.scale.set(1, 1, 0.32);                       // flatten the tube into a thin blade
+    blade.rotation.set(Math.PI / 2, 0, -0.35);         // lay it flat, sweeping forward from the shaft
+    bladeGrp.add(blade);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.34, 4), steel);   // pointed tip at the far end of the arc
+    tip.position.set(-0.52, 0, 0.34); tip.rotation.set(Math.PI / 2, 0, 1.2); bladeGrp.add(tip);
+    g.add(bladeGrp);
+    // wrapped collar + glowing red gem where blade meets shaft
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.14, 8), wood); collar.position.y = 1.5; g.add(collar);
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.065, 0), glow); gem.position.y = 1.5; g.add(gem);
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 8), wood); grip.position.set(0.12, 0.55, 0); grip.rotation.z = Math.PI / 2; g.add(grip);   // hand-grip
+    g.position.set(0.42, -0.62, -0.78); g.rotation.set(-0.12, -0.45, 0.16); g.scale.setScalar(0.55); g.visible = false;
+    g.userData.rest = g.rotation.clone(); g.userData.home = g.position.clone();
+    camera.add(g); player.scythe = g;
+  }
 
   function buildShotgun(camera) {
     const g = new THREE.Group();
@@ -380,15 +405,16 @@
     player.shield3d = g;
   }
 
-  const WEAPON_OBJ = () => ({ fists: player.fists, axe: player.axe, sword: player.sword, katana: player.katana, shotgun: player.shotgun, rifle: player.rifle, deagle: player.deagle, bow: player.bow });
+  const WEAPON_OBJ = () => ({ fists: player.fists, axe: player.axe, sword: player.sword, katana: player.katana, scythe: player.scythe, shotgun: player.shotgun, rifle: player.rifle, deagle: player.deagle, bow: player.bow });
   function equipWeapon(which) {
-    const have = { fists: true, axe: !!player.hasAxe, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, shotgun: !!player.hasShotgun, rifle: !!player.hasRifle, deagle: !!player.hasDeagle };
+    const have = { fists: true, axe: !!player.hasAxe, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, scythe: !!player.hasScythe, shotgun: !!player.hasShotgun, rifle: !!player.hasRifle, deagle: !!player.hasDeagle };
     if (!have[which]) which = player.hasAxe ? 'axe' : 'fists';
     player._bowDrawing = false; player._bowCharge = 0; player._bowSnap = undefined;   // cancel any draw
     if (player.bowNock && player._nockHome) { player.bowNock.visible = true; player.bowNock.position.copy(player._nockHome); }
     const objs = WEAPON_OBJ();
     if (player.fists) player.fists.visible = which === 'fists';
     if (player.katana) player.katana.visible = which === 'katana';
+    if (player.scythe) player.scythe.visible = which === 'scythe';
     player.axe.visible = which === 'axe';
     if (player.sword) player.sword.visible = which === 'sword';
     if (player.shotgun) player.shotgun.visible = which === 'shotgun';
@@ -412,6 +438,7 @@
     if (player.hasAxe) order.push('axe');
     if (player.hasSword) order.push('sword');
     if (player.hasKatana) order.push('katana');
+    if (player.hasScythe) order.push('scythe');
     if (player.hasShotgun) order.push('shotgun');
     if (player.hasRifle) order.push('rifle');
     if (player.hasDeagle) order.push('deagle');
@@ -419,7 +446,7 @@
     const i = order.indexOf(player.currentWeapon);
     equipWeapon(order[(i + 1) % order.length]);
     if (W.sfx) W.sfx.select();
-    W.hud.toast({ fists: '👊 Fists', bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', shotgun: '🔫 Sawed-off shotgun', rifle: '🎯 Rifle', deagle: '🔫 Desert Eagle' }[player.currentWeapon] + ' equipped');
+    W.hud.toast({ fists: '👊 Fists', bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', scythe: '🌾 Vampire Scythe', shotgun: '🔫 Sawed-off shotgun', rifle: '🎯 Rifle', deagle: '🔫 Desert Eagle' }[player.currentWeapon] + ' equipped');
   };
 
   // --- 10-slot number-key hotbar (press 1-9,0) --------------------------------
@@ -435,9 +462,10 @@
     { key: 'rifle', ic: '🎯', name: 'Rifle' },
     { key: 'sword', ic: '⚔️', name: 'Sword' },
     { key: 'katana', ic: '🗡️', name: 'Katana' },
-    null, null,
+    { key: 'scythe', ic: '🌾', name: 'Vampire Scythe' },
+    null,
   ];
-  const OWN_FLAG = { axe: 'hasAxe', deagle: 'hasDeagle', bow: 'hasBow', shotgun: 'hasShotgun', rifle: 'hasRifle', sword: 'hasSword', katana: 'hasKatana' };
+  const OWN_FLAG = { axe: 'hasAxe', deagle: 'hasDeagle', bow: 'hasBow', shotgun: 'hasShotgun', rifle: 'hasRifle', sword: 'hasSword', katana: 'hasKatana', scythe: 'hasScythe' };
   player.hotbar = HOTBAR;
   player.slotOwned = (s) => !!s && (s.key === 'sack' || !!player[OWN_FLAG[s.key]]);
   player.selectSlot = function (i) {
@@ -529,7 +557,8 @@
   player.attack = function () {
     if (!player.alive || !player.active) return;
     const now = player._t;
-    if (now - player.lastAttack < ATTACK_CD) return;
+    const cd = player.currentWeapon === 'scythe' ? 1.1 : ATTACK_CD;   // the scythe swings slow but hits like a truck
+    if (now - player.lastAttack < cd) return;
     player.lastAttack = now;
     player.swing = 0; // drives the swing / recoil animation
 
@@ -565,6 +594,8 @@
         const killed = W.enemies.damage(root, dmg, player.pos);
         if (killed) player.creditKill(root.userData.kind);
       }
+      // Vampire lifesteal: heal for the damage dealt (2x at night)
+      if (player.isVampire) { player.health = Math.min(player.maxHealth, player.health + dmg * ((W.world.isNight && W.world.isNight()) ? 2 : 1)); }
       player.popDamage(root.position, dmg, head);
       if (W.sfx) { if (head) W.sfx.headshot(); else W.sfx.hit(); }
       if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
@@ -673,7 +704,7 @@
   function fireRifle() {
     if (player.rounds <= 0) { W.hud.toast('Out of rounds 🎯 — find more in chests'); return; }
     player.rounds -= 1;
-    if (W.sfx) { if (W.sfx.shotgun) W.sfx.shotgun(); }
+    if (W.sfx && W.sfx.gun) W.sfx.gun();
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
     ray.far = 90;
@@ -709,7 +740,7 @@
   function fireDeagle() {
     if (player.deagleRounds <= 0) { W.hud.toast('Deagle empty 🔫 — out of rounds'); return; }
     player.deagleRounds -= 1;
-    if (W.sfx && W.sfx.shotgun) W.sfx.shotgun();
+    if (W.sfx && W.sfx.gun) W.sfx.gun();
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
     ray.far = 80;
@@ -850,6 +881,7 @@
       player.banditKills += 1;
       if (player.banditKills % 5 === 0) {
         player.treelingCoins = W.classes ? W.classes.addCoins(1) : player.treelingCoins + 1;   // persist to the wallet
+        if (W.sfx && W.sfx.coin) W.sfx.coin();
         W.hud.toast('🪙 +1 Treeling Coin! (' + player.treelingCoins + ')');
       } else {
         W.hud.toast('🗡️ Bandit down — ' + (player.banditKills % 5) + '/5 to a 🪙');
@@ -963,7 +995,7 @@
     const star = makeNinjaStar(); star.position.copy(start); player.scene.add(star);
     if (!player._stars) player._stars = [];
     player._stars.push({ mesh: star, vel: dir.clone().multiplyScalar(34), life: 0 });
-    if (W.sfx && W.sfx.swing) W.sfx.swing();
+    if (W.sfx && W.sfx.star) W.sfx.star();
   };
   function updateStars(dt) {
     if (player._starCD > 0) player._starCD -= dt;
@@ -1486,7 +1518,7 @@
         player.health = Math.round((player.maxHealth || 100) * 0.5);
         player.lastHurt = player._t;
         if (W.hud && W.hud.banner) W.hud.banner('✨ SURVIVOR!', 'You cheated death and sprang back up!', '#8fe6ff');
-        if (W.sfx && W.sfx.heal) W.sfx.heal();
+        if (W.sfx && W.sfx.revive) W.sfx.revive();
         return;
       }
       if (W.net && W.net.role) {
@@ -1745,8 +1777,26 @@
     }
   }
 
+  // Vampire sunburn shade test: cast a ray straight up from the eyes — if a tree
+  // canopy (or any structure) is overhead, the vampire is out of direct sun and safe.
+  const _sunRay = new THREE.Raycaster(); const _sunEye = new THREE.Vector3(); const _sunUp = new THREE.Vector3(0, 1, 0);
+  function vampInShade() {
+    if (!W.world || !W.world.trees) return false;
+    player.camera.getWorldPosition(_sunEye);
+    _sunRay.set(_sunEye, _sunUp); _sunRay.far = 60;
+    const cover = W.world.trees.filter((t) => t.userData.alive);
+    return _sunRay.intersectObjects(cover, true).length > 0;
+  }
+
   player.update = function (dt) {
     player._t += dt;
+    // Vampire: 1,500 hp by day / 10,000 hp at night, and burns 2 hp/sec in DIRECT sunlight only
+    if (player.isVampire && player.alive) {
+      const night = W.world.isNight && W.world.isNight();
+      player.maxHealth = night ? (player._vampNightHp || 10000) : (player._vampDayHp || 1500);
+      if (player.health > player.maxHealth) player.health = player.maxHealth;
+      if (!night && player.active) { player._sunT = (player._sunT || 0) + dt; if (player._sunT >= 1) { player._sunT = 0; if (!vampInShade()) player.takeDamage(2); } }
+    }
     if (player.isEngineer && !player._fortified) { player._fortified = true; player.fortifyBase(); }   // build defenses once
     if (player._sentries) stepSentries(dt);
     if (player.knightSummons > 0 && !player.knights) player.summonKnights();   // rally the King's guard once

@@ -14,6 +14,7 @@
      'weaponIc', 'slotShell', 'shellNum',
      'invPanel', 'invWood', 'invBerries', 'invBandaids', 'invWater', 'invAxe', 'invShells', 'invSaplings', 'invRawMeat', 'invCookedMeat',
      'invSwordSlot', 'invArmorSlot', 'invShieldSlot', 'invShotgunSlot',
+     'invKatanaSlot', 'invScytheSlot', 'invDeagleSlot', 'invRifleSlot',
      'sleepOverlay', 'sleepCount', 'sleepWait', 'buildHint', 'buildHintName', 'minimap',
      'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
     if (els.sleepOverlay) {
@@ -48,7 +49,7 @@
     for (let i = 0; i < 10; i++) {
       const s = p.hotbar[i], c = hud._hb[i], owned = p.slotOwned(s);
       c.ic.textContent = s ? s.ic : '';
-      c.cell.style.opacity = (s && owned) ? '1' : '0.32';
+      c.cell.style.display = (s && owned) ? '' : 'none';   // only show weapons you actually have — no grey empties
       const sel = s && s.key === p.currentWeapon;
       c.cell.style.borderColor = sel ? '#ffe08a' : '#8b8b8b';
       c.cell.style.boxShadow = sel ? '0 0 8px rgba(255,224,138,.6)' : 'none';
@@ -166,10 +167,26 @@
     if (els.invSaplings) els.invSaplings.textContent = p.saplings || 0;
     if (els.invRawMeat) els.invRawMeat.textContent = p.wolfMeat || 0;
     if (els.invCookedMeat) els.invCookedMeat.textContent = p.cookedMeat || 0;
-    els.invSwordSlot.classList.toggle('empty', !p.hasSword);
-    els.invArmorSlot.classList.toggle('empty', !p.hasArmor);
-    els.invShieldSlot.classList.toggle('empty', !p.hasShield);
-    els.invShotgunSlot.classList.toggle('empty', !p.hasShotgun);
+    // only show what you actually have — hide empty/unowned slots entirely
+    const show = (el, ok) => { const s = el && el.closest && el.closest('.islot'); if (s) s.style.display = ok ? '' : 'none'; };
+    show(els.invAxe, !!p.hasAxe);
+    show(els.invWood, (p.wood || 0) > 0);
+    show(els.invWater, true);                         // you always carry a bottle
+    show(els.invBerries, (p.berries || 0) > 0);
+    show(els.invBandaids, (p.bandaids || 0) > 0);
+    show(els.invSaplings, (p.saplings || 0) > 0);
+    show(els.invRawMeat, (p.wolfMeat || 0) > 0);
+    show(els.invCookedMeat, (p.cookedMeat || 0) > 0);
+    const gear = (slot, ok) => { if (slot) { slot.style.display = ok ? '' : 'none'; if (ok) slot.classList.remove('empty'); } };
+    gear(els.invSwordSlot, p.hasSword);
+    gear(els.invArmorSlot, p.hasArmor);
+    gear(els.invShieldSlot, p.hasShield);
+    gear(els.invShotgunSlot, p.hasShotgun);
+    // class weapons — only shown when your class grants them
+    gear(els.invKatanaSlot, p.hasKatana);
+    gear(els.invScytheSlot, p.hasScythe);
+    gear(els.invDeagleSlot, p.hasDeagle);
+    gear(els.invRifleSlot, p.hasRifle);
   };
 
   // --- Sleep overlay ----------------------------------------------------------
