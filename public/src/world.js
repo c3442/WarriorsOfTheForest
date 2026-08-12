@@ -2238,7 +2238,16 @@
     if (world.scene) world.scene.background = sky;
     if (world.scene.fog) {
       world.scene.fog.color.copy(sky);
-      world.scene.fog.density = U.lerp(0.0085, 0.0015, day); // nightmare: thick, closing-in dark at night
+      world.scene.fog.density = U.lerp(0.012, 0.0075, day); // perf: shorter view distance (thicker haze hides the tree-cull edge); nightmare-dark at night
+    }
+    // perf: only render trees near the player — distant ones are lost in the fog anyway.
+    // (2900 trees; drawing only the ~few hundred within range is a big frame-time win.)
+    if (world.trees && playerPos) {
+      const R = 240, px = playerPos.x, pz = playerPos.z;
+      for (let i = 0; i < world.trees.length; i++) {
+        const t = world.trees[i];
+        t.visible = U.dist2(px, pz, t.position.x, t.position.z) < R;
+      }
     }
     // gradient sky dome: horizon = sky colour, zenith = a deeper blue
     if (world.skyDome) {

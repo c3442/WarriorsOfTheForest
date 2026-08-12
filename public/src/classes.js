@@ -58,6 +58,12 @@
       perks: ['🌾 Vampire Scythe: slow, but hits for 250', '🩸 Lifesteal — heal for the damage you deal', '2× speed · 1,500 hp by day', '🌙 Night: 10,000 hp & 2× lifesteal', '☀️ Burns in sunlight (−2 hp/sec)'],
       spawnHealth: 1500, speedMult: 2, attackDmg: 250, vampire: true, scythe: true,
     },
+    kawaii: {
+      id: 'kawaii', name: 'Kawaii Fighter', emoji: '💕', cost: 0, hidden: true,   // 🥚 secret: only appears if your name is Sophia
+      blurb: 'A secret cupid warrior — endless love, and enemies who just can’t fight back. 💖',
+      perks: ['💘 Cupid’s Bow — unlimited heart arrows', '💫 Heart arrows STUN foes for 2s', '💗 Hearts pop overhead & drop their defense 5s'],
+      kawaii: true,
+    },
     engineer: {
       id: 'engineer', name: 'Engineer', emoji: '🛠️', cost: 2500,
       blurb: 'Master of defense — your base loads in pre-fortified with barbed wire, spikes and auto-sentries.',
@@ -114,7 +120,10 @@
     },
     // Apply the selected class to a freshly-initialised player object.
     applyToPlayer(p) {
-      const d = DEFS[classes.selected()]; if (!d || !p) return null;
+      let d = DEFS[classes.selected()];
+      const nm = ((W.net && W.net.myName) || '').trim().toLowerCase();
+      if (nm === 'sophia' && DEFS.kawaii) d = DEFS.kawaii;   // 🥚 secret name-gated class, free & unlisted
+      if (!d || !p) return null;
       p.playerClass = d.id;
       p.speedMult = d.speedMult || 1;
       p.sightMult = d.sightMult || 1;
@@ -125,6 +134,13 @@
       if (d.katana) { p.hasKatana = true; p.currentWeapon = 'katana'; }  // Samurai: starts with a katana
       if (d.scythe) { p.hasScythe = true; p.currentWeapon = 'scythe'; }  // Vampire: soul-reaping scythe
       p.isVampire = !!d.vampire;
+      p.isKawaii = !!d.kawaii;
+      if (d.kawaii) {                                                     // Kawaii Fighter: Cupid's Bow + endless heart arrows
+        p.hasBow = true; p.currentWeapon = 'bow'; p.arrowCount = 999999;
+        p.bowColor = 0xff5aa0; p.arrowColor = 0xff4f97;
+        if (p.bowLimbMat) p.bowLimbMat.color.setHex(0xff5aa0);
+        if (p.bowArrowMat) p.bowArrowMat.color.setHex(0xff4f97);
+      }
       if (d.axe) { p.hasAxe = true; p.currentWeapon = 'axe'; }           // Lumberjack: starts with the axe
       if (d.attackDmg) p.attackDmg = d.attackDmg;                        // OP melee damage
       if (d.axeLevel) p.axeLevel = d.axeLevel;                           // fells trees fast

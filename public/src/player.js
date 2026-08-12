@@ -431,6 +431,9 @@
     w.position.copy(w.userData.home);
   }
 
+  // Equip whatever weapon a class handed us (called once after the class is applied).
+  player.equipCurrent = function () { equipWeapon(player.currentWeapon || 'fists'); };
+
   // X cycles through the weapons you own (bow → axe → sword → shotgun).
   player.switchWeapon = function () {
     const order = ['fists'];
@@ -540,12 +543,12 @@
     const charge = player._bowCharge || 0;
     player._bowCharge = 0;
     if (charge >= 0.12) {                 // too short a draw fizzles (no shot)
-      if ((player.arrowCount || 0) <= 0) {          // limited ammo — out of arrows
+      if (!player.isKawaii && (player.arrowCount || 0) <= 0) {   // limited ammo — out of arrows (Kawaii's are endless)
         if (player.bowNock) player.bowNock.visible = false;
         if (player._t - (player._noAmmoT || 0) > 1.2) { player._noAmmoT = player._t; W.hud.toast('Out of arrows! 🏹 Find more in chests'); }
         return;
       }
-      player.arrowCount -= 1;
+      if (!player.isKawaii) player.arrowCount -= 1;
       player.lastAttack = player._t;
       if (W.sfx) W.sfx.bow();
       fireArrow(charge);
@@ -773,22 +776,33 @@
 
   // The bow: looses a coloured arrow that flies and hits a foe.
   const ARROW_FWD = new THREE.Vector3(0, 0, -1);
+  // A pink cupid heart that flies instead of an arrow (Kawaii Fighter).
+  function buildHeartArrow() {
+    const g = new THREE.Group();
+    const pink = new THREE.MeshStandardMaterial({ color: 0xff5aa0, emissive: 0xff2a80, emissiveIntensity: 0.55, roughness: 0.5, flatShading: true });
+    for (const sx of [-0.06, 0.06]) { const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), pink); lobe.position.set(sx, 0.05, 0); g.add(lobe); }
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.2, 4), pink); tip.rotation.x = Math.PI; tip.position.set(0, -0.09, 0); g.add(tip);
+    return g;
+  }
   function fireArrow(charge) {
     const c = charge == null ? 1 : U.clamp(charge, 0, 1);
     const dir = player.camera.getWorldDirection(new THREE.Vector3());
     const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.6);
     start.y -= 0.14;                                   // leaves from the bow, just under the crosshair
-    const arrow = buildFlyingArrow();
+    const kawaii = !!player.isKawaii;
+    const arrow = kawaii ? buildHeartArrow() : buildFlyingArrow();
     arrow.position.copy(start);
-    arrow.quaternion.setFromUnitVectors(ARROW_FWD, dir.clone().normalize());
+    if (!kawaii) arrow.quaternion.setFromUnitVectors(ARROW_FWD, dir.clone().normalize());
     player.scene.add(arrow);
     const speed = 38 + c * 40;                         // buffed: fuller draw → faster, flatter arrow
-    player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(speed), life: 0, pow: c });
+    player.arrows.push({ mesh: arrow, vel: dir.clone().multiplyScalar(speed), life: 0, pow: c, heart: kawaii });
   }
   function applyArrow(root, pow, head) {
     const c = pow == null ? 1 : pow;
     let dmg = Math.round(9 + c * 15) + (player.bowDmgBonus || 0);    // buffed: fuller draw hits much harder (up to 24)
     if (head) dmg = Math.round(dmg * 2.2);                           // headshot!
+    // Kawaii heart arrows: stun the foe 2s, pop hearts overhead & drop their defense 5s.
+    if (player.isKawaii && W.enemies.kawaiiStun) W.enemies.kawaiiStun(root, 2, 5);
     if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
     else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
     player.popDamage(root.position, dmg, head);
@@ -841,7 +855,8 @@
       a.life += dt;
       a.vel.y -= 9.8 * dt * 0.45;                       // gentle gravity drop
       a.mesh.position.addScaledVector(a.vel, dt);
-      a.mesh.quaternion.setFromUnitVectors(ARROW_FWD, a.vel.clone().normalize());
+      if (a.heart) { a.mesh.rotation.z += dt * 7; a.mesh.rotation.y += dt * 2; }   // hearts tumble prettily
+      else a.mesh.quaternion.setFromUnitVectors(ARROW_FWD, a.vel.clone().normalize());
       let done = false;
       for (const e of W.enemies.list) {
         if (!e.alive) continue;

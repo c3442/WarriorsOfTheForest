@@ -675,7 +675,7 @@
   };
 
   function applyHit(e, amount, fromPos) {
-    e.hp -= amount * (isNight() ? NIGHT_TOUGH : 1);   // tankier after dark
+    e.hp -= amount * (isNight() ? NIGHT_TOUGH : 1) * ((e._defT || 0) > 0 ? 1.6 : 1);   // tankier after dark; +60% while love-struck
     const mat = e.group.userData.mat;
     if (mat) { const orig = mat.color.getHex(); mat.color.setHex(0xffffff); setTimeout(() => mat.color.setHex(orig), 70); }
     const dx = e.group.position.x - fromPos.x;
@@ -705,6 +705,39 @@
     if (!e || !e.alive) return false;
     return applyHit(e, amount, fromPos);
   };
+
+  // --- Kawaii Fighter: heart-arrow stun + defense-down + floating hearts -------
+  enemies._kawaiiFx = [];
+  function heartSprite() {
+    const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
+    const ctx = cv.getContext('2d'); ctx.font = '52px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('💖', 32, 36);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+    spr.renderOrder = 997; return spr;
+  }
+  // Called by a Kawaii heart arrow hit: freeze the foe, pop hearts, and soften its armor.
+  enemies.kawaiiStun = function (rootGroup, stun, defDur) {
+    const e = enemies.list.find((x) => x.group === rootGroup);
+    if (!e || !e.alive || e.buffBoss) return;                 // Sir Buffington is too swole to charm
+    e._stunT = Math.max(e._stunT || 0, stun || 2);
+    e._defT = Math.max(e._defT || 0, defDur || 5);
+    const base = (HEAD_Y[e.kind] || 1.7) + 0.5;
+    for (let i = 0; i < 3; i++) {
+      const s = heartSprite(); enemies.scene.add(s);
+      enemies._kawaiiFx.push({ spr: s, e, t: 0, dur: (stun || 2), ox: (Math.random() - 0.5) * 0.7, oz: (Math.random() - 0.5) * 0.5, base, ph: Math.random() * 6.28 });
+    }
+  };
+  function stepKawaiiFx(dt) {
+    for (let i = enemies._kawaiiFx.length - 1; i >= 0; i--) {
+      const f = enemies._kawaiiFx[i]; f.t += dt;
+      const g = f.e && f.e.group;
+      if (g) f.spr.position.set(g.position.x + f.ox + Math.sin(f.t * 3 + f.ph) * 0.15, g.position.y + f.base + f.t * 0.8, g.position.z + f.oz);
+      const k = f.t / f.dur;
+      f.spr.material.opacity = k < 0.6 ? 1 : Math.max(0, 1 - (k - 0.6) / 0.4);
+      const sc = 0.6 + Math.min(f.t * 2, 0.3); f.spr.scale.set(sc, sc, 1);
+      if (f.t >= f.dur || !f.e.alive) { enemies.scene.remove(f.spr); if (f.spr.material.map) f.spr.material.map.dispose(); f.spr.material.dispose(); enemies._kawaiiFx.splice(i, 1); }
+    }
+  }
 
   // Death only — kill credit/rewards are handled by the attacker (see player.creditKill).
   enemies.kill = function (e) {
@@ -997,6 +1030,13 @@
       if (e.buffBoss) { enemies.updateBuffington(e, dt, targets); continue; }   // Sir Buffington runs his own brain
       e.t += dt;
       const g = e.group;
+      if ((e._defT || 0) > 0) e._defT -= dt;                 // love-struck: defense stays down
+      if ((e._stunT || 0) > 0) {                             // charmed stiff — can't move or bite
+        e._stunT -= dt;
+        g.position.y = W.world.heightAt(g.position.x, g.position.z);
+        g.rotation.z = Math.sin(e.t * 18) * 0.12;            // woozy little sway
+        continue;
+      }
       let tgt = targets[0], bestD = 1e9;
       for (const t of targets) {
         const dd = Math.hypot(t.pos.x - g.position.x, t.pos.z - g.position.z);
@@ -1085,6 +1125,7 @@
     }
     animateDying(dt);
     stepBuffFx(dt);
+    stepKawaiiFx(dt);
   };
 
   // --- Networking (host serialize / client mirror) ---------------------------
