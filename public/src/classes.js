@@ -83,6 +83,14 @@
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }
   function saveOwned(s) { LS.setItem(KEY_OWNED, JSON.stringify([...s])); }
 
+  // 🥚 secret class gate: the Kawaii Fighter only exists for players named "Sophia".
+  // `curName` tracks the name being typed in the lobby; falls back to the play name.
+  let curName = '';
+  function isSophia(name) {
+    const nm = (name != null ? name : (curName || (W.net && W.net.myName) || '')).toString().trim().toLowerCase();
+    return nm === 'sophia';
+  }
+
   // start with no coins — earn them all by killing bandits (5 kills = 1 coin)
   if (LS.getItem(KEY_COINS) == null) LS.setItem(KEY_COINS, '0');
 
@@ -91,7 +99,9 @@
     coins() { return OWNER ? 999999999 : num(KEY_COINS, 0); },   // owner: effectively infinite
     setCoins(n) { LS.setItem(KEY_COINS, String(Math.max(0, n | 0))); },
     addCoins(n) { const v = classes.coins() + (n | 0); classes.setCoins(v); return v; },
-    owned(id) { return id === 'villager' || ownedSet().has(id); },
+    owned(id) { return id === 'villager' || (id === 'kawaii' && isSophia()) || ownedSet().has(id); },   // Kawaii is free for Sophia
+    setName(n) { curName = n || ''; },                 // lobby feeds the live name box here
+    secretUnlocked() { return isSophia(); },           // true only while the typed/play name is Sophia
     // --- class levels: Lv1 base, Lv2 = 2x price, Lv3 = 5x price, each way stronger ---
     level(id) { let m; try { m = JSON.parse(LS.getItem(KEY_LVLS) || '{}'); } catch (e) { m = {}; } return Math.max(1, Math.min(3, m[id] || 1)); },
     upgradeCost(id) { const d = DEFS[id]; if (!d) return null; const lv = classes.level(id); if (lv >= 3) return null; const base = d.cost || 100; return base * (lv === 1 ? 2 : 5); },
@@ -106,7 +116,7 @@
       m[id] = lv + 1; LS.setItem(KEY_LVLS, JSON.stringify(m));
       return { ok: true, level: lv + 1 };
     },
-    selected() { const s = LS.getItem(KEY_SEL); return s && DEFS[s] ? s : 'villager'; },
+    selected() { const s = LS.getItem(KEY_SEL); if (s === 'kawaii' && !isSophia()) return 'villager'; return s && DEFS[s] ? s : 'villager'; },
     select(id) { if (classes.owned(id)) { LS.setItem(KEY_SEL, id); return true; } return false; },
     // Try to buy a class. Returns {ok, reason, need}.
     buy(id) {
@@ -121,8 +131,7 @@
     // Apply the selected class to a freshly-initialised player object.
     applyToPlayer(p) {
       let d = DEFS[classes.selected()];
-      const nm = ((W.net && W.net.myName) || '').trim().toLowerCase();
-      if (nm === 'sophia' && DEFS.kawaii) d = DEFS.kawaii;   // 🥚 secret name-gated class, free & unlisted
+      if (d && d.kawaii && !isSophia(W.net && W.net.myName)) d = DEFS.villager;   // 🥚 never leak the secret to a non-Sophia
       if (!d || !p) return null;
       p.playerClass = d.id;
       p.speedMult = d.speedMult || 1;

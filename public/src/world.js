@@ -2242,11 +2242,14 @@
     }
     // perf: only render trees near the player — distant ones are lost in the fog anyway.
     // (2900 trees; drawing only the ~few hundred within range is a big frame-time win.)
-    if (world.trees && playerPos) {
-      const R = 240, px = playerPos.x, pz = playerPos.z;
-      for (let i = 0; i < world.trees.length; i++) {
-        const t = world.trees[i];
-        t.visible = U.dist2(px, pz, t.position.x, t.position.z) < R;
+    // Re-cull ~7x/sec instead of every frame, and compare squared distance (no sqrt).
+    world._cullAcc = (world._cullAcc || 0) + dt;
+    if (world.trees && playerPos && world._cullAcc >= 0.14) {
+      world._cullAcc = 0;
+      const R2 = 240 * 240, px = playerPos.x, pz = playerPos.z, trees = world.trees;
+      for (let i = 0; i < trees.length; i++) {
+        const t = trees[i], ddx = px - t.position.x, ddz = pz - t.position.z;
+        t.visible = ddx * ddx + ddz * ddz < R2;
       }
     }
     // gradient sky dome: horizon = sky colour, zenith = a deeper blue

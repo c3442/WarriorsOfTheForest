@@ -319,7 +319,7 @@
   // each other walk around. The first player claims the hub id (becomes host and
   // relays poses); the rest connect as clients. If the host leaves, a client claims it.
   const HUB_ID = 'wotf-hub-1';
-  net.hub = { on: false, role: null, peer: null, conns: [], remote: {}, scene: null, me: null, acc: 0, getPose: null, getName: null, getSkin: null };
+  net.hub = { on: false, role: null, peer: null, conns: [], remote: {}, scene: null, me: null, acc: 0, getPose: null, getName: null, getSkin: null, myBox: -1, hosting: false, onGo: null };
 
   function hubAvatar(id) {
     const h = net.hub, r = h.remote[id]; if (!r) return;
@@ -355,10 +355,14 @@
       peer.on('connection', (conn) => {
         h.conns.push(conn);
         conn.on('data', (m) => {
-          if (m.t !== 'hp') return;
-          hubSet(conn.peer, m);
-          const relay = { t: 'hp', id: conn.peer, x: m.x, y: m.y, z: m.z, yaw: m.yaw, name: m.name, skin: m.skin };
-          for (const c of h.conns) { if (c !== conn && c.open) c.send(relay); }   // let the other clients see this one
+          if (m.t === 'hp') {
+            hubSet(conn.peer, m);
+            const relay = { t: 'hp', id: conn.peer, x: m.x, y: m.y, z: m.z, yaw: m.yaw, name: m.name, skin: m.skin, box: m.box, host: m.host };
+            for (const c of h.conns) { if (c !== conn && c.open) c.send(relay); }   // let the other clients see this one
+          } else if (m.t === 'go') {
+            if (h.onGo) h.onGo(m);                                                  // a party is starting — the host may be in it too
+            for (const c of h.conns) { if (c !== conn && c.open) c.send(m); }       // relay the room code to the rest
+          }
         });
         conn.on('close', () => { h.conns = h.conns.filter((c) => c !== conn); hubRemove(conn.peer); for (const c of h.conns) { if (c.open) c.send({ t: 'bye', id: conn.peer }); } });
       });
@@ -370,7 +374,7 @@
       peer.on('open', (myid) => {
         h.me = myid;
         const conn = peer.connect(HUB_ID, { reliable: true }); h.conns = [conn];
-        conn.on('data', (m) => { if (m.t === 'hp') hubSet(m.id, m); else if (m.t === 'bye') hubRemove(m.id); });
+        conn.on('data', (m) => { if (m.t === 'hp') hubSet(m.id, m); else if (m.t === 'bye') hubRemove(m.id); else if (m.t === 'go') { if (h.onGo) h.onGo(m); } });
         conn.on('close', () => { if (!h.on) return; for (const id in h.remote) hubRemove(id); h.conns = []; setTimeout(tryHost, 200 + Math.floor(Math.random() * 500)); });   // host vanished -> race to claim the hub
       });
       peer.on('error', () => {});
@@ -384,7 +388,7 @@
       h.acc = 0;
       const p = h.getPose();
       if (p) {
-        const msg = { t: 'hp', x: p.x, y: p.y, z: p.z, yaw: p.yaw, name: (h.getName && h.getName()) || 'Player', skin: (h.getSkin && h.getSkin()) || 'boy' };
+        const msg = { t: 'hp', x: p.x, y: p.y, z: p.z, yaw: p.yaw, name: (h.getName && h.getName()) || 'Player', skin: (h.getSkin && h.getSkin()) || 'boy', box: h.myBox, host: h.hosting };
         if (h.role === 'host') { msg.id = 'HOST'; for (const c of h.conns) { if (c.open) c.send(msg); } }
         else { const c = h.conns[0]; if (c && c.open) c.send(msg); }
       }
@@ -398,6 +402,24 @@
       a.rotation.y = r.pose.yaw + Math.PI;
     }
   };
+
+  // Broadcast a party-start signal (with the host's room code) to everyone in the hub.
+  net.hubGo = function (payload) {
+    const h = net.hub; if (!h.on) return;
+    const msg = Object.assign({ t: 'go' }, payload);
+    if (h.role === 'host') { if (h.onGo) h.onGo(msg); for (const c of h.conns) { if (c.open) c.send(msg); } }
+    else { const c = h.conns[0]; if (c && c.open) c.send(msg); }
+  };
+  // Who else is standing in box `idx`? Returns { count, names, hosted } (self NOT included).
+  net.hubBoxInfo = function (idx) {
+    const h = net.hub, names = []; let hosted = false;
+    for (const id in h.remote) {
+      const r = h.remote[id];
+      if (r && r.pose && r.pose.box === idx) { names.push(r.name || 'Player'); if (r.pose.host) hosted = true; }
+    }
+    return { count: names.length, names, hosted };
+  };
+  net.setHubBox = function (idx, hosting) { net.hub.myBox = (idx == null ? -1 : idx); net.hub.hosting = !!hosting; };
 
   net.leaveHub = function () {
     const h = net.hub; if (!h.on) return; h.on = false;

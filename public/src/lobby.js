@@ -20,6 +20,7 @@
   let confirmed = false, readyBox = -1, timerEl = null;      // auto-customise, then boxes open a player-count picker
   let countOpen = false, countEl = null;                     // the "how many players 1-5" picker + 30s countdown
   let lockedIn = false, joined = 0;                          // step in a box -> locked in (can't leave); press J to leave the party
+  let myBox = -1, coopStarting = false, joinWait = false;    // shared party boxes: which box I'm in, whether a co-op start is underway, and if I'm waiting on a host
   const HUD_IDS = ['minimap', 'stats', 'res', 'hotbar', 'info', 'tpVillage', 'cross', 'ownBar'];
   const hudPrev = {};
   const keys = {};
@@ -216,7 +217,9 @@
   function renderClassList() {
     const K = W.classes, coins = K.coins(), sel = K.selected();
     let rows = '';
-    K.ORDER.forEach((id) => {
+    const order = K.ORDER.slice();
+    if (K.secretUnlocked && K.secretUnlocked()) order.push('kawaii');   // 🥚 the secret class shows only for Sophia
+    order.forEach((id) => {
       const d = K.DEFS[id], owned = K.owned(id), equipped = sel === id;
       const rest = equipped ? 'rgba(60,140,80,.14)' : 'rgba(255,255,255,.03)';
       const badge = equipped ? '<span style="color:#8fd36a;font-weight:bold;font-size:12px;">✓ EQUIPPED</span>'
@@ -292,6 +295,7 @@
   }
   function openClasses() {
     if (!classesPanel) classesPanel = makeClassesPanel();
+    const ni = document.getElementById('nameInput'); if (ni && W.classes.setName) W.classes.setName(ni.value);   // sync the live name for the secret gate
     classesView = null;
     refreshClasses();
     classesOpen = true; classesPanel.style.display = 'block';
@@ -451,8 +455,10 @@
     if (!timerEl) return;
     if (partyRunning) {
       timerEl.style.display = 'block';
+      const bi = (W.net && W.net.hubBoxInfo) ? W.net.hubBoxInfo(myBox) : { count: 0 };
+      const inBox = bi.count + 1;
       const left = fmt(partyEnd - performance.now() / 1000);
-      timerEl.innerHTML = '👥 <b style="color:#bfffca">' + joined + ' / ' + partySize + '</b> in party · ⏳ <b style="color:#8fe6ff;font-size:19px">' + left +
+      timerEl.innerHTML = '👥 <b style="color:#bfffca">' + inBox + ' / ' + partySize + '</b> in box · ⏳ <b style="color:#8fe6ff;font-size:19px">' + left +
         '</b> · <b style="color:#8fd36a">Enter</b> start · <b style="color:#ff9a9a">J</b> leave';
     } else { timerEl.style.display = 'none'; }
   }
@@ -505,12 +511,25 @@
     countEl.querySelectorAll('button[data-count]').forEach((b) => { b.onclick = () => pickCount(+b.dataset.count); });
     document.body.appendChild(countEl);
   }
-  function openCountPicker() {
+  function openCountPicker(idx) {
     if (partyRunning || !confirmed) return;      // customise first, and don't reopen once counting down
     lockedIn = true; joined = 1;                 // stepping in the box locks you in — you can't walk out until you press J
-    countOpen = true; if (countEl) countEl.style.display = 'block';
+    myBox = (idx == null ? 9 : idx);             // which box (numbered pad index, or 9 = the ∞ box)
+    if (W.net && W.net.setHubBox) W.net.setHubBox(myBox, false);
     if (document.pointerLockElement) document.exitPointerLock();
+    // if someone in this box is already hosting a party, join them instead of picking a count
+    const info = (W.net && W.net.hubBoxInfo) ? W.net.hubBoxInfo(myBox) : { count: 0, hosted: false, names: [] };
+    if (info.hosted) { enterJoinWait(info); return; }
+    joinWait = false;
+    countOpen = true; if (countEl) countEl.style.display = 'block';
     if (hint) hint.innerHTML = '🔒 <b>Locked in the box</b> — pick players <b>1</b>–<b>5</b>, or press <b style="color:#ff9a9a">J</b> to leave';
+  }
+  // Someone else in this box already started a party — wait for them to launch it.
+  function enterJoinWait(info) {
+    joinWait = true; countOpen = false; if (countEl) countEl.style.display = 'none';
+    const who = (info && info.names && info.names[0]) ? info.names[0] : 'a friend';
+    if (hint) hint.innerHTML = '👥 <b>In ' + who + '’s party</b> — waiting for the host to start… (press <b style="color:#ff9a9a">J</b> to leave)';
+    if (W.hud && W.hud.toast) W.hud.toast('👥 Joined the party in this box — waiting for the host…');
   }
   function closeCountPicker() {
     countOpen = false; if (countEl) countEl.style.display = 'none';
@@ -520,6 +539,8 @@
   function leaveParty() {
     if (!lockedIn) return;
     lockedIn = false; joined = 0; partyRunning = false;
+    myBox = -1; joinWait = false; coopStarting = false;
+    if (W.net && W.net.setHubBox) W.net.setHubBox(-1, false);
     closeCountPicker(); updateTimerUI();
     if (W.hud && W.hud.toast) W.hud.toast('🚪 You left the party — step back into a box to play');
     if (hint) hint.innerHTML = '🚪 <b>You left the party</b> — walk back into a <b style="color:#8fe6ff">box</b> to play';
@@ -528,8 +549,9 @@
     if (!countOpen) return;
     partySize = n; closeCountPicker();
     if (n === 1) { if (W.hud && W.hud.toast) W.hud.toast('🎮 Solo — entering the forest…'); startGame(); return; }   // 1 player -> start instantly
+    if (W.net && W.net.setHubBox) W.net.setHubBox(myBox, true);   // I'm hosting this box's party — friends who step in now can join
     startCountdown(30);
-    if (W.hud && W.hud.toast) W.hud.toast('👥 ' + n + ' players — starting in 30s!');
+    if (W.hud && W.hud.toast) W.hud.toast('👥 Box open for ' + n + ' — friends can walk in! Starts when full or in 30s.');
     if (hint) hint.innerHTML = '⏳ <b>Starting in 30s…</b> (press <b>Enter</b> to start now)';
   }
 
@@ -671,7 +693,7 @@
     timerEl.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:12;display:none;' +
       'background:rgba(12,16,10,.82);border:2px solid #8fd36a;border-radius:12px;padding:8px 18px;text-align:center;' +
       "font:bold 15px 'Trebuchet MS',sans-serif;color:#eaf4dd;text-shadow:0 1px 2px #000;cursor:pointer;";
-    timerEl.onclick = () => { if (partyRunning) startGame(); };   // click the timer to start now too
+    timerEl.onclick = () => { if (partyRunning) beginParty(); };   // click the timer to start now too
     document.body.appendChild(timerEl);
   }
 
@@ -693,6 +715,33 @@
     if (solo) solo.click();     // -> beginGame -> overlay gets .hidden -> teardown()
   }
 
+  // Start the box's party: if friends are in the box with me, host a co-op game and
+  // hand them the room code over the hub; otherwise just drop into a solo game.
+  function beginParty() {
+    if (coopStarting || started || starting) return;
+    const info = (W.net && W.net.hubBoxInfo) ? W.net.hubBoxInfo(myBox) : { count: 0 };
+    const hubOn = W.net && W.net.hub && W.net.hub.on;
+    if (!hubOn || info.count === 0) { startGame(); return; }   // no one else here -> plain solo start
+    coopStarting = true;
+    if (W.net.setHubBox) W.net.setHubBox(myBox, true);
+    W.net.myName = ((document.getElementById('nameInput') || {}).value || 'Player').trim().slice(0, 12) || 'Player';
+    if (W.hud && W.hud.toast) W.hud.toast('🎮 Starting co-op with ' + (info.count + 1) + ' players…');
+    W.net.host({
+      onCode: (code) => { if (W.net.hubGo) W.net.hubGo({ box: myBox, code: code }); if (W._begin) W._begin(W.net.seed); },
+      onStatus: () => {}, onPeer: () => {},
+    });
+  }
+  // The host of my box just launched — join their game.
+  function onHubGo(m) {
+    if (coopStarting || started || starting) return;
+    if (!m || m.box == null || m.box !== myBox) return;         // only if I'm standing in that same box
+    if (W.net && W.net.hub && W.net.hub.hosting) return;        // I'm the host, not a joiner
+    coopStarting = true;
+    W.net.myName = ((document.getElementById('nameInput') || {}).value || 'Player').trim().slice(0, 12) || 'Player';
+    if (W.hud && W.hud.toast) W.hud.toast('🎮 Joining the party…');
+    W.net.join(m.code, { onInit: (seed) => { if (W._begin) W._begin(seed); }, onStatus: () => {} });
+  }
+
   // Join the shared public lobby so everyone here can see each other walk around.
   function joinHub() {
     if (!(W.net && W.net.joinHub)) return;
@@ -703,6 +752,7 @@
         getName: () => { const ni = document.getElementById('nameInput'); return ((ni && ni.value.trim()) || (W.net && W.net.myName) || 'Player').slice(0, 12); },
         getSkin: () => (W.player && W.player.skin) || 'boy',
       });
+      if (W.net.hub) W.net.hub.onGo = onHubGo;   // receive party-start signals from the box host
     } catch (e) {}
   }
 
@@ -711,7 +761,16 @@
     raf = requestAnimationFrame(step);
     tphase += 0.02;
     if (W.net && W.net.hubTick) W.net.hubTick(1 / 60);   // sync + render other lobby players
-    if (partyRunning) { updateTimerUI(); if (performance.now() / 1000 >= partyEnd) { startGame(); } }
+    if (partyRunning) {
+      updateTimerUI();
+      const bi = (W.net && W.net.hubBoxInfo) ? W.net.hubBoxInfo(myBox) : { count: 0 };
+      if ((bi.count + 1) >= partySize || performance.now() / 1000 >= partyEnd) { beginParty(); }   // box full or time up -> go
+    }
+    // if another player in my box took the host role, flip me into join-wait
+    if (lockedIn && !joinWait && !coopStarting && myBox >= 0 && !(W.net && W.net.hub && W.net.hub.hosting)) {
+      const info = (W.net && W.net.hubBoxInfo) ? W.net.hubBoxInfo(myBox) : null;
+      if (info && info.hosted) { partyRunning = false; updateTimerUI(); enterJoinWait(info); }
+    }
     if (!menuOpen && !updatesOpen && !classesOpen && !countOpen && !lockedIn) {
       // arrow keys turn/look — works with NO mouse lock needed
       const LK = 2.0 / 60;
@@ -734,12 +793,12 @@
     pads.forEach((p, i) => paintPad(p, i, i === on));
     if (on !== curPad) {
       curPad = on;
-      if (on >= 0) openCountPicker();   // stepped into a box -> pick player count
+      if (on >= 0) openCountPicker(on);   // stepped into a box -> pick player count (or join a party already forming)
       else if (!inBox) closeCountPicker();
     }
     // the ∞ box at the back also opens the player-count picker
     const inNow = Math.abs(pos.x - BOX.x) < BOX.w / 2 && Math.abs(pos.z - BOX.z) < BOX.d / 2;
-    if (inNow && !inBox) { inBox = true; openCountPicker(); }
+    if (inNow && !inBox) { inBox = true; openCountPicker(9); }
     else if (!inNow && inBox) { inBox = false; if (curPad < 0) closeCountPicker(); }
     // the Update Keeper bandit: gently bob, face the player, show an [F] prompt when you're up on his deck
     if (bandit) {
@@ -793,7 +852,7 @@
     } else if ((e.code === 'Escape' || e.code === 'KeyB') && updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
     else if ((e.code === 'Escape' || e.code === 'KeyB') && classesOpen) { e.stopImmediatePropagation(); if (classesView) { classesView = null; refreshClasses(); } else closeClasses(); }
     else if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); confirmLook(); }   // Enter = confirm your look
-    else if (e.code === 'Enter' && !menuOpen && !updatesOpen && !classesOpen && !countOpen && partyRunning) { startGame(); }   // start now (skip the countdown)
+    else if (e.code === 'Enter' && !menuOpen && !updatesOpen && !classesOpen && !countOpen && partyRunning) { beginParty(); }   // start now (skip the countdown)
   };
   const onUp = (e) => { keys[e.code] = false; };
   const onCanvasDown = () => { if (started || menuOpen || updatesOpen || classesOpen) return; if (document.pointerLockElement == null && canvas.requestPointerLock) canvas.requestPointerLock(); };
@@ -803,6 +862,8 @@
     window.addEventListener('keydown', onDown, true);
     window.addEventListener('keyup', onUp);
     canvas.addEventListener('mousedown', onCanvasDown);
+    const ni = document.getElementById('nameInput');
+    if (ni) ni.addEventListener('input', () => { if (W.classes && W.classes.setName) W.classes.setName(ni.value); if (classesOpen) refreshClasses(); });   // reveal the 🥚 secret class live as you type
   }
 
   function teardown() {

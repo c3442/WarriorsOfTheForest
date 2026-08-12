@@ -3,7 +3,7 @@
   const W = window.WOTF;
   const C = W.CONFIG;
 
-  let renderer, scene, camera, clock, composer;
+  let renderer, scene, camera, clock, composer, bloomPass, frameN = 0;
   let started = false, paused = false, built = false;
   let timeOfDay = 0.18 * C.DAY_LENGTH; // start mid-morning
   let day = 1, wasNight = false;
@@ -15,6 +15,7 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false;   // perf: we refresh shadows every other frame (see loop)
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;       // cinematic colour response
     renderer.toneMappingExposure = 0.72;
@@ -38,8 +39,9 @@
     composer = new THREE.EffectComposer(renderer);
     composer.addPass(new THREE.RenderPass(scene, camera));
     const bloom = new THREE.UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.5, 0.9,
+      new THREE.Vector2(window.innerWidth * 0.5, window.innerHeight * 0.5), 0.22, 0.5, 0.9,   // perf: half-res bloom (~4x cheaper, glow looks the same)
     );
+    bloomPass = bloom;
     composer.addPass(bloom);
     // The composer bypasses the renderer's MSAA, so multisample its targets to smooth edges.
     if (composer.renderTarget1 && 'samples' in composer.renderTarget1) {
@@ -197,6 +199,7 @@
     renderer.domElement.requestPointerLock();
     W.hud.banner('SURVIVE', W.net.role ? 'Co-op — survive together' : 'Chop wood by day · fight beasts by night', '#cfe8b6');
   }
+  W._begin = beginGame;   // lobby party-boxes drive host/client co-op starts through this
 
   // --- Pause / death ---------------------------------------------------------
 
@@ -212,6 +215,7 @@
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     if (composer) composer.setSize(window.innerWidth, window.innerHeight);
+    if (bloomPass) bloomPass.setSize(window.innerWidth * 0.5, window.innerHeight * 0.5);   // keep bloom half-res after resize
   }
 
   // --- Loop ------------------------------------------------------------------
@@ -277,6 +281,8 @@
       });
     }
 
+    frameN++;
+    renderer.shadowMap.needsUpdate = (frameN & 1) === 0;   // perf: re-render the shadow map every other frame
     composer.render();
   }
 
