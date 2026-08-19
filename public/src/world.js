@@ -2090,6 +2090,16 @@
       n++;
     }
   }
+  // spawn a fresh horse at (x,z) and return its record (used by royals for their starting steed)
+  world.spawnHorseAt = function (x, z, scene) {
+    scene = scene || (W.player && W.player.scene);
+    const h = makeHorse();
+    h.position.set(x, world.heightAt(x, z), z); h.rotation.y = U.rand(0, 6.28);
+    if (scene) scene.add(h);
+    const rec = { group: h, ridden: false, t: U.rand(0, 6) };
+    world.horses.push(rec);
+    return rec;
+  };
   world.nearestHorse = function (pos, range) {
     let best = null, bd = range || 3.4;
     for (const h of world.horses) {

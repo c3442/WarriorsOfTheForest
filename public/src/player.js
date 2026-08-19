@@ -6,7 +6,14 @@
 
   // Everyone starts with nothing — all your gear (axe, Deagle, meat) comes from the starter crate.
   const START_WOOD = 0;
-  let OWNER = false; try { OWNER = localStorage.getItem('wotf_owner') === 'lin8up'; } catch (e) {}   // the maker gets dev perks (e.g. V = warp to village)
+  // the maker gets dev perks (e.g. V = warp to village). Read the ?owner param directly so it
+  // works even though player.js loads before owner.js sets the localStorage flag.
+  let OWNER = false;
+  try {
+    const code = new URLSearchParams(location.search).get('owner');
+    if (code) localStorage.setItem('wotf_owner', code);
+    OWNER = localStorage.getItem('wotf_owner') === 'lin8up';
+  } catch (e) {}
 
   const player = {
     active: false,
@@ -84,6 +91,11 @@
       if (e.code === 'KeyR') player.sit();
       if (e.code === 'KeyU') player.plant();
       if (e.code === 'KeyM') player.toggleMount();
+      // King / President: N mounts one of your guards on a nearby riderless horse
+      if (e.code === 'KeyN' && !e.repeat && !player.buildOpen && !player.craftOpen &&
+          (player.playerClass === 'king' || player.playerClass === 'president')) {
+        if (player.mountGuardOnHorse && player.mountGuardOnHorse()) { e.stopImmediatePropagation(); return; }
+      }
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
       if (e.code === 'KeyJ') { if (!(W.sack && W.sack.pocketLookedAt && W.sack.pocketLookedAt())) W.hud.showKeyHelp(true); }   // pocket the item you're eyeing, else show controls
       if (e.code === 'KeyI') player.toggleInventory();
@@ -1728,6 +1740,31 @@
       const pres = player.playerClass === 'president';
       W.hud.banner(pres ? '🎖️ PRESIDENTIAL GUARD' : '👑 KNIGHTS OF THE KING', n + (pres ? ' soldiers' : ' knights') + ' rally! Press 0 for commands', '#ffe08a');
     }
+    if (player.playerClass === 'king' || player.playerClass === 'president') player.mountRoyalSteed();   // the royal rides in on a horse
+  };
+
+  // Royals ride in already mounted on their own steed.
+  player.mountRoyalSteed = function () {
+    if (player._mount || !W.world) return;
+    const rec = W.world.spawnHorseAt ? W.world.spawnHorseAt(player.pos.x, player.pos.z, player.scene) : null;
+    if (!rec) return;
+    rec.ridden = true; player._mount = rec;
+    if (W.hud && W.hud.toast) W.hud.toast('🐴 You ride your royal steed — M to dismount · press N by a horse to seat a guard');
+  };
+
+  // King / President: seat one of your guards on the nearest riderless horse (N).
+  player.mountGuardOnHorse = function () {
+    if (!player.alive || !player.active) return false;
+    const ks = player.knights; if (!ks || !ks.length) { if (W.hud) W.hud.toast('No guards to ride 🐴'); return true; }
+    const h = W.world.nearestHorse && W.world.nearestHorse(player.pos, 5.5);
+    if (!h) { if (W.hud) W.hud.toast('No riderless horse nearby 🐴'); return true; }
+    let best = null, bd = Infinity;
+    for (const k of ks) { if (k.horse) continue; const d = Math.hypot(k.g.position.x - h.group.position.x, k.g.position.z - h.group.position.z); if (d < bd) { bd = d; best = k; } }
+    if (!best) { if (W.hud) W.hud.toast('All your guards are already mounted 🐴'); return true; }
+    h.ridden = true; h.knightRider = best; best.horse = h;
+    if (W.sfx && W.sfx.select) W.sfx.select();
+    if (W.hud) W.hud.toast((player.playerClass === 'president' ? '🪖 A soldier' : '⚔️ A knight') + ' mounts up! 🐴');
+    return true;
   };
 
   // --- Knight command menu (press 0) + formations ---------------------------
@@ -1783,7 +1820,7 @@
       const dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz) || 1;
       const reach = tgt ? 1.7 : 0.4;
       if (d > reach) {
-        const sp = (tgt ? 9.0 : 5.0) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
+        const sp = (tgt ? 9.0 : 5.0) * (k.horse ? 1.9 : 1) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
         g.rotation.y = Math.atan2(dx, dz);
         const sw = Math.sin(k.t * 11) * 0.5, lg = g.userData.legs;
         if (lg) { lg[0].rotation.x = sw; lg[1].rotation.x = -sw; lg[2].rotation.x = -sw; lg[3].rotation.x = sw; }
@@ -1797,10 +1834,20 @@
         g.rotation.y = Math.atan2(g.position.x - player.pos.x, g.position.z - player.pos.z);   // hold: face outward
       }
       g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(k.t * 8)) * 0.04;
+      // a mounted guard: place their horse under them, sit them up on the saddle, gallop the horse
+      if (k.horse) {
+        const gy = W.world.heightAt(g.position.x, g.position.z);
+        k.horse.group.position.set(g.position.x, gy, g.position.z);
+        k.horse.group.rotation.y = g.rotation.y + Math.PI;
+        g.position.y = gy + 1.5;
+        const gait = (d > reach) ? Math.sin(k.t * 13) * 0.55 : 0.05, hl = k.horse.group.userData.legs;
+        if (hl) { hl[0].rotation.x = gait; hl[3].rotation.x = gait; hl[1].rotation.x = -gait; hl[2].rotation.x = -gait; }
+        const lg = g.userData.legs; if (lg) { lg[0].rotation.x = 0.9; lg[1].rotation.x = 0.9; lg[2].rotation.x = 0.9; lg[3].rotation.x = 0.9; }   // sit astride
+      }
     }
     // clear out any knights that fell in battle
     if (ks.some((k) => k.dead)) {
-      for (const k of ks) { if (k.dead && k.g.parent) k.g.parent.remove(k.g); }
+      for (const k of ks) { if (k.dead) { if (k.horse) { k.horse.ridden = false; k.horse.knightRider = null; k.horse = null; } if (k.g.parent) k.g.parent.remove(k.g); } }
       player.knights = ks.filter((k) => !k.dead);
       if (W.hud && W.hud.toast && player._t - (player._knightFellT || 0) > 2.5) {
         player._knightFellT = player._t; W.hud.toast('⚔️ Knights are falling! ' + player.knights.length + ' hold the line');
