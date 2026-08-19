@@ -718,7 +718,7 @@
   function fireShotgun() {
     if (player.shells <= 0) { W.hud.toast('Out of shells 🔫'); return; }
     player.shells -= 1;
-    if (W.sfx) (W.sfx.deagle || W.sfx.shotgun)();
+    if (W.sfx) W.sfx.shotgun();
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
     ray.far = 22;
@@ -760,6 +760,7 @@
         else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
         player.popDamage(root.position, dmg, head);
         if (head && W.hud) W.hud.toast('🎯 HEADSHOT! ' + dmg);
+        if (player.isHunter && (player.classLevel || 1) >= 2 && Math.random() < 0.5) { player.rounds += 1; if (W.hud) W.hud.toast('🎯 Bullet recovered! (' + player.rounds + ')'); }   // Hunter Lv2 perk
       }
     }
     // muzzle tracer down the barrel line
@@ -778,7 +779,7 @@
   function fireDeagle() {
     if (player.deagleRounds <= 0) { W.hud.toast('Deagle empty 🔫 — out of rounds'); return; }
     player.deagleRounds -= 1;
-    if (W.sfx && W.sfx.gun) W.sfx.gun();
+    if (W.sfx) (W.sfx.deagle || W.sfx.gun)();
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
     ray.far = 80;
@@ -942,6 +943,11 @@
     // wolves & their kin drop RAW meat into your sack — cook it at a fire before it feeds you
     const meat = { wolf: 1, werewolf: 2, bear: 3 }[kind] || 0;
     if (meat) { player.wolfMeat += meat; W.hud.toast('🥩 +' + meat + ' raw wolf meat — cook it at a fire'); }
+    // Hunter: every 5 wolves killed rallies another alpha wolf to the pack
+    if (player.isHunter && kind === 'wolf') {
+      player._wolfKills = (player._wolfKills || 0) + 1;
+      if (player._wolfKills % 5 === 0 && player.spawnAlphaWolf) player.spawnAlphaWolf();
+    }
   };
 
   function findRoot(obj) {
@@ -1761,17 +1767,51 @@
   const cupidShots = [];
   function makeCupid() {
     const g = new THREE.Group();
-    const skin = new THREE.MeshStandardMaterial({ color: 0xffd9c0, roughness: 0.8, flatShading: true });
-    const pink = new THREE.MeshStandardMaterial({ color: 0xffb3d9, roughness: 0.7, flatShading: true });
-    const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, flatShading: true });
-    const gold = new THREE.MeshStandardMaterial({ color: 0xffe066, emissive: 0xffcf5a, emissiveIntensity: 0.9, roughness: 0.4 });
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), skin); g.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), skin); head.position.y = 0.3; g.add(head);
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), pink); hair.position.y = 0.37; hair.scale.set(1, 0.6, 1); g.add(hair);
+    const mat = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.75, flatShading: true }, o || {}));
+    const skin = mat(0xffdcc4), cheekM = mat(0xff9db0, { roughness: 0.85 }), hairM = mat(0xffdf8a);
+    const featherM = mat(0xfdfdff, { roughness: 0.55 }), togaM = mat(0xfff2f7, { roughness: 0.7 });
+    const gold = mat(0xffe066, { emissive: 0xffcf5a, emissiveIntensity: 1.1, metalness: 0.3, roughness: 0.3 });
+    const bowM = mat(0xff7ab0, { roughness: 0.55 }), darkM = mat(0x3a2a34, { roughness: 0.5 });
+    const heartM = mat(0xff4f92, { emissive: 0xff2f80, emissiveIntensity: 0.5 });
+
+    // chubby cherub body + a little draped toga
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), skin); body.scale.set(1, 0.92, 1); body.castShadow = true; g.add(body);
+    const toga = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.235, 0.15, 12), togaM); toga.position.y = -0.05; toga.rotation.z = 0.12; g.add(toga);
+    for (const sx of [-0.1, 0.1]) { const leg = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), skin); leg.position.set(sx, -0.22, 0.03); leg.scale.set(1, 1.1, 1); g.add(leg); }
+    // arms — the front one holds the little bow
+    const armL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), skin); armL.position.set(-0.24, 0.02, 0.06); armL.scale.set(1, 1.6, 1); armL.rotation.z = 0.5; g.add(armL);
+    const armR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), skin); armR.position.set(0.22, 0.02, 0.1); armR.scale.set(1, 1.6, 1); armR.rotation.z = -0.6; g.add(armR);
+
+    // big cute head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), skin); head.position.y = 0.36; head.castShadow = true; g.add(head);
+    for (const sx of [-0.09, 0.09]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 8), darkM); eye.position.set(sx, 0.37, 0.18); g.add(eye);
+      const gleam = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 6), featherM); gleam.position.set(sx + 0.012, 0.385, 0.2); g.add(gleam); }
+    for (const sx of [-0.13, 0.13]) { const ch = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), cheekM); ch.position.set(sx, 0.31, 0.16); ch.scale.set(1, 0.7, 0.5); g.add(ch); }
+    const smile = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.012, 6, 10, Math.PI), darkM); smile.position.set(0, 0.3, 0.18); smile.rotation.z = Math.PI; g.add(smile);
+    // golden curls
+    for (const [hx, hy, hz, s] of [[0, 0.52, 0.02, 0.11], [-0.11, 0.48, 0.03, 0.09], [0.11, 0.48, 0.03, 0.09], [-0.05, 0.5, -0.1, 0.08], [0.06, 0.5, -0.1, 0.08]]) {
+      const curl = new THREE.Mesh(new THREE.SphereGeometry(s, 8, 6), hairM); curl.position.set(hx, hy, hz); g.add(curl);
+    }
+    // halo
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.022, 8, 18), gold); halo.rotation.x = Math.PI / 2 - 0.25; halo.position.y = 0.62; g.add(halo);
+
+    // feathered wings (3 layered feathers each), grouped so they can flap
     const wings = [];
-    for (const sx of [-1, 1]) { const w = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), white); w.scale.set(0.45, 1, 0.18); w.position.set(sx * 0.22, 0.06, -0.12); g.add(w); wings.push(w); }
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.02, 6, 14), gold); halo.rotation.x = Math.PI / 2; halo.position.y = 0.56; g.add(halo);
-    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.016, 6, 10, Math.PI), pink); bow.position.set(0.24, 0.02, 0.06); bow.rotation.z = -Math.PI / 2; g.add(bow);
+    for (const side of [-1, 1]) {
+      const w = new THREE.Group();
+      for (let i = 0; i < 4; i++) {
+        const f = new THREE.Mesh(new THREE.ConeGeometry(0.075 - i * 0.011, 0.36 - i * 0.05, 6), featherM);
+        f.position.set(0, 0.02 + i * 0.055, -0.03 - i * 0.03); f.rotation.x = Math.PI * 0.5 + 0.35; f.scale.set(1, 1, 0.45); f.castShadow = true; w.add(f);
+      }
+      w.position.set(side * 0.2, 0.05, -0.13); w.rotation.y = side * 0.5; g.add(w); wings.push(w);
+    }
+
+    // little bow + a heart-tipped arrow held out front
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.018, 6, 12, Math.PI), bowM); bow.position.set(-0.02, 0.03, 0.24); bow.rotation.y = Math.PI / 2; g.add(bow);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.24, 5), mat(0xe9c07a)); shaft.rotation.x = Math.PI / 2; shaft.position.set(0, 0.03, 0.3); g.add(shaft);
+    for (const sx of [-0.03, 0.03]) { const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), heartM); lobe.position.set(sx, 0.05, 0.42); g.add(lobe); }
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.07, 6), heartM); tip.rotation.x = -Math.PI / 2; tip.position.set(0, 0.02, 0.45); g.add(tip);
+
     g.userData.wings = wings;
     return g;
   }
@@ -1829,6 +1869,128 @@
       if (hit || s.life > 2.5) { if (s.mesh.parent) s.mesh.parent.remove(s.mesh); cupidShots.splice(i, 1); }
     }
   }
+
+  // --- Hunter: an ALPHA WOLF pack that hunts foes for you ---------------------
+  function makeWolfPet() {
+    const g = new THREE.Group();
+    const fur = new THREE.MeshStandardMaterial({ color: 0x6b7078, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 1, flatShading: true });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 1.1), fur); body.position.y = 0.6; body.castShadow = true; g.add(body);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), fur); head.position.set(0, 0.72, 0.66); g.add(head);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.26), dark); snout.position.set(0, 0.66, 0.9); g.add(snout);
+    for (const sx of [-0.13, 0.13]) { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.2, 4), fur); ear.position.set(sx, 0.98, 0.6); g.add(ear); }
+    for (const sx of [-0.1, 0.1]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 5), new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff2010, emissiveIntensity: 1.3 })); eye.position.set(sx, 0.78, 0.86); g.add(eye); }
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.5), fur); tail.position.set(0, 0.74, -0.68); tail.rotation.x = 0.5; g.add(tail);
+    const legs = [];
+    for (const [lx, lz] of [[-0.17, 0.4], [0.17, 0.4], [-0.17, -0.4], [0.17, -0.4]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.55, 0.13), dark); leg.position.set(lx, 0.28, lz); leg.castShadow = true; g.add(leg); legs.push(leg);
+    }
+    g.userData.legs = legs; g.scale.setScalar(1.35);   // alphas are big
+    return g;
+  }
+  player.spawnAlphaWolf = function () {
+    if (!player.scene) return;
+    if (!player.wolves) player.wolves = [];
+    if (player.wolves.length >= 8) return;                         // pack cap
+    const a = Math.random() * Math.PI * 2, r = 2.0 + Math.random() * 1.5;
+    const wx = player.pos.x + Math.cos(a) * r, wz = player.pos.z + Math.sin(a) * r;
+    const g = makeWolfPet(); g.position.set(wx, W.world.heightAt(wx, wz), wz); player.scene.add(g);
+    player.wolves.push({ g, t: Math.random() * 6, atk: 0, a, hp: 60, maxHp: 60 });
+    if (W.hud && W.hud.toast) W.hud.toast('🐺 An ALPHA WOLF joins your pack! (' + player.wolves.length + ')');
+  };
+  player.stepWolves = function (dt) {
+    const ws = player.wolves; if (!ws || !ws.length) return;
+    const foes = (W.enemies && W.enemies.list) || [];
+    const host = !(W.net && W.net.role === 'client');
+    for (let i = 0; i < ws.length; i++) {
+      const w = ws[i], g = w.g; w.t += dt;
+      let tgt = null, bd = 34;
+      for (const e of foes) { if (!e.alive) continue; const d = Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z); if (d < bd) { bd = d; tgt = e; } }
+      let tx, tz;
+      if (tgt) { tx = tgt.group.position.x; tz = tgt.group.position.z; }
+      else { tx = player.pos.x + Math.cos(w.a + player._t * 0.2) * 2.6; tz = player.pos.z + Math.sin(w.a + player._t * 0.2) * 2.6; }   // trot around the hunter
+      const dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz) || 1;
+      const reach = tgt ? 1.5 : 0.5;
+      if (d > reach) {
+        const sp = (tgt ? 11 : 7) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
+        g.rotation.y = Math.atan2(dx, dz);
+        const sw = Math.sin(w.t * 13) * 0.5, lg = g.userData.legs;
+        if (lg) { lg[0].rotation.x = sw; lg[1].rotation.x = -sw; lg[2].rotation.x = -sw; lg[3].rotation.x = sw; }
+      } else if (tgt) {
+        g.rotation.y = Math.atan2(dx, dz);
+        w.atk -= dt;
+        if (w.atk <= 0) { w.atk = 0.6; if (host && W.enemies.damage) { const killed = W.enemies.damage(tgt.group, 30, { x: g.position.x, z: g.position.z }); if (killed && player.creditKill) player.creditKill(tgt.group.userData.kind); } }   // 5× a normal wolf's bite
+        w.hp -= (tgt.dmg || 8) * dt * 0.3;
+        if (w.hp <= 0) w.dead = true;
+      }
+      g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(w.t * 9)) * 0.03;
+    }
+    if (ws.some((w) => w.dead)) {
+      for (const w of ws) { if (w.dead && w.g.parent) w.g.parent.remove(w.g); }
+      player.wolves = ws.filter((w) => !w.dead);
+      if (W.hud && W.hud.toast) W.hud.toast('🐺 An alpha wolf fell! ' + player.wolves.length + ' left');
+    }
+  };
+
+  // --- Hunter: FALCONS that dive-bomb foes and peel away (hit & run) -----------
+  function makeFalcon() {
+    const g = new THREE.Group();
+    const body = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 1, flatShading: true });
+    const light = new THREE.MeshStandardMaterial({ color: 0xd8c39a, roughness: 1, flatShading: true });
+    const beak = new THREE.MeshStandardMaterial({ color: 0xf0b030, roughness: 0.6, flatShading: true });
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), body); b.scale.set(1, 0.9, 1.5); g.add(b);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), body); head.position.set(0, 0.06, 0.22); g.add(head);
+    const bk = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 4), beak); bk.rotation.x = Math.PI / 2; bk.position.set(0, 0.04, 0.34); g.add(bk);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.28), light); tail.position.set(0, 0, -0.3); g.add(tail);
+    const wings = [];
+    for (const sx of [-1, 1]) { const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.24), light); w.position.set(sx * 0.32, 0.02, 0); g.add(w); wings.push(w); }
+    g.userData.wings = wings; g.scale.setScalar(1.2);
+    return g;
+  }
+  player.spawnFalcon = function () {
+    if (!player.scene) return;
+    if (!player.falcons) player.falcons = [];
+    if (player.falcons.length >= 6) return;                        // sky cap
+    const a = Math.random() * Math.PI * 2;
+    const g = makeFalcon();
+    g.position.set(player.pos.x + Math.cos(a) * 2, W.world.heightAt(player.pos.x, player.pos.z) + 4.5, player.pos.z + Math.sin(a) * 2);
+    player.scene.add(g);
+    player.falcons.push({ g, t: Math.random() * 6, a, mode: 'orbit', cd: 0 });
+    if (W.hud && W.hud.toast) W.hud.toast('🦅 A falcon joins the hunt! (' + player.falcons.length + ')');
+  };
+  player.stepFalcons = function (dt) {
+    const fs = player.falcons; if (!fs || !fs.length) return;
+    const foes = (W.enemies && W.enemies.list) || [];
+    const host = !(W.net && W.net.role === 'client');
+    for (const f of fs) {
+      const g = f.g; f.t += dt; f.cd -= dt;
+      let tgt = null, bd = 30;
+      for (const e of foes) { if (!e.alive) continue; const d = Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z); if (d < bd) { bd = d; tgt = e; } }
+      const wg = g.userData.wings; if (wg) { const fl = Math.sin(f.t * 26) * 0.7; wg[0].rotation.z = fl; wg[1].rotation.z = -fl; }
+      if (f.mode === 'dive' && tgt) {                               // strike run: swoop onto the foe
+        const ep = tgt.group.position;
+        const dx = ep.x - g.position.x, dy = (ep.y + 1.4) - g.position.y, dz = ep.z - g.position.z, d = Math.hypot(dx, dy, dz) || 1;
+        const sp = 24 * dt; g.position.x += (dx / d) * sp; g.position.y += (dy / d) * sp; g.position.z += (dz / d) * sp;
+        g.rotation.y = Math.atan2(dx, dz);
+        if (d < 1.3) {                                              // hit! then peel away
+          if (host && W.enemies.damage) { const killed = W.enemies.damage(tgt.group, 22, { x: g.position.x, z: g.position.z }); if (killed && player.creditKill) player.creditKill(tgt.group.userData.kind); }
+          if (player.popDamage) player.popDamage(tgt.group.position, 22, false);
+          f.mode = 'retreat'; f.cd = 1.0;
+        }
+      } else {                                                      // orbit high, then dive again when ready
+        const hx = player.pos.x + Math.cos(f.a + player._t * 0.7) * 4.5, hz = player.pos.z + Math.sin(f.a + player._t * 0.7) * 4.5;
+        const dx = hx - g.position.x, dz = hz - g.position.z, ty = W.world.heightAt(g.position.x, g.position.z) + 6;
+        const d = Math.hypot(dx, dz) || 1, sp = 13 * dt;
+        g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp; g.position.y += (ty - g.position.y) * Math.min(1, dt * 3);
+        g.rotation.y = Math.atan2(dx, dz);
+        if (f.cd <= 0 && tgt) f.mode = 'dive';
+      }
+    }
+  };
+  // A survived night rewards the Hunter with a falcon (spawnFalcon toasts on its own).
+  player.onNightSurvived = function () {
+    if (player.isHunter) player.spawnFalcon();
+  };
 
   // --- Engineer: fortify the base with barbed wire, spikes & sentry turrets ---
   function makeBarbedSeg() {
@@ -1926,6 +2088,9 @@
     if (player.knightSummons > 0 && !player.knights) player.summonKnights();   // rally the King's guard once
     if (player.knights) player.stepKnights(dt);
     if (player.cupids) player.stepCupids(dt);                                  // Kawaii's cupid swarm
+    if (player.isHunter && !player._hunterStarted) { player._hunterStarted = true; player.spawnAlphaWolf(); }   // Hunter's starting alpha wolf
+    if (player.wolves) player.stepWolves(dt);                                  // Hunter's alpha-wolf pack
+    if (player.falcons) player.stepFalcons(dt);                               // Hunter's falcons
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
     updateStars(dt);                                               // ninja stars in flight (+ throw cooldown)
     if (player._dmgNums && player._dmgNums.length) updateDamageNums(dt);

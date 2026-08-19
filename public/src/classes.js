@@ -30,9 +30,9 @@
     },
     hunter: {
       id: 'hunter', name: 'Hunter', emoji: '🔫', cost: 1000,
-      blurb: 'Starts with a rifle and can tame wild bears with meat.',
-      perks: ['Starts with a rifle (120 rounds)', 'Can tame bears 🐻', 'Taming meat drops from wolves'],
-      rifle: 120, tameBears: true,
+      blurb: 'A beastmaster marksman — commands alpha wolves & falcons, and rarely wastes a bullet.',
+      perks: ['Starts with a rifle (120 rounds)', '🐺 Starts with an ALPHA WOLF (5× a normal wolf) — +1 per 5 wolf kills', '🦅 +1 Falcon every night you survive (dive-bombs foes)', '🎯 Lv2: 50% chance to recover the bullet on a hit', 'Can still tame bears 🐻'],
+      rifle: 120, tameBears: true, hunterPets: true,
     },
     ranger: {
       id: 'ranger', name: 'Ranger', emoji: '🎯', cost: 250,
@@ -155,6 +155,7 @@
       if (d.attackDmg) p.attackDmg = d.attackDmg;                        // OP melee damage
       if (d.axeLevel) p.axeLevel = d.axeLevel;                           // fells trees fast
       p.canTameBears = !!d.tameBears;
+      p.isHunter = !!d.hunterPets;                  // Hunter: alpha-wolf pack + falcons + bullet recovery
       p.knightSummons = d.knights || 0;
       p.treelingCoins = classes.coins();   // seed the in-game counter from the saved wallet
       if (OWNER) p.wood = 999999999999999999999999999999999999;   // maker perk: effectively infinite wood

@@ -497,6 +497,7 @@
       g.position.y = ground + Math.abs(Math.sin(e.t * 8)) * 0.05;
     } else if (e.t - e.lastAttack > 1.1) {
       e.lastAttack = e.t; tgt.onBite(nAtk(e.dmg));
+      if (W.sfx && W.sfx.growl && U.chance(0.4)) W.sfx.growl();
       g.position.x -= (dx / d) * 0.3; g.position.z -= (dz / d) * 0.3;
     }
   };

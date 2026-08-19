@@ -80,6 +80,7 @@
     W.player.berries -= 1;
     if (W.player.heldBerry) W.player.heldBerry.visible = W.player.berries > 0;
     best.tamed = true;
+    if (W.sfx && W.sfx.tame) W.sfx.tame();
     W.hud.toast('Tamed a fox! 🦊 It follows you now');
   };
 

@@ -267,6 +267,7 @@
         if (W.player.sleeping) W.player.wake(false);   // wake with the cosy bonus
         W.critters.spawnMorning(6);             // fresh foxes each morning
         if (W.sfx && W.sfx.dawn) W.sfx.dawn();
+        if (W.player.onNightSurvived) W.player.onNightSurvived();   // Hunter earns a falcon each night survived
         W.hud.banner('DAWN BREAKS', `You survived night ${(role === 'client' ? day : day - 1)}`, '#ffe08a');
       }
       wasNight = night;

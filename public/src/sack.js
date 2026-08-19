@@ -288,6 +288,7 @@
     W.sack = { count: () => (P() ? P().sack.length : 0), cap: () => (P() ? P().sackCap : 0), toggle,
                loots: () => loots.length, uppers: () => uppers.length,
                dropWoodAt, pocketLookedAt, dropFromSack,        // tree-drop + look-J-pocket + K-drop
+               dropCorpseAt, corpseCount, removeCorpses,        // Wolf Ritual: carcasses on death + sacrifice bookkeeping
                looking: () => (highlighted ? highlighted.item : null), droppedCount: () => dropped.length,
                _tick: (dt) => tickPickups(dt || 0.016),
                _lootPos: () => (loots[0] ? { x: loots[0].mesh.position.x, z: loots[0].mesh.position.z } : null),
