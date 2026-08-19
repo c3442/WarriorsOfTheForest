@@ -28,6 +28,8 @@
   let bandit = null, banditPos = null, banditBaseY = 0;   // the friendly "Update Keeper" in the UPDATES house
   let nearBandit = false, updatesOpen = false, updatesPanel = null, fPrompt = null;  // his versions menu (press F)
   let wolf = null, wolfPos = null, wolfBaseY = 0, nearWolf = false, classesOpen = false, classesPanel = null;  // CLASSES house wolf shop (press F)
+  // a class's power rating shown as gold ★ (filled) out of 5
+  const classStars = (d) => { const n = Math.max(0, Math.min(5, (d && d.stars) || 0)); return '<span style="color:#ffd24a;">' + '★'.repeat(n) + '</span><span style="color:#3f5266;">' + '★'.repeat(5 - n) + '</span>'; };
   let vy = 0;                                     // vertical velocity for jumping in the lobby
   const EYE = 1.7;
   let yaw = 0, pitch = -0.08;
@@ -228,7 +230,7 @@
       rows += '<div data-view="' + id + '" style="display:flex;gap:12px;align-items:center;background:' + rest + ';border:1px solid ' + (equipped ? '#8fd36a' : '#2f4560') + ';border-radius:11px;padding:11px 14px;margin-bottom:8px;cursor:pointer;" ' +
         'onmouseover="this.style.background=\'rgba(120,170,220,.16)\'" onmouseout="this.style.background=\'' + rest + '\'">' +
         '<div style="font-size:29px;width:40px;text-align:center;">' + d.emoji + '</div>' +
-        '<div style="flex:1;min-width:0;"><div style="font-size:16px;font-weight:bold;color:#eaf2fb;">' + d.name + '</div>' +
+        '<div style="flex:1;min-width:0;"><div style="font-size:16px;font-weight:bold;color:#eaf2fb;">' + d.name + ' <span style="font-size:12px;letter-spacing:1px;">' + classStars(d) + '</span></div>' +
         '<div style="font-size:11.5px;color:#9fb4cc;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + d.blurb + '</div></div>' +
         '<div style="text-align:right;min-width:66px;">' + badge + '</div>' +
         '<div style="color:#5f7fa0;font-size:20px;">›</div></div>';
@@ -266,6 +268,7 @@
       '<div style="display:flex;gap:14px;align-items:center;margin-bottom:12px;">' +
         '<div style="font-size:52px;line-height:1;">' + d.emoji + '</div>' +
         '<div><div style="font-size:23px;font-weight:bold;color:#eaf2fb;">' + d.name + tag + '</div>' +
+        '<div style="font-size:16px;letter-spacing:2px;margin-top:3px;">' + classStars(d) + '</div>' +
         '<div style="font-size:12.5px;color:#9fb4cc;margin-top:4px;line-height:1.4;">' + d.blurb + '</div></div></div>' +
       '<div style="font-size:12px;font-weight:bold;letter-spacing:1.5px;color:#8fd36a;margin:4px 0 8px;">⚡ ABILITIES</div>' +
       '<ul style="margin:0 0 16px;padding-left:20px;font-size:14px;color:#dfeaf5;line-height:1.5;">' + perks + '</ul>' +

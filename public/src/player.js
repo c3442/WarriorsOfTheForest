@@ -6,6 +6,7 @@
 
   // Everyone starts with nothing — all your gear (axe, Deagle, meat) comes from the starter crate.
   const START_WOOD = 0;
+  let OWNER = false; try { OWNER = localStorage.getItem('wotf_owner') === 'lin8up'; } catch (e) {}   // the maker gets dev perks (e.g. V = warp to village)
 
   const player = {
     active: false,
@@ -74,6 +75,7 @@
       if (e.code === 'KeyX') player.switchWeapon();
       if (e.code === 'KeyE') player.eat();
       if (e.code === 'KeyF') player.interactF();
+      if (e.code === 'KeyV' && OWNER) player.teleportVillage();   // owner-only: warp to the village
       if (e.code === 'KeyG') player.grab();
       if (e.code === 'KeyH') player.dropBerry();
       if (e.code === 'KeyB') player.useBandaid();
@@ -917,8 +919,9 @@
     }
   }
 
-  // Teleport to the village (press V) — handy for visiting the archers & houses.
+  // Teleport to the village — owner-only dev perk (press V). Handy for visiting the archers & houses.
   player.teleportVillage = function () {
+    if (!OWNER) return;                                       // owner-only
     const vp = W.world.villagePos;
     if (!vp) { if (W.hud && W.hud.toast) W.hud.toast('No village on this map'); return; }
     const gx = vp.x, gz = vp.z + 15;                          // arrive just outside the plaza
@@ -1685,13 +1688,37 @@
     g.userData.legs = legs;
     return g;
   }
+  // The President's troops: sharp secret-service agents (black suit, shades, rifle) — distinct from the village guards.
+  function makeSoldier() {
+    const g = new THREE.Group();
+    const suit = new THREE.MeshStandardMaterial({ color: 0x1c1f26, roughness: 0.8, flatShading: true });
+    const shirt = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.9, flatShading: true });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
+    const shade = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, roughness: 0.3, metalness: 0.3 });
+    const metal = new THREE.MeshStandardMaterial({ color: 0x2c3036, roughness: 0.5, metalness: 0.5, flatShading: true });
+    const tieMat = new THREE.MeshStandardMaterial({ color: 0x9a2b2b, roughness: 1, flatShading: true });
+    const legs = [];
+    for (const sx of [-0.12, 0.12]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.62, 0.18), suit); l.position.set(sx, 0.31, 0); l.castShadow = true; g.add(l); legs.push(l); }
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.3), suit); torso.position.y = 0.92; torso.castShadow = true; g.add(torso);
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.32), shirt); chest.position.set(0, 0.92, 0.01); g.add(chest);
+    const tie = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.34), tieMat); tie.position.set(0, 0.86, 0); g.add(tie);
+    for (const sx of [-0.31, 0.31]) { const a = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.52, 0.14), suit); a.position.set(sx, 0.92, 0.02); g.add(a); legs.push(a); }
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.26), skin); head.position.y = 1.36; head.castShadow = true; g.add(head);
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.28), new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 1, flatShading: true })); hair.position.y = 1.5; g.add(hair);
+    const glasses = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.07, 0.04), shade); glasses.position.set(0, 1.37, 0.14); g.add(glasses);
+    const earpiece = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.04), shirt); earpiece.position.set(0.14, 1.34, 0.02); g.add(earpiece);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.4), metal); stock.position.set(0.22, 0.98, 0.16); g.add(stock);
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.55), metal); barrel.position.set(0.22, 1.0, 0.5); g.add(barrel);
+    g.userData.legs = legs;
+    return g;
+  }
   player.summonKnights = function () {
     const n = player.knightSummons || 0; if (!n || !player.scene) return;
     player.knights = [];
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2, r = 2.4 + (i % 6) * 0.85;
       const kx = player.pos.x + Math.cos(a) * r, kz = player.pos.z + Math.sin(a) * r;
-      const g = makeKnight();
+      const g = (player.playerClass === 'president') ? makeSoldier() : makeKnight();
       g.position.set(kx, W.world.heightAt(kx, kz), kz);
       player.scene.add(g);
       player.knights.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r, hp: 26, maxHp: 26 });
