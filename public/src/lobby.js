@@ -614,9 +614,10 @@
     inBox = false; boxCount = 0;
     group.add(makeJoinBox());
     // 4 tree houses ringing the clearing, ramps + signs facing inward
-    const labels = ['UPDATES', '', 'CLASSES', 'VEHICLES'];   // house 0 = the version picker
+    const labels = ['UPDATES', '', 'CLASSES', ''];   // house 0 = the version picker (VEHICLES house removed — the car is gone)
     lobbyPlats = [];
     for (let i = 0; i < 4; i++) {
+      if (i === 3) continue;                          // no VEHICLES tree house anymore
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const tx = Math.cos(a) * 15, tz = Math.sin(a) * 15;
       const th = makeTreehouse(labels[i], i === 0 || i === 2);   // UPDATES & CLASSES houses are hollow so the Keeper / Wolf stand INSIDE them

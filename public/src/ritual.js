@@ -1,8 +1,8 @@
 /* The Wolf Ritual — the new way to summon Sir Buffington (the car is gone).
    Kill wolves and they leave a CORPSE on the ground (look at it, press J to
-   sack it). Haul them to the 🩸 Blood Altar at camp and press F to sacrifice.
-   Sacrifice 100 wolf corpses and 4 hidden altars rise across the woods; find
-   all four and a colossal door appears at the edge of the map — boom… boom…
+   sack it). Haul them to a CAMPFIRE 🔥 and press F to burn them as an offering.
+   Burn 100 wolf corpses and 4 hidden altars rise across the woods; find all
+   four and a colossal door appears at the edge of the map — boom… boom…
    BOOOOM — and Sir Buff bursts out.
    Self-contained: own scene meshes, rAF loop, HUD pill/prompt. It only reaches
    into other files through enemies.kill (corpse hook) and enemies.spawnBuffington. */
@@ -11,14 +11,14 @@
   if (!W) return;
   const P = () => W.player;
 
-  const NEED = 100;              // wolf corpses to sacrifice
+  const NEED = 100;              // wolf corpses to sacrifice (burn in a campfire)
   const N_ALTARS = 4;           // hidden altars to find
-  const ALTAR_R = 3.2;          // reach to sacrifice at the Blood Altar
+  const FIRE_R = 3.4;           // reach to burn corpses at a campfire
   const FIND_R = 5.0;           // how close you must get to "find" a hidden altar
   const DOOR_TRIGGER_R = 26;    // approach the door this close to start the booms
 
   let scene = null, ready = false;
-  let altar = null, altarPos = null, altarEmber = null;   // the camp Blood Altar
+  let campCenter = { x: 0, z: 0 };   // camp origin — where altars/door are measured from
   let sacrificed = 0;
   let finders = [];             // the 4 hidden altars: { group, x, z, found, beamMat }
   let foundCount = 0;
@@ -53,23 +53,12 @@
     return { beam, mat };
   }
 
-  // the camp Blood Altar you sacrifice corpses at — a dark stone plinth with a glowing bowl
-  function makeBloodAltar(x, z) {
-    const g = new THREE.Group();
-    const stone = new THREE.MeshStandardMaterial({ color: 0x4a4650, roughness: 1, flatShading: true });
-    const stoneDk = new THREE.MeshStandardMaterial({ color: 0x332f38, roughness: 1, flatShading: true });
-    const blood = new THREE.MeshStandardMaterial({ color: 0x8a1518, emissive: 0xd41f22, emissiveIntensity: 1.2, roughness: 0.5 });
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.55, 0.5, 8), stoneDk); base.position.y = 0.25; base.castShadow = true; base.receiveShadow = true; g.add(base);
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 1.0, 8), stone); col.position.y = 1.0; col.castShadow = true; g.add(col);
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.0, 0.35, 8), stone); top.position.y = 1.65; top.castShadow = true; g.add(top);
-    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.55, 0.4, 12), stoneDk); bowl.position.y = 1.9; g.add(bowl);
-    const ember = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.5, 0.18, 12), blood); ember.position.y = 2.02; g.add(ember);
-    altarEmber = ember;
-    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; const runic = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), blood); runic.position.set(Math.cos(a) * 0.92, 1.0, Math.sin(a) * 0.92); g.add(runic); }
-    const light = new THREE.PointLight(0xff2a2a, 0.9, 8); light.position.set(0, 2.2, 0); g.add(light);
-    g.position.set(x, heightAt(x, z), z);
-    scene.add(g);
-    return g;
+  // find the nearest campfire to a point (camp haven fire + any crafted ones), or null
+  function nearestCampfire(px, pz) {
+    const fires = (W.world && W.world.campfires) || [];
+    let best = null, bd = Infinity;
+    for (const c of fires) { const d = dist(px, pz, c.x, c.z); if (d < bd) { bd = d; best = c; } }
+    return best ? { x: best.x, z: best.z, d: bd } : null;
   }
 
   // a hidden altar out in the woods — a stone obelisk topped by a floating crystal + a sky beam
@@ -130,21 +119,20 @@
   // ---- ritual flow ----------------------------------------------------------
   function sacrifice() {
     const have = W.sack && W.sack.corpseCount ? W.sack.corpseCount() : 0;
-    if (have <= 0) { toast('🩸 No wolf corpses in your sack — kill wolves, look at the carcass & press J'); return; }
+    if (have <= 0) { toast('🔥 No wolf corpses in your sack — kill wolves, look at the carcass & press J'); return; }
     const take = Math.min(have, NEED - sacrificed);
     W.sack.removeCorpses(take);
     sacrificed += take;
     if (W.sfx && W.sfx.boom) W.sfx.boom();
-    if (altarEmber) altarEmber.material.emissiveIntensity = 2.4;   // flares on each offering
-    if (sacrificed >= NEED) { toast('🩸 The offering is complete… the woods tremble.'); raiseAltars(); }
-    else toast('🩸 Sacrificed ' + take + ' corpse' + (take === 1 ? '' : 's') + ' — ' + sacrificed + '/' + NEED);
+    if (sacrificed >= NEED) { toast('🔥 The offering is complete… the woods tremble.'); raiseAltars(); }
+    else toast('🔥 Burned ' + take + ' corpse' + (take === 1 ? '' : 's') + ' — ' + sacrificed + '/' + NEED);
     refreshPill();
   }
 
   function raiseAltars() {
     phase = 'finding';
     finders = [];
-    const c = altarPos || { x: 0, z: 0 };
+    const c = campCenter;
     for (let i = 0; i < N_ALTARS; i++) {
       const a = (i / N_ALTARS) * Math.PI * 2 + rnd(-0.4, 0.4);   // spread into 4 quadrants
       const r = rnd(140, 300);
@@ -173,7 +161,7 @@
 
   function spawnDoor() {
     phase = 'door';
-    const c = altarPos || { x: 0, z: 0 };
+    const c = campCenter;
     const a = rnd(0, 6.283), r = 340;                 // out at the edge of the woods
     const s = landSpot(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, 0, 60);
     doorPos = s;
@@ -237,7 +225,7 @@
   function refreshPill() {
     if (!pill) return;
     let html = '';
-    if (phase === 'collect') html = '🐺 Wolf Ritual — <b style="color:#ff8a8a">' + sacrificed + ' / ' + NEED + '</b> corpses sacrificed · offer them at the 🩸 Blood Altar';
+    if (phase === 'collect') html = '🐺 Wolf Ritual — <b style="color:#ff8a8a">' + sacrificed + ' / ' + NEED + '</b> corpses burned · burn them at a 🔥 campfire';
     else if (phase === 'finding') html = '🔮 Altars found <b style="color:#ffcf4a">' + foundCount + ' / ' + N_ALTARS + '</b> · follow the blue beams';
     else if (phase === 'door') html = '🚪 The colossal door awaits at the edge of the woods — reach the orange beam';
     else html = '💪 Sir Buff has been summoned!';
@@ -247,11 +235,12 @@
   function updatePrompt(p) {
     if (!prompt) return;
     let show = '';
-    if (phase === 'collect' && altarPos && dist(p.pos.x, p.pos.z, altarPos.x, altarPos.z) < ALTAR_R) {
+    if (phase === 'collect') {
       const c = W.sack && W.sack.corpseCount ? W.sack.corpseCount() : 0;
-      show = c > 0
-        ? 'Press <b style="background:#4a1012;border:1px solid #d43a3a;border-radius:5px;padding:0 6px;">F</b> to sacrifice <b>' + c + '</b> wolf corpse' + (c === 1 ? '' : 's')
-        : '🩸 Bring 🐺 <b>wolf corpses</b> here — kill wolves, look at the carcass & press <b>J</b>';
+      const fire = c > 0 ? nearestCampfire(p.pos.x, p.pos.z) : null;
+      if (fire && fire.d < FIRE_R) {
+        show = 'Press <b style="background:#4a1012;border:1px solid #d43a3a;border-radius:5px;padding:0 6px;">F</b> to burn <b>' + c + '</b> wolf corpse' + (c === 1 ? '' : 's') + ' in the 🔥 fire';
+      }
     }
     prompt.style.display = show ? 'block' : 'none';
     if (show) prompt.innerHTML = show;
@@ -266,8 +255,7 @@
     if (!doorOpened && W.enemies) W.enemies.buffTimer = 1e9;
     applyShake();
 
-    // gentle idle animation
-    if (altarEmber && altarEmber.material.emissiveIntensity > 1.2) altarEmber.material.emissiveIntensity = Math.max(1.2, altarEmber.material.emissiveIntensity - dt * 1.5);
+    // gentle idle animation on the found-altar crystals
     for (const f of finders) { const c = f.group.userData.crystal; if (c) { c.rotation.y += dt * 1.2; c.position.y = 4.4 + Math.sin(t * 2 + f.x) * 0.12; } }
 
     if (!p || !p.active || !p.alive) { if (prompt) prompt.style.display = 'none'; return; }
@@ -301,13 +289,15 @@
     updatePrompt(p);
   }
 
-  // ---- input: F at the Blood Altar sacrifices (runs before player.interactF) --
+  // ---- input: F at a campfire burns corpses (runs before player.interactF) ----
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyF' || e.repeat) return;
-    if (phase !== 'collect' || !altarPos) return;
+    if (phase !== 'collect') return;
     const p = P(); if (!p || !p.active || !p.alive) return;
-    if (dist(p.pos.x, p.pos.z, altarPos.x, altarPos.z) > ALTAR_R) return;
-    e.stopImmediatePropagation();     // consume F so it doesn't also drink / open the starter box
+    if ((W.sack && W.sack.corpseCount ? W.sack.corpseCount() : 0) <= 0) return;   // no corpses -> let F cook/drink as usual
+    const fire = nearestCampfire(p.pos.x, p.pos.z);
+    if (!fire || fire.d > FIRE_R) return;
+    e.stopImmediatePropagation();     // consume F so it doesn't also cook / drink
     sacrifice();
   }, true);
 
@@ -318,13 +308,11 @@
     ready = true;
     scene = W.player.scene;
     if (W.enemies) W.enemies.buffTimer = 1e9;   // Buff no longer roams in on a timer — only the ritual summons him
-    // place the Blood Altar just outside the spawn camp
     const camp = (W.world.campfires && W.world.campfires[0]) ? W.world.campfires[0] : { x: 0, z: 0 };
-    altarPos = landSpot(camp.x, camp.z, 6, 11);
-    altar = makeBloodAltar(altarPos.x, altarPos.z);
+    campCenter = { x: camp.x, z: camp.z };      // measure altars/door from the spawn camp
     buildHud(); refreshPill();
     requestAnimationFrame(loop);
-    setTimeout(() => toast('🩸 A Blood Altar stands at camp — sacrifice ' + NEED + ' wolf corpses to summon something ancient…'), 2600);
+    setTimeout(() => toast('🔥 Burn ' + NEED + ' wolf corpses in a campfire to summon something ancient…'), 2600);
 
     // public hook + owner/debug helpers
     W.ritual = {
