@@ -601,6 +601,9 @@
     if (player.currentWeapon === 'rifle') { fireRifle(); return; }
     if (player.currentWeapon === 'deagle') { fireDeagle(); return; }
 
+    // melee swing whoosh (heavier for the mace / scythe)
+    if (W.sfx) { const heavy = player.currentWeapon === 'mace' || player.currentWeapon === 'scythe'; W.sfx[heavy ? 'heavySwing' : 'swing'](); }
+
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
     ray.far = player.currentWeapon === 'fists' ? 2.6 : player.attackRange;
@@ -632,7 +635,7 @@
       // Vampire lifesteal: heal for the damage dealt (2x at night)
       if (player.isVampire) { player.health = Math.min(player.maxHealth, player.health + dmg * ((W.world.isNight && W.world.isNight()) ? 5 : 1)); }
       player.popDamage(root.position, dmg, head);
-      if (W.sfx) { if (head) W.sfx.headshot(); else W.sfx.hit(); }
+      if (W.sfx) { if (head) W.sfx.headshot(); else if (player.currentWeapon === 'mace' && W.sfx.maceHit) W.sfx.maceHit(); else W.sfx.hit(); }
       if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
     } else if (root.userData.type === 'tree') {
       const dmg = 10 + player.axeLevel * 5;                 // sharper axe = bigger chips
@@ -715,7 +718,7 @@
   function fireShotgun() {
     if (player.shells <= 0) { W.hud.toast('Out of shells 🔫'); return; }
     player.shells -= 1;
-    if (W.sfx) W.sfx.shotgun();
+    if (W.sfx) (W.sfx.deagle || W.sfx.shotgun)();
     const ray = new THREE.Raycaster();
     ray.setFromCamera({ x: 0, y: 0 }, player.camera);
     ray.far = 22;
@@ -836,7 +839,7 @@
     // Kawaii heart arrows: stun the foe 2s, pop hearts overhead & drop their defense 5s.
     if (player.isKawaii && W.enemies.kawaiiStun) W.enemies.kawaiiStun(root, 2, 5);
     if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
-    else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
+    else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) { player.creditKill(root.userData.kind); if (player.isKawaii && player.spawnCupid) player.spawnCupid(); } }   // Kawaii bow kill -> a cupid
     player.popDamage(root.position, dmg, head);
     if (W.sfx) { if (head) W.sfx.headshot(); else W.sfx.hit(); }
     if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
@@ -1001,7 +1004,7 @@
     player.hasAxe = true;
     player.cookedMeat += 5;                                   // 5 ready-to-eat cooked meat (eat with E)
     equipWeapon('deagle');
-    if (W.sfx && W.sfx.select) W.sfx.select();
+    if (W.sfx) (W.sfx.openbox || W.sfx.select)();
     if (W.hud) { W.hud.banner('📦 STARTER KIT', 'Desert Eagle · Axe · 5 Cooked Meat', '#ffd873'); W.hud.toast('🔫 Deagle (7)  ·  🪓 Axe  ·  🍖 x5 cooked meat'); }
     if (boxPromptEl) boxPromptEl.style.display = 'none';
     player.scene.remove(b.group);
@@ -1014,7 +1017,7 @@
   function cookMeat() {
     const n = player.wolfMeat; if (n <= 0) return;
     player.wolfMeat = 0; player.cookedMeat += n;
-    if (W.sfx && W.sfx.eat) W.sfx.eat();
+    if (W.sfx) (W.sfx.sizzle || W.sfx.eat)();
     if (W.hud) W.hud.toast('🍖🔥 Cooked ' + n + ' wolf meat — eat with E');
   }
   player.interactF = function () {
@@ -1754,6 +1757,79 @@
     }
   };
 
+  // --- Kawaii Fighter: every BOW KILL summons a flying cupid that shoots foes for 60s ---
+  const cupidShots = [];
+  function makeCupid() {
+    const g = new THREE.Group();
+    const skin = new THREE.MeshStandardMaterial({ color: 0xffd9c0, roughness: 0.8, flatShading: true });
+    const pink = new THREE.MeshStandardMaterial({ color: 0xffb3d9, roughness: 0.7, flatShading: true });
+    const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, flatShading: true });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xffe066, emissive: 0xffcf5a, emissiveIntensity: 0.9, roughness: 0.4 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), skin); g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), skin); head.position.y = 0.3; g.add(head);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), pink); hair.position.y = 0.37; hair.scale.set(1, 0.6, 1); g.add(hair);
+    const wings = [];
+    for (const sx of [-1, 1]) { const w = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), white); w.scale.set(0.45, 1, 0.18); w.position.set(sx * 0.22, 0.06, -0.12); g.add(w); wings.push(w); }
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.02, 6, 14), gold); halo.rotation.x = Math.PI / 2; halo.position.y = 0.56; g.add(halo);
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.016, 6, 10, Math.PI), pink); bow.position.set(0.24, 0.02, 0.06); bow.rotation.z = -Math.PI / 2; g.add(bow);
+    g.userData.wings = wings;
+    return g;
+  }
+  player.spawnCupid = function () {
+    if (!player.scene) return;
+    if (!player.cupids) player.cupids = [];
+    if (player.cupids.length >= 10) return;                        // cap the swarm
+    const g = makeCupid();
+    const a = Math.random() * Math.PI * 2;
+    g.position.set(player.pos.x + Math.cos(a) * 1.6, W.world.heightAt(player.pos.x, player.pos.z) + 2.4, player.pos.z + Math.sin(a) * 1.6);
+    player.scene.add(g);
+    player.cupids.push({ g, born: player._t, t: Math.random() * 6, shootCD: 0.4, a });
+    if (W.hud && W.hud.toast) W.hud.toast('💘 A cupid joins the fight! (60s · ' + player.cupids.length + ')');
+  };
+  function cupidShoot(from, tgt) {
+    const heart = buildHeartArrow();
+    const dir = new THREE.Vector3(tgt.group.position.x - from.x, (tgt.group.position.y + 1.0) - from.y, tgt.group.position.z - from.z).normalize();
+    heart.position.copy(from); player.scene.add(heart);
+    cupidShots.push({ mesh: heart, vel: dir.multiplyScalar(26), life: 0 });
+  }
+  player.stepCupids = function (dt) {
+    const cs = player.cupids; if (!cs || !cs.length) { if (cupidShots.length) stepCupidShots(dt); return; }
+    const foes = (W.enemies && W.enemies.list) || [];
+    for (let i = cs.length - 1; i >= 0; i--) {
+      const c = cs[i], g = c.g; c.t += dt;
+      if (player._t - c.born > 60) { if (g.parent) g.parent.remove(g); cs.splice(i, 1); continue; }   // gone after a minute
+      let tgt = null, bd = 24;
+      for (const e of foes) { if (!e.alive) continue; const d = Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z); if (d < bd) { bd = d; tgt = e; } }
+      let hx, hz;
+      if (tgt && bd > 8) { hx = tgt.group.position.x; hz = tgt.group.position.z; }
+      else { hx = player.pos.x + Math.cos(c.a + player._t * 0.4) * 2.4; hz = player.pos.z + Math.sin(c.a + player._t * 0.4) * 2.4; }
+      const dx = hx - g.position.x, dz = hz - g.position.z, d = Math.hypot(dx, dz) || 1;
+      const sp = 6.0 * dt; if (d > 0.4) { g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp; }
+      g.position.y = W.world.heightAt(g.position.x, g.position.z) + 2.4 + Math.sin(c.t * 2.5) * 0.15;    // flies, bobbing
+      if (tgt) g.rotation.y = Math.atan2(tgt.group.position.x - g.position.x, tgt.group.position.z - g.position.z);
+      const wg = g.userData.wings; if (wg) { const fl = Math.sin(c.t * 22) * 0.5; wg[0].rotation.z = fl; wg[1].rotation.z = -fl; }
+      c.shootCD -= dt;
+      if (tgt && bd < 22 && c.shootCD <= 0) { c.shootCD = 0.75; cupidShoot(g.position, tgt); }
+    }
+    stepCupidShots(dt);
+  };
+  function stepCupidShots(dt) {
+    const host = !(W.net && W.net.role === 'client');
+    const foes = (W.enemies && W.enemies.list) || [];
+    for (let i = cupidShots.length - 1; i >= 0; i--) {
+      const s = cupidShots[i]; s.life += dt; s.mesh.position.addScaledVector(s.vel, dt); s.mesh.rotation.z += dt * 8;
+      let hit = false;
+      for (const e of foes) {
+        if (!e.alive) continue; const ep = e.group.position;
+        if (Math.hypot(s.mesh.position.x - ep.x, s.mesh.position.z - ep.z) < 1.2 && s.mesh.position.y > ep.y - 0.3 && s.mesh.position.y < ep.y + 2.6) {
+          if (host && W.enemies.damage) { const killed = W.enemies.damage(e.group, 16, { x: s.mesh.position.x, z: s.mesh.position.z }); if (killed && player.creditKill) player.creditKill(e.group.userData.kind); }
+          hit = true; break;
+        }
+      }
+      if (hit || s.life > 2.5) { if (s.mesh.parent) s.mesh.parent.remove(s.mesh); cupidShots.splice(i, 1); }
+    }
+  }
+
   // --- Engineer: fortify the base with barbed wire, spikes & sentry turrets ---
   function makeBarbedSeg() {
     const g = new THREE.Group();
@@ -1849,6 +1925,7 @@
     if (player._sentries) stepSentries(dt);
     if (player.knightSummons > 0 && !player.knights) player.summonKnights();   // rally the King's guard once
     if (player.knights) player.stepKnights(dt);
+    if (player.cupids) player.stepCupids(dt);                                  // Kawaii's cupid swarm
     if (player.arrows && player.arrows.length) updateArrows(dt);   // arrows fly even while sitting/sleeping
     updateStars(dt);                                               // ninja stars in flight (+ throw cooldown)
     if (player._dmgNums && player._dmgNums.length) updateDamageNums(dt);
@@ -1960,6 +2037,7 @@
       player.vy -= GRAV * dt;
       player.pos.y += player.vy * dt;
       if (player.pos.y <= groundEye) {
+        if (!player.grounded && player.vy < -7 && W.sfx && W.sfx.land) W.sfx.land();   // thud on a real landing
         player.pos.y = groundEye; player.vy = 0; player.grounded = true;
       } else if (player.grounded) {
         // follow gentle slopes / steps up; fall when stepping off a ledge

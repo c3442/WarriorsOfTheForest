@@ -114,13 +114,28 @@
   // ---- physical dropped items (chopped wood etc.) ---------------------------
   const logGeo = new THREE.CylinderGeometry(0.13, 0.15, 0.62, 8);
   const logMat = new THREE.MeshStandardMaterial({ color: 0x8a5a2e, roughness: 1, flatShading: true });
-  // a wooden log lying on the ground, with a hidden blue outline shell for the "look at it" highlight
+  // wolf carcass parts (dropped when a wolf/werewolf dies): a grey furry body, stiff legs & a head
+  const corpseGeo = new THREE.BoxGeometry(0.95, 0.32, 0.44);
+  const corpseLegGeo = new THREE.CylinderGeometry(0.055, 0.045, 0.34, 6);
+  const corpseHeadGeo = new THREE.BoxGeometry(0.32, 0.3, 0.3);
+  const corpseMat = new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 1, flatShading: true });
+  const noHit = function () {};
+  // a ground pickup lying on the ground, with a hidden blue outline shell for the "look at it" highlight.
+  // Wood = a log; a wolf corpse = a little carcass. Only the main mesh raycasts (decorations don't).
   function makeDrop(item, x, z) {
-    const y = W.world.heightAt(x, z) + 0.16;
-    const m = new THREE.Mesh(logGeo, logMat);
-    m.position.set(x, y, z); m.rotation.set(Math.PI / 2, Math.random() * 6.28, 0); m.castShadow = true; m.receiveShadow = true;
-    const outline = new THREE.Mesh(logGeo, new THREE.MeshBasicMaterial({ color: 0x3b8bff, side: THREE.BackSide }));
-    outline.scale.set(1.35, 1.15, 1.35); outline.visible = false; outline.raycast = function () {}; m.add(outline);
+    const corpse = !!item.corpse;
+    const y = W.world.heightAt(x, z) + (corpse ? 0.2 : 0.16);
+    const m = new THREE.Mesh(corpse ? corpseGeo : logGeo, corpse ? corpseMat : logMat);
+    m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+    if (corpse) {
+      m.rotation.set(0, Math.random() * 6.28, 0);
+      for (const sx of [-0.27, 0.27]) for (const sz of [-0.13, 0.13]) { const leg = new THREE.Mesh(corpseLegGeo, corpseMat); leg.position.set(sx, 0.2, sz); leg.rotation.x = 0.25; leg.raycast = noHit; m.add(leg); }
+      const head = new THREE.Mesh(corpseHeadGeo, corpseMat); head.position.set(0.62, -0.02, 0); head.raycast = noHit; m.add(head);
+    } else {
+      m.rotation.set(Math.PI / 2, Math.random() * 6.28, 0);
+    }
+    const outline = new THREE.Mesh(corpse ? corpseGeo : logGeo, new THREE.MeshBasicMaterial({ color: 0x3b8bff, side: THREE.BackSide }));
+    outline.scale.set(corpse ? 1.22 : 1.35, corpse ? 1.35 : 1.15, corpse ? 1.25 : 1.35); outline.visible = false; outline.raycast = noHit; m.add(outline);
     scene.add(m);
     return { mesh: m, outline, item, x, z, y0: y, t: Math.random() * 6 };
   }
@@ -132,6 +147,21 @@
       const lx = x + Math.cos(a) * r, lz = z + Math.sin(a) * r;
       dropped.push(makeDrop({ e: '🪵', n: 'Wood', wood: 1 }, lx, lz));
     }
+  }
+  // called by the Wolf Ritual (via enemies.kill) when a wolf/werewolf dies — leaves a lootable carcass.
+  // Caps ground corpses so a dawn cull of many wolves doesn't litter the whole map.
+  function dropCorpseAt(x, z) {
+    let n = 0; for (const d of dropped) if (d.item && d.item.corpse) n++;
+    if (n >= 30) { for (let i = 0; i < dropped.length; i++) { if (dropped[i].item && dropped[i].item.corpse) { scene.remove(dropped[i].mesh); dropped.splice(i, 1); break; } } }
+    const a = Math.random() * Math.PI * 2, r = rnd(0.2, 0.9);
+    dropped.push(makeDrop({ e: '🐺', n: 'Wolf Corpse', corpse: 1 }, x + Math.cos(a) * r, z + Math.sin(a) * r));
+  }
+  function corpseCount() { const p = P(); if (!p || !p.sack) return 0; let n = 0; for (const s of p.sack) if (s.corpse) n++; return n; }
+  function removeCorpses(max) {
+    const p = P(); if (!p || !p.sack) return 0; let removed = 0;
+    for (let i = p.sack.length - 1; i >= 0 && removed < max; i--) { if (p.sack[i].corpse) { p.sack.splice(i, 1); removed++; } }
+    if (removed) { refreshPill(); if (open) refreshPanel(); }
+    return removed;
   }
   // each frame: bob the logs, and raycast from the camera to outline the one you're looking at
   function updateDropped(dt) {
@@ -155,7 +185,7 @@
     const p = sack(); if (!p || !highlighted) return false;
     if (p.sack.length >= p.sackCap) { toast('🎒 Sack full! Find a sack upgrader'); return true; }
     const it = highlighted.item;
-    p.sack.push({ e: it.e, n: it.n, drop: { wood: it.wood || 0 } });
+    p.sack.push({ e: it.e, n: it.n, corpse: it.corpse ? 1 : 0, drop: { wood: it.wood || 0, corpse: it.corpse ? 1 : 0 } });
     if (it.wood) p.wood += it.wood;                               // wood becomes usable once sacked
     scene.remove(highlighted.mesh);
     const di = dropped.indexOf(highlighted); if (di >= 0) dropped.splice(di, 1);
@@ -173,7 +203,7 @@
     const it = p.sack.splice(idx, 1)[0];
     if (it.drop.wood) p.wood = Math.max(0, p.wood - it.drop.wood);
     const sin = Math.sin(p.yaw || 0), cos = Math.cos(p.yaw || 0);
-    dropped.push(makeDrop({ e: it.e, n: it.n, wood: it.drop.wood }, p.pos.x - sin * 1.2, p.pos.z - cos * 1.2));
+    dropped.push(makeDrop({ e: it.e, n: it.n, wood: it.drop.wood, corpse: it.drop.corpse }, p.pos.x - sin * 1.2, p.pos.z - cos * 1.2));
     toast('⬇️ Dropped ' + it.e + ' ' + it.n + (it.drop.wood ? ' (-' + it.drop.wood + ' wood)' : ''));
     refreshPill(); if (open) refreshPanel();
     return true;

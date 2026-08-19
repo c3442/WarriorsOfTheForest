@@ -95,6 +95,23 @@
     revive() { [440, 660, 880, 1320].forEach((f, i) => tone(f, f, 0.18, 'sine', 0.2, now() + i * 0.09)); },  // Survivor cheats death
     roar() { tone(95, 58, 0.6, 'sawtooth', 0.42); noise(0.6, 0.34, 'lowpass', 720, 200); },                  // boss roar
     jump() { tone(300, 660, 0.13, 'sine', 0.16); },                                                          // hop
+    // --- more sounds ------------------------------------------------------
+    swing() { noise(0.13, 0.18, 'bandpass', 900, 2600); },                                                   // light melee whoosh
+    heavySwing() { noise(0.22, 0.24, 'bandpass', 480, 1500); tone(150, 70, 0.2, 'sine', 0.16); },            // mace/heavy whoosh
+    maceHit() { noise(0.17, 0.62, 'lowpass', 1000, 150); tone(120, 44, 0.18, 'sine', 0.5); tone(78, 36, 0.24, 'sine', 0.4, now() + 0.02); }, // heavy crush
+    deagle() { noise(0.14, 0.9, 'lowpass', 5400, 320); tone(210, 60, 0.14, 'square', 0.5); tone(90, 44, 0.2, 'sine', 0.42); },  // hard pistol crack
+    land() { noise(0.12, 0.32, 'lowpass', 480, 120); tone(120, 70, 0.10, 'sine', 0.2); },                    // landing thud
+    growl() { tone(92, 60, 0.5, 'sawtooth', 0.3); noise(0.5, 0.2, 'lowpass', 480, 150); },                   // wolf / beast growl
+    howl() { tone(420, 620, 0.5, 'sine', 0.24); tone(600, 360, 0.7, 'sine', 0.2, now() + 0.45); },           // distant wolf howl
+    sizzle() { noise(0.55, 0.2, 'highpass', 2400, 5200); noise(0.5, 0.13, 'bandpass', 1800, 3000, now() + 0.1); },  // cooking meat
+    openbox() { tone(300, 210, 0.15, 'triangle', 0.2); tone(720, 940, 0.09, 'square', 0.18, now() + 0.13); tone(1080, 1080, 0.15, 'square', 0.16, now() + 0.22); }, // crate creak + jingle
+    buy() { tone(600, 600, 0.06, 'square', 0.2); tone(920, 920, 0.07, 'square', 0.2, now() + 0.06); tone(1320, 1320, 0.15, 'triangle', 0.2, now() + 0.13); },       // purchase chime
+    heal() { [660, 880, 1100].forEach((f, i) => tone(f, f, 0.14, 'sine', 0.15, now() + i * 0.05)); },         // heal / lifesteal shimmer
+    nightfall() { tone(230, 110, 0.9, 'sawtooth', 0.22); noise(0.9, 0.12, 'lowpass', 400, 140); },            // ominous dusk
+    dawn() { [523, 659, 784, 1046].forEach((f, i) => tone(f, f, 0.2, 'sine', 0.15, now() + i * 0.08)); },     // bright sunrise
+    splash() { noise(0.3, 0.42, 'highpass', 1200, 4200); tone(600, 200, 0.2, 'sine', 0.14); },                // water splash
+    thud() { noise(0.14, 0.36, 'lowpass', 700, 160); tone(150, 80, 0.12, 'sine', 0.24); },                   // building / block placed
+    tame() { [523, 784, 1046].forEach((f, i) => tone(f, f, 0.16, 'triangle', 0.2, now() + i * 0.11)); noise(0.2, 0.1, 'highpass', 3000, 5000, now() + 0.34); }, // befriend an animal
   };
   W.sfx = sfx;
 

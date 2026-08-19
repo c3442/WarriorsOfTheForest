@@ -283,12 +283,12 @@
         if (b.dataset.act === 'buy') {
           const r = W.classes.buy(id);
           if (!r.ok && r.reason === 'poor') { if (W.hud && W.hud.toast) W.hud.toast('Need ' + r.need + ' more 🪙'); }
-          else if (r.ok && W.hud && W.hud.toast) W.hud.toast('Unlocked ' + W.classes.DEFS[id].name + '! ' + W.classes.DEFS[id].emoji);
+          else if (r.ok) { if (W.sfx && W.sfx.buy) W.sfx.buy(); if (W.hud && W.hud.toast) W.hud.toast('Unlocked ' + W.classes.DEFS[id].name + '! ' + W.classes.DEFS[id].emoji); }
         } else if (b.dataset.act === 'upgrade') {
           const r = W.classes.upgrade(id);
           if (!r.ok && r.reason === 'poor') { if (W.hud && W.hud.toast) W.hud.toast('Need ' + r.need + ' more 🪙 to upgrade'); }
           else if (r.ok) { lastUpgrade = { id: id, lvl: r.level, list: upgradeSummary(id, r.level) }; if (W.sfx && W.sfx.levelup) W.sfx.levelup(); if (W.hud && W.hud.toast) W.hud.toast('⬆️ ' + W.classes.DEFS[id].name + ' → Lv' + r.level + '!'); }
-        } else { W.classes.select(id); if (W.hud && W.hud.toast) W.hud.toast('Equipped ' + W.classes.DEFS[id].name + ' ' + W.classes.DEFS[id].emoji); }
+        } else { W.classes.select(id); if (W.sfx && W.sfx.select) W.sfx.select(); if (W.hud && W.hud.toast) W.hud.toast('Equipped ' + W.classes.DEFS[id].name + ' ' + W.classes.DEFS[id].emoji); }
         refreshClasses();
       };
     });

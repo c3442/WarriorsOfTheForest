@@ -260,11 +260,13 @@
 
       if (night && !wasNight) {
         W.critters.clearWild();                 // foxes hide away for the night
+        if (W.sfx && W.sfx.nightfall) W.sfx.nightfall();
         W.hud.banner('NIGHT FALLS', 'The beasts are coming — stay alive', '#ff7b7b');
       } else if (!night && wasNight) {
         if (role !== 'client') day += 1;
         if (W.player.sleeping) W.player.wake(false);   // wake with the cosy bonus
         W.critters.spawnMorning(6);             // fresh foxes each morning
+        if (W.sfx && W.sfx.dawn) W.sfx.dawn();
         W.hud.banner('DAWN BREAKS', `You survived night ${(role === 'client' ? day : day - 1)}`, '#ffe08a');
       }
       wasNight = night;

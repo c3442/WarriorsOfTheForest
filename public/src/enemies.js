@@ -744,7 +744,9 @@
     e.alive = false;
     const i = enemies.list.indexOf(e);
     if (i >= 0) enemies.list.splice(i, 1);
-    enemies._dying.push({ group: e.group, t: 0 });
+    let kept = false;
+    if (W.ritual && W.ritual.onKill) { try { kept = W.ritual.onKill(e); } catch (err) {} }   // the Wolf Ritual may keep the body as a corpse
+    if (!kept) enemies._dying.push({ group: e.group, t: 0 });                                  // otherwise it shrinks away as before
     if (e.buffBoss) {
       enemies.buff = null; enemies.buffTimer = 150;     // Sir Buffington returns in ~2.5 min
       if (W.hud) W.hud.banner('💪 SIR BUFFINGTON DOWN', 'IMPOSSIBLE! I did 12 push-ups this morning!', '#ff9a3a');
