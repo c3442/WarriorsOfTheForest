@@ -372,7 +372,7 @@
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    const e = { id, group: g, kind: 'bandit', alive: true, hp: 55, speed: 3.0, dmg: 16, lastAttack: -99, t: 0, isBoss: true, summonCD: 8, shootCD: 3 };
+    const e = { id, group: g, kind: 'bandit', alive: true, hp: 2500, maxHp: 2500, speed: 3.0, dmg: 16, lastAttack: -99, t: 0, isBoss: true, summonCD: 8, shootCD: 3 };
     enemies.list.push(e); enemies.boss = e;
     if (W.world.placeBanditCamp) W.world.placeBanditCamp(x, z);   // a hideout at his spawn
     for (let i = 0; i < 3; i++) enemies.spawnGuard(e);   // starts with a few bodyguards
@@ -389,7 +389,7 @@
     g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a + Math.PI;
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
-    const e = { id, group: g, kind: 'buffington', alive: true, hp: 40000, maxHp: 40000, speed: 2.4, dmg: 70,
+    const e = { id, group: g, kind: 'buffington', alive: true, hp: 100000, maxHp: 100000, speed: 2.4, dmg: 90,
       lastAttack: -99, t: 0, isBoss: true, buffBoss: true, abilityCD: 3, abilityIdx: 0, tauntCD: U.rand(3, 6), healCD: 0, cast: null };
     enemies.list.push(e); enemies.buff = e;
     if (W.sfx && W.sfx.roar) W.sfx.roar();

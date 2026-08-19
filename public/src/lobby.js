@@ -727,7 +727,12 @@
     W.net.myName = ((document.getElementById('nameInput') || {}).value || 'Player').trim().slice(0, 12) || 'Player';
     if (W.hud && W.hud.toast) W.hud.toast('🎮 Starting co-op with ' + (info.count + 1) + ' players…');
     W.net.host({
-      onCode: (code) => { if (W.net.hubGo) W.net.hubGo({ box: myBox, code: code }); if (W._begin) W._begin(W.net.seed); },
+      onCode: (code) => {
+        // tell box-mates the room code (twice, ~150ms apart) so it reliably lands...
+        if (W.net.hubGo) { W.net.hubGo({ box: myBox, code: code }); setTimeout(() => { if (W.net.hubGo) W.net.hubGo({ box: myBox, code: code }); }, 150); }
+        // ...then start our own game a beat later, once the signal has propagated
+        setTimeout(() => { if (W._begin) W._begin(W.net.seed); }, 550);
+      },
       onStatus: () => {}, onPeer: () => {},
     });
   }

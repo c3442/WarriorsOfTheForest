@@ -40,11 +40,11 @@
       perks: ['Desert Eagle with ∞ rounds (9,999,999)', '+100 max health (200 total)', 'Spawns locked & loaded'],
       spawnHealth: 200, deagle: 9999999,
     },
-    samurai: {
-      id: 'samurai', name: 'Samurai', emoji: '🗡️', cost: 500,
-      blurb: 'An armoured swordmaster — starts with a katana and 10,000 health, but heavy and slow.',
-      perks: ['Starts with a katana 🗡️', '10,000 health — nearly unkillable', '−50% move speed'],
-      spawnHealth: 10000, speedMult: 0.5, katana: true,
+    juggernaut: {
+      id: 'juggernaut', name: 'Juggernaut', emoji: '🔨', cost: 500,
+      blurb: 'An unstoppable tank — crushes foes with a huge spiked mace and shrugs off almost anything, but heavy and slow.',
+      perks: ['Starts with a spiked mace 🔨', '10,000 health — nearly unkillable', 'Heavy hits (50 dmg)', '−50% move speed'],
+      spawnHealth: 10000, speedMult: 0.5, mace: true, attackDmg: 50,
     },
     ninja: {
       id: 'ninja', name: 'Ninja', emoji: '🥷', cost: 400,
@@ -55,8 +55,8 @@
     vampire: {
       id: 'vampire', name: 'Vampire', emoji: '🧛', cost: 75,
       blurb: 'Reaps souls with a lifesteal scythe — frail in daylight, monstrous at night.',
-      perks: ['🌾 Vampire Scythe: slow, but hits for 250', '🩸 Lifesteal — heal for the damage you deal', '2× speed · 1,500 hp by day', '🌙 Night: 10,000 hp & 2× lifesteal', '☀️ Burns in sunlight (−2 hp/sec)'],
-      spawnHealth: 1500, speedMult: 2, attackDmg: 250, vampire: true, scythe: true,
+      perks: ['🌾 Vampire Scythe: slow, but hits for 250', '🩸 Lifesteal — heal for the damage you deal (5× at night)', '☀️ Day: 5,000 hp · 2× speed · burns in sun (−5 hp/sec)', '🌙 Night: 15,000 hp · 10× speed'],
+      spawnHealth: 5000, speedMult: 2, attackDmg: 250, vampire: true, scythe: true,
     },
     kawaii: {
       id: 'kawaii', name: 'Kawaii Fighter', emoji: '💕', cost: 0, hidden: true,   // 🥚 secret: only appears if your name is Sophia
@@ -77,7 +77,7 @@
       axe: true, attackDmg: 500, axeLevel: 40,
     },
   };
-  const ORDER = ['lumberjack', 'vampire', 'scout', 'ninja', 'ranger', 'samurai', 'engineer', 'king', 'hunter'];   // the shop list (villager is the free default)
+  const ORDER = ['lumberjack', 'vampire', 'scout', 'ninja', 'ranger', 'juggernaut', 'engineer', 'king', 'hunter'];   // the shop list (villager is the free default)
 
   function num(k, d) { const v = parseInt(LS.getItem(k), 10); return isNaN(v) ? d : v; }
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }
@@ -140,7 +140,8 @@
       if (d.spawnHealth) p.health = d.spawnHealth;
       if (d.rifle) { p.hasRifle = true; p.rounds = d.rifle; }
       if (d.deagle) { p.hasDeagle = true; p.deagleRounds = d.deagle; }   // Ranger: bottomless Deagle
-      if (d.katana) { p.hasKatana = true; p.currentWeapon = 'katana'; }  // Samurai: starts with a katana
+      if (d.katana) { p.hasKatana = true; p.currentWeapon = 'katana'; }  // (legacy) starts with a katana
+      if (d.mace) { p.hasMace = true; p.currentWeapon = 'mace'; }        // Juggernaut: starts with a spiked mace
       if (d.scythe) { p.hasScythe = true; p.currentWeapon = 'scythe'; }  // Vampire: soul-reaping scythe
       p.isVampire = !!d.vampire;
       p.isKawaii = !!d.kawaii;
@@ -171,7 +172,7 @@
         if (p.reviveChance) p.reviveChance = Math.min(1, p.reviveChance + (lvl - 1) * 0.22);
         if (p.attackDmg) p.attackDmg = Math.round(p.attackDmg * (lvl === 2 ? 1.6 : 2.5));
       }
-      if (p.isVampire) { const vm = lvl === 1 ? 1 : (lvl === 2 ? 1.8 : 3.2); p._vampDayHp = Math.round(1500 * vm); p._vampNightHp = Math.round(10000 * vm); }
+      if (p.isVampire) { const vm = lvl === 1 ? 1 : (lvl === 2 ? 1.8 : 3.2); p._vampDayHp = Math.round(5000 * vm); p._vampNightHp = Math.round(15000 * vm); }
       return d;
     },
   });

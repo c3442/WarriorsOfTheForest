@@ -27,7 +27,7 @@
     banditKills: 0, treelingCoins: 0,                 // 5 bandit kills -> 1 Treeling Coin
     attackDmg: 2, attackRange: 4.0, armor: 1.0,        // upgraded by crafting
     axeLevel: 0,
-    craftOpen: false, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'fists',
+    craftOpen: false, hasArmor: false, hasSword: false, hasKatana: false, hasMace: false, hasShield: false, currentWeapon: 'fists',
     yaw: 0, pitch: 0,
     vy: 0, grounded: true,
     lastHurt: -99, lastAttack: -99,
@@ -54,6 +54,7 @@
     buildAxe(camera);
     buildSword(camera);
     buildKatana(camera);
+    buildMace(camera);
     buildScythe(camera);
     buildShotgun(camera);
     buildRifle(camera);
@@ -220,6 +221,28 @@
     g.userData.home = g.position.clone();
     camera.add(g);
     player.katana = g;
+  }
+  // A heavy spiked mace — a wooden haft topped by a studded iron ball (the Juggernaut's weapon).
+  function buildMace(camera) {
+    const g = new THREE.Group();
+    const iron = new THREE.MeshStandardMaterial({ color: 0x70757d, roughness: 0.45, metalness: 0.65 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.7, metalness: 0.4 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 1 });
+    const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.042, 0.92, 8), wood); haft.position.y = 0.36; g.add(haft);
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.22, 8), dark); grip.position.y = 0.02; g.add(grip);
+    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 0), iron); ball.position.y = 0.95; g.add(ball);
+    const dirs = [];
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2, t = (i % 2 ? 0.5 : -0.5); dirs.push(new THREE.Vector3(Math.cos(a) * Math.cos(t), Math.sin(t), Math.sin(a) * Math.cos(t))); }
+    dirs.push(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0.4, 0.3, 0.4));
+    for (const d of dirs) { const n = d.clone().normalize(); const sp = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.17, 5), iron); sp.position.set(n.x * 0.2, 0.95 + n.y * 0.2, n.z * 0.2); sp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n); sp.castShadow = true; g.add(sp); }
+    g.position.set(0.36, -0.46, -0.66);
+    g.rotation.set(-0.2, -0.3, 0.1);
+    g.scale.setScalar(0.85);
+    g.visible = false;
+    g.userData.rest = g.rotation.clone();
+    g.userData.home = g.position.clone();
+    camera.add(g);
+    player.mace = g;
   }
   function buildScythe(camera) {
     const g = new THREE.Group();
@@ -405,15 +428,16 @@
     player.shield3d = g;
   }
 
-  const WEAPON_OBJ = () => ({ fists: player.fists, axe: player.axe, sword: player.sword, katana: player.katana, scythe: player.scythe, shotgun: player.shotgun, rifle: player.rifle, deagle: player.deagle, bow: player.bow });
+  const WEAPON_OBJ = () => ({ fists: player.fists, axe: player.axe, sword: player.sword, katana: player.katana, mace: player.mace, scythe: player.scythe, shotgun: player.shotgun, rifle: player.rifle, deagle: player.deagle, bow: player.bow });
   function equipWeapon(which) {
-    const have = { fists: true, axe: !!player.hasAxe, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, scythe: !!player.hasScythe, shotgun: !!player.hasShotgun, rifle: !!player.hasRifle, deagle: !!player.hasDeagle };
+    const have = { fists: true, axe: !!player.hasAxe, bow: !!player.hasBow, sword: !!player.hasSword, katana: !!player.hasKatana, mace: !!player.hasMace, scythe: !!player.hasScythe, shotgun: !!player.hasShotgun, rifle: !!player.hasRifle, deagle: !!player.hasDeagle };
     if (!have[which]) which = player.hasAxe ? 'axe' : 'fists';
     player._bowDrawing = false; player._bowCharge = 0; player._bowSnap = undefined;   // cancel any draw
     if (player.bowNock && player._nockHome) { player.bowNock.visible = true; player.bowNock.position.copy(player._nockHome); }
     const objs = WEAPON_OBJ();
     if (player.fists) player.fists.visible = which === 'fists';
     if (player.katana) player.katana.visible = which === 'katana';
+    if (player.mace) player.mace.visible = which === 'mace';
     if (player.scythe) player.scythe.visible = which === 'scythe';
     player.axe.visible = which === 'axe';
     if (player.sword) player.sword.visible = which === 'sword';
@@ -441,6 +465,7 @@
     if (player.hasAxe) order.push('axe');
     if (player.hasSword) order.push('sword');
     if (player.hasKatana) order.push('katana');
+    if (player.hasMace) order.push('mace');
     if (player.hasScythe) order.push('scythe');
     if (player.hasShotgun) order.push('shotgun');
     if (player.hasRifle) order.push('rifle');
@@ -449,15 +474,15 @@
     const i = order.indexOf(player.currentWeapon);
     equipWeapon(order[(i + 1) % order.length]);
     if (W.sfx) W.sfx.select();
-    W.hud.toast({ fists: '👊 Fists', bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', scythe: '🌾 Vampire Scythe', shotgun: '🔫 Sawed-off shotgun', rifle: '🎯 Rifle', deagle: '🔫 Desert Eagle' }[player.currentWeapon] + ' equipped');
+    W.hud.toast({ fists: '👊 Fists', bow: '🏹 Bow', axe: '🪓 Axe', sword: '⚔️ Sword', katana: '🗡️ Katana', mace: '🔨 Spiked Mace', scythe: '🌾 Vampire Scythe', shotgun: '🔫 Sawed-off shotgun', rifle: '🎯 Rifle', deagle: '🔫 Desert Eagle' }[player.currentWeapon] + ' equipped');
   };
 
   // --- 10-slot number-key hotbar (press 1-9,0) --------------------------------
   // Fixed layout: sack (opens the bag/inventory), then your weapons. Slots for
   // gear you haven't found yet are locked/dimmed. Resource counts (wood etc.)
   // live in the inventory (press I).
-  const HOTBAR = [
-    { key: 'sack', ic: '🎒', name: 'Sack' },
+  const SACK = { key: 'sack', ic: '🎒', name: 'Sack' };
+  const WEAPONS = [
     { key: 'axe', ic: '🪓', name: 'Axe' },
     { key: 'deagle', ic: '🔫', name: 'Desert Eagle' },
     { key: 'bow', ic: '🏹', name: 'Bow' },
@@ -466,15 +491,22 @@
     { key: 'sword', ic: '⚔️', name: 'Sword' },
     { key: 'katana', ic: '🗡️', name: 'Katana' },
     { key: 'scythe', ic: '🌾', name: 'Vampire Scythe' },
-    null,
+    { key: 'mace', ic: '🔨', name: 'Spiked Mace' },
   ];
-  const OWN_FLAG = { axe: 'hasAxe', deagle: 'hasDeagle', bow: 'hasBow', shotgun: 'hasShotgun', rifle: 'hasRifle', sword: 'hasSword', katana: 'hasKatana', scythe: 'hasScythe' };
-  player.hotbar = HOTBAR;
-  player.slotOwned = (s) => !!s && (s.key === 'sack' || !!player[OWN_FLAG[s.key]]);
+  const OWN_FLAG = { axe: 'hasAxe', deagle: 'hasDeagle', bow: 'hasBow', shotgun: 'hasShotgun', rifle: 'hasRifle', sword: 'hasSword', katana: 'hasKatana', scythe: 'hasScythe', mace: 'hasMace' };
+  // Pack owned gear into the EARLIEST free slots — no fixed gaps: slot 1 = sack,
+  // then each weapon you actually own fills 2, 3, 4… in order (nothing lands on
+  // slot 6/8 while earlier slots sit empty).
+  function packedHotbar() {
+    const list = [SACK];
+    for (const w of WEAPONS) if (player[OWN_FLAG[w.key]]) list.push(w);
+    return list;
+  }
+  Object.defineProperty(player, 'hotbar', { configurable: true, get: packedHotbar });
+  player.slotOwned = (s) => !!s;                                            // only owned gear is in the packed list
   player.selectSlot = function (i) {
-    const s = HOTBAR[i]; if (!s) return;
-    if (s.key === 'sack') { player.toggleInventory(); return; }           // slot 1: open the bag / see your wood etc.
-    if (!player.slotOwned(s)) { W.hud.toast(s.name + ' — not found yet'); return; }
+    const s = packedHotbar()[i]; if (!s) return;
+    if (s.key === 'sack') { player.toggleInventory(); return; }            // slot 1: open the bag / see your wood etc.
     equipWeapon(s.key); if (W.sfx) W.sfx.select();
   };
 
@@ -598,7 +630,7 @@
         if (killed) player.creditKill(root.userData.kind);
       }
       // Vampire lifesteal: heal for the damage dealt (2x at night)
-      if (player.isVampire) { player.health = Math.min(player.maxHealth, player.health + dmg * ((W.world.isNight && W.world.isNight()) ? 2 : 1)); }
+      if (player.isVampire) { player.health = Math.min(player.maxHealth, player.health + dmg * ((W.world.isNight && W.world.isNight()) ? 5 : 1)); }
       player.popDamage(root.position, dmg, head);
       if (W.sfx) { if (head) W.sfx.headshot(); else W.sfx.hit(); }
       if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
@@ -1805,12 +1837,13 @@
 
   player.update = function (dt) {
     player._t += dt;
-    // Vampire: 1,500 hp by day / 10,000 hp at night, and burns 2 hp/sec in DIRECT sunlight only
+    // Vampire: 5,000 hp / 2× speed by day (burns 5 hp/sec in DIRECT sun); 15,000 hp / 10× speed at night
     if (player.isVampire && player.alive) {
       const night = W.world.isNight && W.world.isNight();
-      player.maxHealth = night ? (player._vampNightHp || 10000) : (player._vampDayHp || 1500);
+      player.maxHealth = night ? (player._vampNightHp || 15000) : (player._vampDayHp || 5000);
       if (player.health > player.maxHealth) player.health = player.maxHealth;
-      if (!night && player.active) { player._sunT = (player._sunT || 0) + dt; if (player._sunT >= 1) { player._sunT = 0; if (!vampInShade()) player.takeDamage(2); } }
+      player.speedMult = night ? 10 : 2;                                    // day 2×, night 10×
+      if (!night && player.active) { player._sunT = (player._sunT || 0) + dt; if (player._sunT >= 1) { player._sunT = 0; if (!vampInShade()) player.takeDamage(5); } }
     }
     if (player.isEngineer && !player._fortified) { player._fortified = true; player.fortifyBase(); }   // build defenses once
     if (player._sentries) stepSentries(dt);
@@ -2107,7 +2140,7 @@
       hasDeagle: false, deagleRounds: 0, hasFists: true, hasAxe: false, wolfMeat: 0, cookedMeat: 0,
       health: 100, stamina: 100, hunger: 100, thirst: 100,
       bottle: 5, bottleMax: 5, berries: 0, wood: START_WOOD, kills: 0, banditKills: 0, treelingCoins: 0, vy: 0,
-      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasShield: false, currentWeapon: 'fists',
+      attackDmg: 2, attackRange: 4.0, armor: 1.0, axeLevel: 0, hasArmor: false, hasSword: false, hasKatana: false, hasMace: false, hasShield: false, currentWeapon: 'fists',
     });
   };
 
