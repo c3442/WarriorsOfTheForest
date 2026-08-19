@@ -29,7 +29,7 @@
       speedMult: 0.75, knights: 50,
     },
     hunter: {
-      id: 'hunter', name: 'Hunter', emoji: '🔫', cost: 1000,
+      id: 'hunter', name: 'Hunter', emoji: '🔫', cost: 2500,
       blurb: 'A beastmaster marksman — commands alpha wolves & falcons, and rarely wastes a bullet.',
       perks: ['Starts with a rifle (120 rounds)', '🐺 Starts with an ALPHA WOLF (5× a normal wolf) — +1 per 5 wolf kills', '🦅 +1 Falcon every night you survive (dive-bombs foes)', '🎯 Lv2: 50% chance to recover the bullet on a hit', 'Can still tame bears 🐻'],
       rifle: 120, tameBears: true, hunterPets: true,
@@ -41,19 +41,19 @@
       spawnHealth: 200, deagle: 9999999,
     },
     juggernaut: {
-      id: 'juggernaut', name: 'Juggernaut', emoji: '🔨', cost: 500,
+      id: 'juggernaut', name: 'Juggernaut', emoji: '🔨', cost: 1000,
       blurb: 'An unstoppable tank — crushes foes with a huge spiked mace and shrugs off almost anything, but heavy and slow.',
       perks: ['Starts with a spiked mace 🔨', '10,000 health — nearly unkillable', 'Heavy hits (50 dmg)', '−50% move speed'],
       spawnHealth: 10000, speedMult: 0.5, mace: true, attackDmg: 50,
     },
     ninja: {
-      id: 'ninja', name: 'Ninja', emoji: '🥷', cost: 400,
+      id: 'ninja', name: 'Ninja', emoji: '🥷', cost: 1000,
       blurb: 'A blur of shadow — blindingly fast and deadly with shuriken, but frail.',
       perks: ['10× move speed', 'Throw ninja stars with F ⭐', 'Fragile — only 50 health'],
       spawnHealth: 50, speedMult: 10, ninja: true,
     },
     vampire: {
-      id: 'vampire', name: 'Vampire', emoji: '🧛', cost: 75,
+      id: 'vampire', name: 'Vampire', emoji: '🧛', cost: 1000,
       blurb: 'Reaps souls with a lifesteal scythe — frail in daylight, monstrous at night.',
       perks: ['🌾 Vampire Scythe: slow, but hits for 250', '🩸 Lifesteal — heal for the damage you deal (5× at night)', '☀️ Day: 5,000 hp · 2× speed · burns in sun (−5 hp/sec)', '🌙 Night: 15,000 hp · 10× speed'],
       spawnHealth: 5000, speedMult: 2, attackDmg: 250, vampire: true, scythe: true,
@@ -65,19 +65,25 @@
       kawaii: true,
     },
     engineer: {
-      id: 'engineer', name: 'Engineer', emoji: '🛠️', cost: 2500,
+      id: 'engineer', name: 'Engineer', emoji: '🛠️', cost: 1000,
       blurb: 'Master of defense — your base loads in pre-fortified with barbed wire, spikes and auto-sentries.',
       perks: ['Base pre-built with barbed wire & spikes', 'Auto-firing sentry turrets 🗼', 'All defenses are walk-through for you'],
       engineer: true,
     },
+    president: {
+      id: 'president', name: 'President', emoji: '🎩', cost: 5000,
+      blurb: 'Commands 50 loyal soldiers and rules from a heavily-fortified base — the ultimate commander.',
+      perks: ['🪖 50 soldiers march & fight for you', '🏰 Base loads in fully fortified — barbed wire, spikes & auto-sentries', 'Press 0 to command your troops'],
+      knights: 50, engineer: true,
+    },
     lumberjack: {
-      id: 'lumberjack', name: 'Lumberjack', emoji: '🪓', cost: 150,
+      id: 'lumberjack', name: 'Lumberjack', emoji: '🪓', cost: 250,
       blurb: 'A burly woodsman whose axe is an absolute monster — it one-shots most foes and fells trees in a single swing.',
       perks: ['Starts with an OP mega-axe 🪓', 'Massive melee damage (one-shots most foes)', 'Fells any tree in one hit'],
       axe: true, attackDmg: 500, axeLevel: 40,
     },
   };
-  const ORDER = ['lumberjack', 'vampire', 'scout', 'ninja', 'ranger', 'juggernaut', 'engineer', 'king', 'hunter'];   // the shop list (villager is the free default)
+  const ORDER = ['lumberjack', 'vampire', 'scout', 'ninja', 'ranger', 'juggernaut', 'engineer', 'king', 'hunter', 'president'];   // the shop list (villager is the free default)
 
   function num(k, d) { const v = parseInt(LS.getItem(k), 10); return isNaN(v) ? d : v; }
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }

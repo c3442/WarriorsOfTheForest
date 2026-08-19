@@ -357,7 +357,7 @@
     // foes grow tankier, faster and hit harder every night
     const stats = {
       wolf: { hp: 3 + Math.floor(dayNum * 0.7), speed: U.rand(2.6, 3.4) + dayNum * 0.14, dmg: 5 + dayNum },
-      werewolf: { hp: 7 + dayNum * 2, speed: U.rand(3.0, 3.7) + dayNum * 0.16, dmg: 10 + Math.floor(dayNum * 1.5) },
+      werewolf: { hp: 500, speed: U.rand(3.0, 3.7) + dayNum * 0.16, dmg: 10 + Math.floor(dayNum * 1.5) },
       zombie: { hp: 5 + Math.floor(dayNum * 1.5), speed: U.rand(1.6, 2.2) + dayNum * 0.09, dmg: 7 + dayNum },
     }[kind];
     enemies.list.push({ id, group: g, kind, alive: true, hp: stats.hp, speed: stats.speed, dmg: stats.dmg, lastAttack: -99, t: U.rand(0, 10) });
@@ -655,11 +655,12 @@
   enemies.rifleShoot = function (e, tgt) {
     const ex = e.group.position.x, ey = e.group.position.y + 1.3, ez = e.group.position.z;
     const d = Math.hypot(tgt.pos.x - ex, tgt.pos.z - ez) || 1;
-    const hit = U.chance(0.25);                  // only lands ~1 in 4 shots
-    if (hit) tgt.onBite(nAtk(U.randInt(8, 13)));
-    // aim toward the target, but spray wide on a miss
+    if (W.sfx && W.sfx.gun && d < 44) W.sfx.gun();          // you can HEAR the rifle crack
+    const hit = U.chance(0.18);                             // TERRIBLE aim — lands only ~1 in 5 shots
+    if (hit) tgt.onBite(100);                               // ...but a hit is brutal: 100 damage
+    // aim toward the target, but spray wildly wide on a miss
     let aimx = tgt.pos.x, aimz = tgt.pos.z;
-    if (!hit) { aimx += U.rand(-9, 9); aimz += U.rand(-9, 9); }
+    if (!hit) { aimx += U.rand(-12, 12); aimz += U.rand(-12, 12); }
     const ax = aimx - ex, az = aimz - ez, ad = Math.hypot(ax, az) || 1;
     const nx = ax / ad, nz = az / ad;
     const flash = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8),
@@ -779,71 +780,91 @@
   };
 
   // Host/solo simulation. targets: [{ pos, onBite(dmg) }] — the nearest is hunted.
-  // --- Village archers: 5 friendly bowmen who guard the village from foes -----
+  // --- Village defenders: rifle guards inside + 3 machine-gunners --------------
   const A_FWD = new THREE.Vector3(0, 0, -1);
   enemies.archers = [];
   enemies.archerArrows = [];
   enemies.sniper = null;
+  enemies.gunners = [];
 
-  function makeArcher() {
+  // A rifle-armed village guard — a proper soldier with a helmet, vest & rifle.
+  function makeGuard() {
     const g = new THREE.Group();
-    const cloth = new THREE.MeshStandardMaterial({ color: 0x3f7a3a, roughness: 1, flatShading: true });
-    const hood = new THREE.MeshStandardMaterial({ color: 0x2f5a2c, roughness: 1, flatShading: true });
+    const uniform = new THREE.MeshStandardMaterial({ color: 0x3f5a34, roughness: 1, flatShading: true });
+    const vest = new THREE.MeshStandardMaterial({ color: 0x2b3a24, roughness: 1, flatShading: true });
     const skin = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
-    const wood = new THREE.MeshStandardMaterial({ color: 0x7a4a24, roughness: 1 });
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.32), cloth); torso.position.y = 1.1; torso.castShadow = true; g.add(torso);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), skin); head.position.y = 1.68; head.castShadow = true; g.add(head);
-    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.34, 6), hood); cap.position.y = 1.96; g.add(cap);
-    for (const sx of [-0.14, 0.14]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.76, 0.19), hood); leg.position.set(sx, 0.38, 0); leg.castShadow = true; g.add(leg); }
-    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.03, 6, 14, Math.PI * 1.25), wood); bow.position.set(0.3, 1.15, 0.2); bow.rotation.z = Math.PI / 2; g.add(bow);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.14), cloth); arm.position.set(0.3, 1.2, 0.12); g.add(arm);
-    g.userData = { type: 'archer' };
+    const helmMat = new THREE.MeshStandardMaterial({ color: 0x44502c, roughness: 1, flatShading: true });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a1e, roughness: 1, flatShading: true });
+    const metal = new THREE.MeshStandardMaterial({ color: 0x2c3036, roughness: 0.5, metalness: 0.5, flatShading: true });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.8, 0.34), uniform); torso.position.y = 1.12; torso.castShadow = true; g.add(torso);
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.46, 0.4), vest); chest.position.y = 1.24; g.add(chest);   // armour vest
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), skin); head.position.y = 1.72; head.castShadow = true; g.add(head);
+    const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 0.44), helmMat); helmet.position.y = 1.93; g.add(helmet);
+    for (const sx of [-0.15, 0.15]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.78, 0.2), vest); leg.position.set(sx, 0.39, 0); leg.castShadow = true; g.add(leg); }
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.44), wood); stock.position.set(0.26, 1.16, 0.18); g.add(stock);
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.7), metal); barrel.position.set(0.26, 1.18, 0.58); g.add(barrel);   // rifle points +Z
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.15), uniform); arm.position.set(0.3, 1.22, 0.12); g.add(arm);
+    g.userData = { type: 'archer' };   // keep the type so the rest of the code is unchanged
     return g;
   }
 
-  function makeSniper() {
+  // A heavy machine-gunner manning a tripod-mounted MG.
+  function makeGunner() {
     const g = new THREE.Group();
-    const cloth = new THREE.MeshStandardMaterial({ color: 0x355a8a, roughness: 1, flatShading: true });
+    const uniform = new THREE.MeshStandardMaterial({ color: 0x33422a, roughness: 1, flatShading: true });
     const skin = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
-    const metal = new THREE.MeshStandardMaterial({ color: 0x3a3e44, roughness: 0.5, metalness: 0.4, flatShading: true });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.36), cloth); body.position.y = 0.5; body.castShadow = true; g.add(body);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.32, 0.32), skin); head.position.set(0, 0.94, 0.05); head.castShadow = true; g.add(head);
-    const helm = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.14, 0.42), new THREE.MeshStandardMaterial({ color: 0x2a4a30, roughness: 1, flatShading: true })); helm.position.set(0, 1.1, 0.02); g.add(helm);
-    const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 1.5), metal); rifle.position.set(0.17, 0.78, 0.55); g.add(rifle);     // long barrel points +Z (forward)
-    const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.2, 6), metal); scope.rotation.z = Math.PI / 2; scope.position.set(0.17, 0.9, 0.28); g.add(scope);
-    g.userData = { type: 'sniper' };
+    const metal = new THREE.MeshStandardMaterial({ color: 0x24282e, roughness: 0.45, metalness: 0.55, flatShading: true });
+    const helmMat = new THREE.MeshStandardMaterial({ color: 0x2c3a22, roughness: 1, flatShading: true });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.82, 0.42), uniform); body.position.y = 1.06; body.castShadow = true; g.add(body);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), skin); head.position.set(0, 1.68, 0.03); head.castShadow = true; g.add(head);
+    const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.2, 0.46), helmMat); helmet.position.set(0, 1.88, 0.02); g.add(helmet);
+    for (const sx of [-0.17, 0.17]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.72, 0.22), uniform); leg.position.set(sx, 0.36, 0); leg.castShadow = true; g.add(leg); }
+    const tri = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.06, 0.95, 5), metal); tri.position.set(0, 0.47, 0.5); g.add(tri);          // tripod
+    const recv = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.5), metal); recv.position.set(0, 0.98, 0.55); g.add(recv);              // receiver
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.95, 6), metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 1.0, 1.05); g.add(barrel);   // long MG barrel
+    g.userData = { type: 'sniper' }; g.scale.setScalar(1.05);
     return g;
   }
 
-  enemies.spawnVillageSniper = function () {
-    const rp = W.world.villageRoof; if (!rp || !enemies.scene) return;
-    const g = makeSniper();
-    g.position.set(rp.x, rp.y, rp.z);
-    enemies.scene.add(g);
-    enemies.sniper = { group: g, x: rp.x, y: rp.y, z: rp.z, hp: 80, maxHp: 80, cd: U.rand(0, 0.6), alive: true };
-    enemies._sniperSpawned = true;
-  };
-
-  function sniperShoot(sn, target) {
-    const sy = sn.y + 0.8;
+  // Shared muzzle-flash bullet (guards & gunners): a bright tracer that flies to the foe.
+  function guardShoot(x, y, z, target, dmg, speed) {
     const tp = target.group.position;
-    const dir = new THREE.Vector3(tp.x - sn.x, (tp.y + 1.0) - sy, tp.z - sn.z).normalize();
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.0, 5),
-      new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffaa22, emissiveIntensity: 0.7, roughness: 0.5 }));
+    const dir = new THREE.Vector3(tp.x - x, (tp.y + 1.0) - y, tp.z - z).normalize();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 5),
+      new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffcc44, emissiveIntensity: 0.85, roughness: 0.5 }));
     shaft.rotation.x = Math.PI / 2;
     const arrow = new THREE.Group(); arrow.add(shaft);
-    arrow.position.set(sn.x, sy, sn.z);
+    arrow.position.set(x, y, z);
     arrow.quaternion.setFromUnitVectors(A_FWD, dir.clone());
     enemies.scene.add(arrow);
-    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(95), life: 0, dmg: 12 });   // sniper round (nerfed): softer hit
+    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(speed), life: 0, dmg });
   }
 
+  // 3 machine-gunners defend the town — one on the roof, two flanking the plaza.
+  enemies.spawnVillageGunners = function () {
+    const vp = W.world.villagePos; if (!vp || !enemies.scene) return;
+    enemies.gunners = [];
+    const spots = [];
+    const rp = W.world.villageRoof; if (rp) spots.push({ x: rp.x, y: rp.y, z: rp.z });
+    for (let i = spots.length; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.5, r = 11;
+      const x = vp.x + Math.cos(a) * r, z = vp.z + Math.sin(a) * r;
+      spots.push({ x, y: W.world.heightAt(x, z), z });
+    }
+    for (const s of spots) {
+      const g = makeGunner(); g.position.set(s.x, s.y, s.z); enemies.scene.add(g);
+      enemies.gunners.push({ group: g, x: s.x, y: s.y + 0.95, z: s.z, hp: 160, maxHp: 160, cd: U.rand(0, 0.4), alive: true });
+    }
+    enemies._gunnersSpawned = true;
+  };
+
+  // Rifle guards defend INSIDE the village (a tighter ring around the plaza).
   enemies.spawnVillageArchers = function () {
     const vp = W.world.villagePos; if (!vp || !enemies.scene) return;
-    for (let i = 0; i < 10; i++) {                      // 10 guards ringing the bigger village
-      const a = (i / 10) * Math.PI * 2, r = 20;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2, r = 8 + (i % 2) * 3;   // inside the village, two loose rings
       const x = vp.x + Math.cos(a) * r, z = vp.z + Math.sin(a) * r;
-      const g = makeArcher();
+      const g = makeGuard();
       g.position.set(x, W.world.heightAt(x, z), z);
       enemies.scene.add(g);
       enemies.archers.push({ group: g, x, z, cd: U.rand(0, 1.0) });
@@ -852,43 +873,34 @@
   };
 
   function archerShoot(ar, target) {
-    const sy = W.world.heightAt(ar.x, ar.z) + 1.5;
-    const tp = target.group.position;
-    const dir = new THREE.Vector3(tp.x - ar.x, (tp.y + 1.0) - sy, tp.z - ar.z).normalize();
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.7, 5), new THREE.MeshStandardMaterial({ color: 0xe6c54a, roughness: 0.7 }));
-    shaft.rotation.x = Math.PI / 2;
-    const arrow = new THREE.Group(); arrow.add(shaft);
-    arrow.position.set(ar.x, sy, ar.z);
-    arrow.quaternion.setFromUnitVectors(A_FWD, dir.clone());
-    enemies.scene.add(arrow);
-    enemies.archerArrows.push({ mesh: arrow, vel: dir.multiplyScalar(78), life: 0, dmg: 14 });  // fast, flat, hard-hitting
+    guardShoot(ar.x, W.world.heightAt(ar.x, ar.z) + 1.5, ar.z, target, 14, 84);   // rifle round: fast & flat
   }
 
   function updateArchers(dt) {
     if (!enemies._archersSpawned && W.world.villagePos) enemies.spawnVillageArchers();
-    if (!enemies._sniperSpawned && W.world.villageRoof) enemies.spawnVillageSniper();
+    if (!enemies._gunnersSpawned && W.world.villagePos) enemies.spawnVillageGunners();
     const host = !(W.net && W.net.role === 'client');
-    // Rooftop sniper: picks off any foe at long range and fires fast — until it's overwhelmed and killed.
-    const sn = enemies.sniper;
-    if (sn && sn.alive) {
-      sn.cd -= dt;
-      let sbest = null, sbd = 60 * 60, swarm = 0;
+    // 3 machine-gunners: rip through foes with rapid bursts until overwhelmed.
+    for (const gn of enemies.gunners) {
+      if (!gn.alive) continue;
+      gn.cd -= dt;
+      let gbest = null, gbd = 62 * 62, swarm = 0;
       for (const e of enemies.list) {
         if (!e.alive) continue;
-        const dx = e.group.position.x - sn.x, dz = e.group.position.z - sn.z, d = dx * dx + dz * dz;
-        if (d < sbd) { sbd = d; sbest = e; }
-        if (d < 5.5 * 5.5) swarm += (e.dmg || 6);          // foes swarming the base chip the sniper's HP
+        const dx = e.group.position.x - gn.x, dz = e.group.position.z - gn.z, d = dx * dx + dz * dz;
+        if (d < gbd) { gbd = d; gbest = e; }
+        if (d < 6 * 6) swarm += (e.dmg || 6);              // foes swarming the nest chip its HP
       }
-      if (sbest) {
-        sn.group.rotation.y = Math.atan2(sbest.group.position.x - sn.x, sbest.group.position.z - sn.z);
-        if (sn.cd <= 0) { sn.cd = U.rand(1.6, 2.6); sniperShoot(sn, sbest); }
+      if (gbest) {
+        gn.group.rotation.y = Math.atan2(gbest.group.position.x - gn.x, gbest.group.position.z - gn.z);
+        if (gn.cd <= 0) { gn.cd = U.rand(0.1, 0.18); guardShoot(gn.x, gn.y, gn.z, gbest, 9, 120); }   // rapid MG fire
       }
       if (swarm > 0) {
-        sn.hp -= swarm * 0.6 * dt;
-        if (sn.hp <= 0) {
-          sn.alive = false; sn.hp = 0;
-          sn.group.rotation.z = Math.PI / 2; sn.group.position.y -= 0.5;   // topples off the roof
-          if (W.hud && W.hud.toast) W.hud.toast('💀 The village sniper has fallen!');
+        gn.hp -= swarm * 0.4 * dt;
+        if (gn.hp <= 0) {
+          gn.alive = false; gn.hp = 0;
+          gn.group.rotation.z = Math.PI / 2; gn.group.position.y -= 0.4;   // toppled
+          if (W.hud && W.hud.toast) W.hud.toast('💀 A machine-gunner has fallen!');
         }
       }
     }
@@ -925,10 +937,12 @@
     updateArchers(dt);
     enemies.spawnTimer -= dt;
     // every night gets harder: more foes on the field, and they arrive faster
-    const cap = Math.min(4 + dayNum * 3, 45) + (targets.length - 1) * 5;
+    const cap = Math.min(8 + dayNum * 5, 80) + (targets.length - 1) * 6;   // busier nights: bigger horde
     if (isNight && enemies.list.length < cap && enemies.spawnTimer <= 0) {
       enemies.spawn(center, dayNum);
-      enemies.spawnTimer = Math.max(0.25, U.rand(0.7, 1.9) - dayNum * 0.07);
+      const extra = enemies.list.length < cap - 1 && U.chance(0.5);        // often spawn two at once
+      if (extra) enemies.spawn(center, dayNum);
+      enemies.spawnTimer = Math.max(0.15, U.rand(0.4, 1.1) - dayNum * 0.06);
     }
     // v0.0 legacy mode: wolves & werewolves only — skip every bandit/bear/boss/raid/outpost spawner
     if (!W.LEGACY) {
@@ -1080,13 +1094,16 @@
           }
         }
       }
-      // rifle outlaws snipe the player from long range when they have a clear shot
+      // rifle outlaws: dump a 10-round mag (quick shots) then reload for 3.2s
       if (e.rifle && !orbiting) {
+        if (e.mag == null) e.mag = 10;
         e.shootCD -= dt;
         if (e.shootCD <= 0 && bestD > reach && bestD < 42 &&
             !W.world.wallBetween(g.position.x, g.position.z, tgt.pos.x, tgt.pos.z)) {
-          e.shootCD = U.rand(2.0, 3.2);
           enemies.rifleShoot(e, tgt);
+          e.mag -= 1;
+          if (e.mag <= 0) { e.mag = 10; e.shootCD = 3.2; }     // empty mag -> 3.2s reload
+          else e.shootCD = U.rand(0.4, 0.7);                    // rattle through the mag
         }
       }
 
@@ -1095,7 +1112,7 @@
 
       if (ad > (orbiting ? 0.6 : reach)) {
         const nx = adx / ad, nz = adz / ad;
-        const spd = e.speed * (isNight ? NIGHT_SPD : 1);   // faster after dark (isNight is the boolean param here)
+        const spd = e.speed * (isNight ? NIGHT_SPD : 1) * (e.rifle ? 0.45 : 1);   // riflemen advance slowly; faster after dark
         g.position.x += nx * spd * dt;
         g.position.z += nz * spd * dt;
         const tmp = { x: g.position.x, z: g.position.z };

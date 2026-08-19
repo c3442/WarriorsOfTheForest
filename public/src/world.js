@@ -1170,9 +1170,25 @@
       const v = makeVillager();
       v.position.set(x, world.heightAt(x, z), z); v.rotation.y = U.rand(0, 6.28);
       scene.add(v);
-      world.villagers.push({ group: v, hx: vx, hz: vz, heading: U.rand(0, 6.28), t: U.rand(0, 6), next: 0, moving: U.chance(0.6), legs: v.userData.legs });
+      world.villagers.push({ group: v, hx: vx, hz: vz, heading: U.rand(0, 6.28), t: U.rand(0, 6), next: 0, moving: U.chance(0.6), legs: v.userData.legs, hp: 30 });
     }
   }
+  // Villagers are mortal — the player (or a stray shot) can hurt & kill them.
+  world.villagerGroups = function () { return (world.villagers || []).map((v) => v.group); };
+  world.damageVillager = function (g, dmg, fromPos) {
+    if (!world.villagers) return false;
+    const v = world.villagers.find((x) => x.group === g);
+    if (!v || v.dead) return false;
+    v.hp = (v.hp == null ? 30 : v.hp) - dmg;
+    if (fromPos) { const dx = g.position.x - fromPos.x, dz = g.position.z - fromPos.z, d = Math.hypot(dx, dz) || 1; g.position.x += (dx / d) * 0.5; g.position.z += (dz / d) * 0.5; }   // knockback
+    if (v.hp <= 0) {
+      v.dead = true;
+      if (g.parent) g.parent.remove(g);
+      world.villagers = world.villagers.filter((x) => x !== v);
+      return true;   // killed
+    }
+    return false;
+  };
 
   // --- Bandit outposts: fortified camps, guarded by bandits -------------------
 

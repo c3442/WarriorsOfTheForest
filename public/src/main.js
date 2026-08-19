@@ -54,13 +54,6 @@
     W.onDeath = onDeath;
     wireMenu();
 
-    // tappable "Village" teleport button (works on mobile + while paused)
-    const tpBtn = document.getElementById('tpVillage');
-    if (tpBtn) tpBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (started && W.player && W.player.teleportVillage) W.player.teleportVillage();
-    });
-
     // Pointer-capture drives play/pause: captured = playing, released (Esc) = paused.
     // A double-click can briefly drop the lock; wait a moment before pausing so a fast
     // re-lock (the 2nd click) doesn't flash the pause menu — only a real Esc-out pauses.

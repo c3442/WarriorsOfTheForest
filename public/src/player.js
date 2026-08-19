@@ -83,7 +83,6 @@
       if (e.code === 'KeyU') player.plant();
       if (e.code === 'KeyM') player.toggleMount();
       if (e.code === 'KeyT' && player.active) W.critters.tryTame(player.pos);
-      if (e.code === 'KeyV') player.teleportVillage();
       if (e.code === 'KeyJ') { if (!(W.sack && W.sack.pocketLookedAt && W.sack.pocketLookedAt())) W.hud.showKeyHelp(true); }   // pocket the item you're eyeing, else show controls
       if (e.code === 'KeyI') player.toggleInventory();
       if (e.code === 'KeyC') {
@@ -611,6 +610,7 @@
     const targets = [];
     W.world.trees.forEach((t) => { if (t.userData.alive) targets.push(t); });
     W.enemies.list.forEach((e) => { if (e.alive) targets.push(e.group); });
+    if (W.world.villagerGroups) W.world.villagerGroups().forEach((g) => targets.push(g));   // villagers are targetable too
 
     const hits = ray.intersectObjects(targets, true);
     if (!hits.length) return;
@@ -637,6 +637,8 @@
       player.popDamage(root.position, dmg, head);
       if (W.sfx) { if (head) W.sfx.headshot(); else if (player.currentWeapon === 'mace' && W.sfx.maceHit) W.sfx.maceHit(); else W.sfx.hit(); }
       if (head) W.hud.toast('🎯 HEADSHOT! ' + dmg);
+    } else if (root.userData.type === 'villager') {
+      hitVillager(root, Math.max(10, Math.round(player.attackDmg || 20)));
     } else if (root.userData.type === 'tree') {
       const dmg = 10 + player.axeLevel * 5;                 // sharper axe = bigger chips
       if (W.sfx) W.sfx.chop();
@@ -724,11 +726,13 @@
     ray.far = 22;
     const targets = [];
     W.enemies.list.forEach((e) => { if (e.alive) targets.push(e.group); });
+    if (W.world.villagerGroups) W.world.villagerGroups().forEach((g) => targets.push(g));   // villagers are targetable too
     const hits = ray.intersectObjects(targets, true);
     const dmg = 9;
     let hitPos = null, hitRoot = null;
     if (hits.length) { hitRoot = findRoot(hits[0].object); hitPos = hits[0].point; }
     if (hitRoot && hitRoot.userData.type === 'enemy') applyShot(hitRoot, dmg);
+    else if (hitRoot && hitRoot.userData.type === 'villager') hitVillager(hitRoot, dmg);
     if (hitPos) {                              // buckshot splash to nearby foes
       for (const e of W.enemies.list) {
         if (!e.alive || e.group === hitRoot) continue;
@@ -748,6 +752,7 @@
     ray.far = 90;
     const targets = [];
     W.enemies.list.forEach((e) => { if (e.alive) targets.push(e.group); });
+    if (W.world.villagerGroups) W.world.villagerGroups().forEach((g) => targets.push(g));   // villagers are targetable too
     const hits = ray.intersectObjects(targets, true);
     if (hits.length) {
       const root = findRoot(hits[0].object);
@@ -761,7 +766,7 @@
         player.popDamage(root.position, dmg, head);
         if (head && W.hud) W.hud.toast('🎯 HEADSHOT! ' + dmg);
         if (player.isHunter && (player.classLevel || 1) >= 2 && Math.random() < 0.5) { player.rounds += 1; if (W.hud) W.hud.toast('🎯 Bullet recovered! (' + player.rounds + ')'); }   // Hunter Lv2 perk
-      }
+      } else if (root && root.userData.type === 'villager') { hitVillager(root, 18); }
     }
     // muzzle tracer down the barrel line
     const dir = player.camera.getWorldDirection(new THREE.Vector3());
@@ -785,6 +790,7 @@
     ray.far = 80;
     const targets = [];
     W.enemies.list.forEach((e) => { if (e.alive) targets.push(e.group); });
+    if (W.world.villagerGroups) W.world.villagerGroups().forEach((g) => targets.push(g));   // villagers are targetable too
     const hits = ray.intersectObjects(targets, true);
     if (hits.length) {
       const root = findRoot(hits[0].object);
@@ -797,7 +803,7 @@
         else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
         player.popDamage(root.position, dmg, head);
         if (head && W.hud) W.hud.toast('🎯 HEADSHOT! ' + dmg);
-      }
+      } else if (root && root.userData.type === 'villager') { hitVillager(root, 150); }
     }
     const dir = player.camera.getWorldDirection(new THREE.Vector3());
     const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.6);
@@ -957,6 +963,15 @@
       o = o.parent;
     }
     return null;
+  }
+
+  // Hurt a town civilian (villagers are mortal — you can attack them).
+  function hitVillager(root, dmg) {
+    if (!W.world.damageVillager) return;
+    const killed = W.world.damageVillager(root, dmg, player.pos);
+    if (player.popDamage) player.popDamage(root.position, dmg, false);
+    if (W.sfx && W.sfx.hit) W.sfx.hit();
+    if (killed && W.hud) W.hud.toast('🩸 A villager falls…');
   }
 
   // --- your personal STARTER BOX: spawns at your feet with your name; press F to open ---
@@ -1682,7 +1697,10 @@
       player.knights.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r, hp: 26, maxHp: 26 });
     }
     player.knightMode = 'follow';
-    if (W.hud && W.hud.banner) W.hud.banner('👑 KNIGHTS OF THE KING', n + ' knights rally! Press 0 for commands', '#ffe08a');
+    if (W.hud && W.hud.banner) {
+      const pres = player.playerClass === 'president';
+      W.hud.banner(pres ? '🎖️ PRESIDENTIAL GUARD' : '👑 KNIGHTS OF THE KING', n + (pres ? ' soldiers' : ' knights') + ' rally! Press 0 for commands', '#ffe08a');
+    }
   };
 
   // --- Knight command menu (press 0) + formations ---------------------------
