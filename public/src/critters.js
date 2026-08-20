@@ -101,8 +101,8 @@
     // spreads out and stays countable instead of piling onto one glitchy "super fox".
     const tamed = critters.list.filter((c) => c.tamed);
     const packN = tamed.length;
-    const ringR = Math.max(1.8, (packN * 0.75) / (2 * Math.PI));   // ring grows to fit the pack
-    const packSpin = critters._t * 0.25;                            // gently orbit so they mill about
+    const ringR = Math.max(2.1, (packN * 1.0) / (2 * Math.PI));     // ring grows to fit the pack (≥0.9m spacing)
+    const packSpin = critters._t * 0.1;                             // slow orbit so they settle into a clean ring
     tamed.forEach((c, i) => { c._slot = i; c._slotN = packN; });
     for (const c of critters.list) {
       c.t += dt;
