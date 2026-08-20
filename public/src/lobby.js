@@ -220,6 +220,7 @@
     const K = W.classes, coins = K.coins(), sel = K.selected();
     let rows = '';
     const order = K.ORDER.slice();
+    if (K.DEFS.villager && order.indexOf('villager') < 0) order.unshift('villager');  // Survivor: always equippable (free starter class)
     if (K.secretUnlocked && K.secretUnlocked()) order.push('kawaii');   // 🥚 the secret class shows only for Sophia
     order.forEach((id) => {
       const d = K.DEFS[id], owned = K.owned(id), equipped = sel === id;

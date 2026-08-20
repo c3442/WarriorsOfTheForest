@@ -300,17 +300,42 @@
   }
 
   // A rifle: long barrel, wooden stock, scope + magazine — a rare chest find.
+  // An AK-47 — the iconic 1980s assault rifle: wooden furniture, stamped steel
+  // receiver, curved "banana" magazine, front sight post and slanted muzzle.
   function buildRifle(camera) {
     const g = new THREE.Group();
-    const metal = new THREE.MeshStandardMaterial({ color: 0x3c4048, roughness: 0.35, metalness: 0.6 });
-    const wood = new THREE.MeshStandardMaterial({ color: 0x6a4326, roughness: 1 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x22252b, roughness: 0.5, metalness: 0.4 });
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.0, 10), metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.02, -0.5); g.add(barrel);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.5), wood); body.position.set(0, 0, -0.02); g.add(body);
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.15, 0.3), wood); stock.position.set(0, -0.03, 0.28); g.add(stock);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.1), dark); mag.position.set(0, -0.16, 0.02); mag.rotation.x = 0.15; g.add(mag);
-    const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.24, 8), dark); scope.rotation.x = Math.PI / 2; scope.position.set(0, 0.11, -0.02); g.add(scope);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.09), wood); grip.position.set(0, -0.13, 0.12); grip.rotation.x = -0.35; g.add(grip);
+    const steel = new THREE.MeshStandardMaterial({ color: 0x2b2f35, roughness: 0.45, metalness: 0.7 });
+    const black = new THREE.MeshStandardMaterial({ color: 0x191b1f, roughness: 0.5, metalness: 0.35 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x8a4a1e, roughness: 0.8 });      // warm AK orange-wood
+    const woodDk = new THREE.MeshStandardMaterial({ color: 0x5f3214, roughness: 0.9 });
+    const mag = new THREE.MeshStandardMaterial({ color: 0xa8531d, roughness: 0.55, metalness: 0.1 });  // bakelite magazine
+    const mk = (w, h, d, m, x, y, z, rx) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); if (rx) o.rotation.x = rx; g.add(o); return o; };
+
+    // stamped steel receiver
+    mk(0.085, 0.13, 0.4, steel, 0, 0, 0.04);
+    mk(0.088, 0.05, 0.42, black, 0, 0.075, 0.03);          // top dust cover
+    mk(0.05, 0.03, 0.05, black, 0, 0.11, 0.16);            // rear sight block
+    mk(0.052, 0.028, 0.14, steel, 0.055, 0.0, 0.02);       // charging handle / bolt (right side)
+
+    // wooden fore-end (lower handguard) + upper gas-tube cover
+    mk(0.072, 0.085, 0.3, wood, 0, -0.02, -0.28);
+    mk(0.05, 0.045, 0.26, woodDk, 0, 0.06, -0.28);
+    // barrel + gas block + front sight + slant muzzle
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.5, 10), steel); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.015, -0.6); g.add(barrel);
+    mk(0.05, 0.06, 0.05, steel, 0, 0.055, -0.5);           // gas block
+    mk(0.03, 0.09, 0.03, steel, 0, 0.09, -0.78);           // front sight tower
+    const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.08, 8), black); muzzle.rotation.x = Math.PI / 2 + 0.32; muzzle.position.set(0, 0.02, -0.88); g.add(muzzle);   // slanted brake
+
+    // curved banana magazine (three canted segments fake the AK curve)
+    mk(0.05, 0.13, 0.09, mag, 0, -0.12, -0.01, 0.22);
+    mk(0.048, 0.13, 0.085, mag, 0, -0.22, -0.05, 0.5);
+    mk(0.045, 0.11, 0.08, mag, 0, -0.31, -0.12, 0.78);
+
+    // pistol grip + wooden club stock
+    mk(0.05, 0.16, 0.07, black, 0, -0.12, 0.17, -0.38);
+    mk(0.06, 0.11, 0.34, wood, 0, -0.035, 0.44);
+    mk(0.06, 0.15, 0.05, wood, 0, -0.02, 0.6);             // buttplate/comb
+
     g.position.set(0.32, -0.38, -0.6);
     g.rotation.set(-0.04, 0, 0);
     g.scale.setScalar(0.95);
@@ -1269,7 +1294,7 @@
     if (!h) { W.hud.toast('No horse nearby to ride 🐴'); return; }
     if (player._fishUntil) player._fishUntil = 0;
     h.ridden = true; player._mount = h;
-    W.hud.toast('Giddy-up! 🐴 — M to dismount, faster on horseback');
+    W.hud.toast('Giddy-up! 🐴 — Space to jump · M to dismount');
   };
 
   // K: drop one carried berry onto the ground in front of you.
@@ -1733,7 +1758,7 @@
       const g = (player.playerClass === 'president') ? makeSoldier() : makeKnight();
       g.position.set(kx, W.world.heightAt(kx, kz), kz);
       player.scene.add(g);
-      player.knights.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r, hp: 26, maxHp: 26 });
+      player.knights.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r, hp: 26, maxHp: 26, gun: player.playerClass === 'president' });
     }
     player.knightMode = 'follow';
     if (W.hud && W.hud.banner) {
@@ -1799,6 +1824,23 @@
     }
     player.closeKnightMenu();
   };
+  // A secret-agent guard fires their rifle at a foe: muzzle flash + tracer + hitscan damage.
+  function fireSoldierShot(g, tgt, host) {
+    const c = Math.cos(g.rotation.y), s = Math.sin(g.rotation.y);
+    const start = new THREE.Vector3(g.position.x + 0.22 * c + 0.5 * s, g.position.y + 1.0, g.position.z - 0.22 * s + 0.5 * c);
+    const headY = (W.enemies && W.enemies.headY) ? W.enemies.headY(tgt) : 1.6;
+    const end = new THREE.Vector3(tgt.group.position.x, tgt.group.position.y + headY * 0.7, tgt.group.position.z);
+    const dir = end.clone().sub(start); const len = dir.length() || 1; dir.multiplyScalar(1 / len);
+    const tracer = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, len), new THREE.MeshBasicMaterial({ color: 0xfff2a0, transparent: true, opacity: 0.9 }));
+    tracer.position.copy(start).addScaledVector(dir, len / 2);
+    tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+    player.scene.add(tracer); setTimeout(() => player.scene.remove(tracer), 60);
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffd24a }));
+    flash.position.copy(start); player.scene.add(flash); setTimeout(() => player.scene.remove(flash), 45);
+    // sound throttled — 50 agents firing shouldn't deafen; only nearby shots, sometimes
+    if (W.sfx && W.sfx.gun && Math.hypot(start.x - player.pos.x, start.z - player.pos.z) < 34 && Math.random() < 0.18) W.sfx.gun();
+    if (host && W.enemies && W.enemies.damage) W.enemies.damage(tgt.group, 14, { x: g.position.x, z: g.position.z });
+  }
   player.stepKnights = function (dt) {
     const ks = player.knights; if (!ks || !ks.length) return;
     const foes = (W.enemies && W.enemies.list) || [];
@@ -1818,7 +1860,7 @@
       else if (mode === 'line') { const side = (i - (n - 1) / 2) * 0.8; tx = player.pos.x + rdx * side + fdx * 3; tz = player.pos.z + rdz * side + fdz * 3; }
       else { tx = player.pos.x + Math.cos(k.a + player._t * 0.15) * k.r; tz = player.pos.z + Math.sin(k.a + player._t * 0.15) * k.r; }   // follow: gentle orbit
       const dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz) || 1;
-      const reach = tgt ? 1.7 : 0.4;
+      const reach = tgt ? (k.gun ? 17 : 1.7) : 0.4;        // agents hold & fire from range; knights close in to stab
       if (d > reach) {
         const sp = (tgt ? 9.0 : 5.0) * (k.horse ? 1.9 : 1) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
         g.rotation.y = Math.atan2(dx, dz);
@@ -1827,12 +1869,16 @@
       } else if (tgt) {
         g.rotation.y = Math.atan2(dx, dz);
         k.atk -= dt;
-        if (k.atk <= 0) { k.atk = 0.5; if (host && W.enemies.damage) W.enemies.damage(tgt.group, 11, { x: g.position.x, z: g.position.z }); }
-        k.hp -= (tgt.dmg || 8) * dt * 0.45;                 // the foe fights back — knights can fall
-        if (k.hp <= 0) k.dead = true;
+        if (k.gun) {                                        // secret-agent guard: fire the rifle
+          if (k.atk <= 0) { k.atk = U.rand(0.7, 1.15); fireSoldierShot(g, tgt, host); }
+        } else if (k.atk <= 0) {                            // knight: melee stab
+          k.atk = 0.5; if (host && W.enemies.damage) W.enemies.damage(tgt.group, 11, { x: g.position.x, z: g.position.z });
+        }
       } else if (mode !== 'follow') {
         g.rotation.y = Math.atan2(g.position.x - player.pos.x, g.position.z - player.pos.z);   // hold: face outward
       }
+      // a foe right next to a guard fights back — melee knights, or an agent that got rushed
+      if (tgt && d < 2.2) { k.hp -= (tgt.dmg || 8) * dt * 0.45; if (k.hp <= 0) k.dead = true; }
       g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(k.t * 8)) * 0.04;
       // a mounted guard: place their horse under them, sit them up on the saddle, gallop the horse
       if (k.horse) {
@@ -2354,7 +2400,7 @@
     if (player._mount) {
       player.camera.position.y += 1.05;
       const h = player._mount.group;
-      h.position.set(player.pos.x, W.world.heightAt(player.pos.x, player.pos.z), player.pos.z);
+      h.position.set(player.pos.x, player.pos.y - C.EYE_HEIGHT, player.pos.z);   // ride at your feet height → the horse hops when you jump (Space)
       h.rotation.y = player.yaw + Math.PI;
       const gait = moving ? Math.sin(player._t * 13) * 0.55 : Math.sin(player._t * 2) * 0.05;
       const lg = h.userData.legs;
