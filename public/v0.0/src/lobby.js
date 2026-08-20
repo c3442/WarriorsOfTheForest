@@ -138,10 +138,7 @@
       '<div style="font-size:12px;color:#9fb488;margin-bottom:12px;">"Pick a version of the woods to play, friend."</div>' + rows +
       '<div style="font-size:11px;color:#8fae74;text-align:center;margin-top:2px;">press <b style="background:#2a3320;border:1px solid #46562f;border-radius:4px;padding:0 5px;">F</b> or <b style="background:#2a3320;border:1px solid #46562f;border-radius:4px;padding:0 5px;">Esc</b> to close</div>';
     p.querySelectorAll('button[data-legacy]').forEach((b) => {
-      b.onclick = () => {
-        if (b.dataset.legacy === '1') { window.location.href = 'v0.0/'; return; }   // v0.0 = a FROZEN snapshot in /v0.0/ — new updates never touch it
-        closeUpdates(); startGame(false);
-      };
+      b.onclick = () => { closeUpdates(); startGame(b.dataset.legacy === '1'); };
     });
     document.body.appendChild(p);
     return p;
@@ -715,7 +712,7 @@
 
   function startGame(legacy) {
     if (started || starting) return; starting = true;
-    W.LEGACY = !!legacy;        // v0.0 launcher passes true -> world/enemies build the bare legacy mode
+    W.LEGACY = true;            // FROZEN v0.0 SNAPSHOT — this build always runs the bare-forest legacy mode
     const ni = document.getElementById('nameInput'); if (ni && !ni.value.trim()) ni.value = 'Player';   // never block the start
     const vt = document.getElementById('verTag'); if (vt) vt.textContent = legacy ? 'v0.0' : 'v1.10';
     if (document.pointerLockElement) document.exitPointerLock();

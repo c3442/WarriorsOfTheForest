@@ -1,0 +1,273 @@
+/* DOM HUD: stat bars, info, banners, damage flash, overlays, toasts. */
+(function () {
+  const W = (window.WOTF = window.WOTF || {});
+
+  const $ = (id) => document.getElementById(id);
+  const els = {};
+  const hud = {};
+
+  hud.init = function () {
+    ['hp', 'st', 'fd', 'th', 'todIcon', 'todLabel', 'dayNum', 'foeNum', 'woodNum', 'waterNum', 'berryNum', 'bandaidNum', 'killNum',
+     'coinNum',
+     'banner', 'flash', 'startOverlay', 'pauseOverlay', 'deadOverlay', 'deadStats',
+     'craftPanel', 'craftWood', 'crow3', 'crow6', 'crow7', 'axeLv', 'axeCost', 'keyHelp',
+     'weaponIc', 'slotShell', 'shellNum',
+     'invPanel', 'invWood', 'invBerries', 'invBandaids', 'invWater', 'invAxe', 'invShells', 'invSaplings', 'invRawMeat', 'invCookedMeat',
+     'invSwordSlot', 'invArmorSlot', 'invShieldSlot', 'invShotgunSlot',
+     'invKatanaSlot', 'invScytheSlot', 'invDeagleSlot', 'invRifleSlot',
+     'sleepOverlay', 'sleepCount', 'sleepWait', 'buildHint', 'buildHintName', 'minimap',
+     'startBtn', 'resumeBtn', 'retryBtn'].forEach((id) => { els[id] = $(id); });
+    if (els.sleepOverlay) {
+      els.sleepOverlay.querySelectorAll('[data-hug]').forEach((b) => {
+        b.onclick = () => W.player.hug(b.dataset.hug);
+      });
+    }
+    els.hpFill = els.hp.querySelector('i');
+    els.stFill = els.st.querySelector('i');
+    els.fdFill = els.fd.querySelector('i');
+    els.thFill = els.th.querySelector('i');
+    hud.buildHotbar();
+  };
+
+  // --- 10-slot number-key hotbar (built dynamically over #hotbar) --------------
+  hud.buildHotbar = function () {
+    const hb = document.getElementById('hotbar'); if (!hb) return;
+    hb.innerHTML = ''; hud._hb = [];
+    for (let i = 0; i < 10; i++) {
+      const cell = document.createElement('div'); cell.className = 'slot';
+      const num = document.createElement('span'); num.textContent = (i === 9 ? 0 : i + 1);
+      num.style.cssText = 'position:absolute;left:3px;top:-1px;font-size:11px;font-weight:bold;color:#ffe08a;text-shadow:1px 1px 0 #000;';
+      const ic = document.createElement('span'); ic.className = 'ic';
+      const ammo = document.createElement('span'); ammo.className = 'ct';
+      cell.appendChild(num); cell.appendChild(ic); cell.appendChild(ammo);
+      hb.appendChild(cell); hud._hb.push({ cell, ic, ammo });
+    }
+  };
+  hud.refreshHotbar = function () {
+    const p = W.player; if (!hud._hb || !p || !p.hotbar) return;
+    const ammoFor = { deagle: p.deagleRounds, shotgun: p.shells, rifle: p.rounds, bow: p.arrowCount };
+    for (let i = 0; i < 10; i++) {
+      const s = p.hotbar[i], c = hud._hb[i], owned = p.slotOwned(s);
+      c.ic.textContent = s ? s.ic : '';
+      c.cell.style.display = (s && owned) ? '' : 'none';   // only show weapons you actually have — no grey empties
+      const sel = s && s.key === p.currentWeapon;
+      c.cell.style.borderColor = sel ? '#ffe08a' : '#8b8b8b';
+      c.cell.style.boxShadow = sel ? '0 0 8px rgba(255,224,138,.6)' : 'none';
+      c.ammo.textContent = (s && owned && (s.key in ammoFor)) ? (ammoFor[s.key] || 0) : '';
+    }
+  };
+
+  hud.update = function (s) {
+    els.hpFill.style.width = (s.health / (s.maxHealth || 100) * 100) + '%';
+    els.stFill.style.width = s.stamina + '%';
+    els.fdFill.style.width = s.hunger + '%';
+    els.thFill.style.width = s.thirst + '%';
+    els.waterNum.textContent = s.bottle + '/' + s.bottleMax;
+    els.berryNum.textContent = s.berries + '/' + s.berryMax;
+    if (els.bandaidNum) els.bandaidNum.textContent = s.bandaids;
+    if (els.craftWood) els.craftWood.textContent = s.wood;   // keep craft panel wood live
+    els.todIcon.textContent = s.night ? '🌙' : '☀️';
+    els.todLabel.textContent = s.night ? 'Night' : 'Day';
+    els.dayNum.textContent = s.day;
+    els.foeNum.textContent = s.foes;
+    els.woodNum.textContent = s.wood;
+    els.killNum.textContent = s.kills;
+    if (els.coinNum) els.coinNum.textContent = s.coins || 0;
+    hud.refreshHotbar();     // 10-slot number-key hotbar (icons, ammo, selection)
+    if (hud._inv) hud.refreshInv();          // keep the inventory live while open
+    hud.drawMinimap();
+  };
+
+  // --- Minimap (north-up, player-centred) -------------------------------------
+  hud.drawMinimap = function () {
+    const cv = els.minimap; if (!cv) return;
+    const ctx = hud._mmctx || (hud._mmctx = cv.getContext('2d'));
+    const p = W.player; if (!p || !p.pos) return;
+    const S = cv.width, c = S / 2, R = c - 3, RANGE = 300, sc = R / RANGE;
+    ctx.clearRect(0, 0, S, S);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2); ctx.fillStyle = 'rgba(10,14,9,0.85)'; ctx.fill();
+    ctx.clip();
+
+    // --- fog of war: explored ground fills in with biome colour as you roam ---
+    if (!hud._explored) hud._explored = new Set();
+    const CELL = 24, RAD = 2;
+    const pcx = Math.round(p.pos.x / CELL), pcz = Math.round(p.pos.z / CELL);
+    for (let dx = -RAD; dx <= RAD; dx++) for (let dz = -RAD; dz <= RAD; dz++) hud._explored.add((pcx + dx) + ',' + (pcz + dz));
+    const cellPx = CELL * sc;
+    const span = Math.ceil(RANGE / CELL) + 1;
+    for (let cx = pcx - span; cx <= pcx + span; cx++) {
+      for (let cz = pcz - span; cz <= pcz + span; cz++) {
+        if (!hud._explored.has(cx + ',' + cz)) continue;
+        const wx = cx * CELL, wz = cz * CELL;
+        const h = W.world.heightAt(wx, wz);
+        let col;
+        if (h < -2.0) col = '#2f6fb0';                                  // water (blue)
+        else {
+          const d = W.world.desertAt ? W.world.desertAt(wx, wz) : 0;
+          const sn = W.world.snowAt ? W.world.snowAt(wx, wz) : 0;
+          const sw = W.world.swampAt ? W.world.swampAt(wx, wz) : 0;
+          let r = 78, gg = 124, b = 60;                                 // forest base
+          r += (206 - r) * d; gg += (184 - gg) * d; b += (126 - b) * d; // -> desert
+          r += (228 - r) * sn; gg += (236 - gg) * sn; b += (242 - b) * sn; // -> snow
+          r += (60 - r) * sw; gg += (74 - gg) * sw; b += (44 - b) * sw;  // -> swamp
+          col = 'rgb(' + Math.round(r) + ',' + Math.round(gg) + ',' + Math.round(b) + ')';
+        }
+        ctx.fillStyle = col;
+        ctx.fillRect(c + (wx - p.pos.x) * sc - cellPx / 2 - 0.5, c + (wz - p.pos.z) * sc - cellPx / 2 - 0.5, cellPx + 1, cellPx + 1);
+      }
+    }
+
+    const dot = (x, z, color, rad) => {
+      let mx = c + (x - p.pos.x) * sc, my = c + (z - p.pos.z) * sc;
+      const dx = mx - c, dy = my - c, d = Math.hypot(dx, dy);
+      if (d > R - 4) { const k = (R - 4) / d; mx = c + dx * k; my = c + dy * k; }
+      ctx.beginPath(); ctx.arc(mx, my, rad, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.stroke();
+    };
+    dot(0, 0, '#ffb13a', 3.4);                                    // home camp (always known)
+    const disc = (W.world && W.world.discovered) || {};
+    // landmarks only appear once you (or a teammate) have discovered them
+    if (W.world && W.world.villagePos && disc.village) dot(W.world.villagePos.x, W.world.villagePos.z, '#7fe07f', 3.4); // village (green)
+    if (W.world && W.world.banditCampPos && disc.bandit) dot(W.world.banditCampPos.x, W.world.banditCampPos.z, '#ff5a4a', 3.8); // bandit hideout (red)
+    if (W.world && W.world.outposts) {                            // bandit outposts (amber-red)
+      for (const o of W.world.outposts) { if (o.found) dot(o.x, o.z, '#ff8c3a', 3.4); }
+    }
+    if (W.net && W.net.remote) {
+      for (const id in W.net.remote) {                            // teammates (cyan) — always shown
+        const r = W.net.remote[id];
+        if (r && r.pose) dot(r.pose.x, r.pose.z, '#56d3ff', 4.2);
+      }
+    }
+    ctx.restore();
+    // player arrow at centre, pointing where you face
+    ctx.save();
+    ctx.translate(c, c); ctx.rotate(-p.yaw);
+    ctx.beginPath(); ctx.moveTo(0, -6.5); ctx.lineTo(4.5, 5.5); ctx.lineTo(-4.5, 5.5); ctx.closePath();
+    ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke();
+    ctx.restore();
+  };
+
+  // --- Inventory --------------------------------------------------------------
+  hud.toggleInventory = function (open) {
+    hud._inv = open;
+    if (els.invPanel) els.invPanel.classList.toggle('hidden', !open);
+    if (open) hud.refreshInv();
+  };
+  hud.refreshInv = function () {
+    const p = W.player; if (!els.invPanel) return;
+    els.invWood.textContent = p.wood;
+    els.invBerries.textContent = p.berries + '/' + p.berryMax;
+    els.invBandaids.textContent = p.bandaids;
+    els.invWater.textContent = p.bottle + '/' + p.bottleMax;
+    els.invAxe.textContent = p.axeLevel;
+    els.invShells.textContent = p.shells;
+    if (els.invSaplings) els.invSaplings.textContent = p.saplings || 0;
+    if (els.invRawMeat) els.invRawMeat.textContent = p.wolfMeat || 0;
+    if (els.invCookedMeat) els.invCookedMeat.textContent = p.cookedMeat || 0;
+    // only show what you actually have — hide empty/unowned slots entirely
+    const show = (el, ok) => { const s = el && el.closest && el.closest('.islot'); if (s) s.style.display = ok ? '' : 'none'; };
+    show(els.invAxe, !!p.hasAxe);
+    show(els.invWood, (p.wood || 0) > 0);
+    show(els.invWater, true);                         // you always carry a bottle
+    show(els.invBerries, (p.berries || 0) > 0);
+    show(els.invBandaids, (p.bandaids || 0) > 0);
+    show(els.invSaplings, (p.saplings || 0) > 0);
+    show(els.invRawMeat, (p.wolfMeat || 0) > 0);
+    show(els.invCookedMeat, (p.cookedMeat || 0) > 0);
+    const gear = (slot, ok) => { if (slot) { slot.style.display = ok ? '' : 'none'; if (ok) slot.classList.remove('empty'); } };
+    gear(els.invSwordSlot, p.hasSword);
+    gear(els.invArmorSlot, p.hasArmor);
+    gear(els.invShieldSlot, p.hasShield);
+    gear(els.invShotgunSlot, p.hasShotgun);
+    // class weapons — only shown when your class grants them
+    gear(els.invKatanaSlot, p.hasKatana);
+    gear(els.invScytheSlot, p.hasScythe);
+    gear(els.invDeagleSlot, p.hasDeagle);
+    gear(els.invRifleSlot, p.hasRifle);
+  };
+
+  // --- Sleep overlay ----------------------------------------------------------
+  hud.showSleep = function (show) {
+    if (!els.sleepOverlay) return;
+    els.sleepOverlay.classList.toggle('hidden', !show);
+    if (show) els.sleepOverlay.querySelectorAll('[data-hug]').forEach((b) => b.classList.remove('sel'));
+  };
+  hud.setSleepCount = function (n, ready) {
+    if (!els.sleepCount) return;
+    els.sleepCount.textContent = ready ? '💤' : n;
+    els.sleepWait.textContent = ready ? 'Waiting for the night to pass…' : 'Sleeping…';
+  };
+  hud.markHug = function (kind) {
+    if (!els.sleepOverlay) return;
+    els.sleepOverlay.querySelectorAll('[data-hug]').forEach((b) => b.classList.toggle('sel', b.dataset.hug === kind));
+  };
+
+  // --- Build placement hint ---------------------------------------------------
+  hud.showBuildHint = function (show, name) {
+    if (!els.buildHint) return;
+    if (show && name) els.buildHintName.textContent = name;
+    els.buildHint.classList.toggle('hidden', !show);
+  };
+
+  let bannerTimer = null;
+  hud.banner = function (big, sub, color) {
+    els.banner.querySelector('.big').textContent = big;
+    els.banner.querySelector('.big').style.color = color || '#fff';
+    els.banner.querySelector('.sub').textContent = sub || '';
+    els.banner.style.opacity = 1;
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => { els.banner.style.opacity = 0; }, 2600);
+  };
+
+  let toastEl = null, toastTimer = null;
+  hud.toast = function (text) {
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      Object.assign(toastEl.style, {
+        position: 'fixed', left: '50%', top: '58%', transform: 'translateX(-50%)',
+        font: "bold 16px 'Trebuchet MS',sans-serif", color: '#d8f0b0',
+        textShadow: '0 2px 6px #000', pointerEvents: 'none', transition: 'opacity .3s', opacity: 0, zIndex: 5,
+      });
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = text;
+    toastEl.style.opacity = 1;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.style.opacity = 0; }, 900);
+  };
+
+  hud.toggleCraft = function (open) { els.craftPanel.classList.toggle('hidden', !open); };
+  hud.updateCraft = function (s) {
+    els.craftWood.textContent = s.wood;
+    els.axeLv.textContent = 'Lv ' + s.axeLevel;
+    els.axeCost.textContent = s.axeCost + ' wood';
+    els.crow3.classList.toggle('owned', !!s.armor);
+    els.crow6.classList.toggle('owned', !!s.sword);
+    els.crow7.classList.toggle('owned', !!s.shield);
+  };
+
+  hud.showKeyHelp = function (show) { if (els.keyHelp) els.keyHelp.classList.toggle('hidden', !show); };
+
+  hud.flashDamage = function (intensity) {
+    els.flash.style.opacity = intensity;
+    setTimeout(() => { els.flash.style.opacity = 0; }, 110);
+  };
+
+  hud.showStart = function (cb) { els.startBtn.onclick = cb; };
+  hud.hideStart = function () { els.startOverlay.classList.add('hidden'); };
+  hud.showPause = function (show) { els.pauseOverlay.classList.toggle('hidden', !show); };
+  hud.onResume = function (cb) { els.resumeBtn.onclick = cb; };
+
+  hud.showDead = function (stats, cb) {
+    els.deadStats.innerHTML =
+      `You survived <b>${stats.day - 1}</b> night${stats.day - 1 === 1 ? '' : 's'} in the forest.<br>` +
+      `Beasts slain: <b>${stats.kills}</b> &nbsp;·&nbsp; Wood gathered: <b>${stats.wood}</b>`;
+    els.deadOverlay.classList.remove('hidden');
+    els.retryBtn.onclick = cb;
+  };
+
+  W.hud = hud;
+})();
