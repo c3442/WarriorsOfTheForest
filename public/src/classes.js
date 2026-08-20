@@ -55,7 +55,7 @@
     vampire: {
       id: 'vampire', stars: 4, name: 'Vampire', emoji: '🧛', cost: 1000,
       blurb: 'Reaps souls with a lifesteal scythe — frail in daylight, monstrous at night.',
-      perks: ['🌾 Vampire Scythe: slow, but hits for 250', '🩸 Lifesteal — heal for the damage you deal (5× at night)', '☀️ Day: 5,000 hp · 2× speed · burns in sun (−5 hp/sec)', '🌙 Night: 15,000 hp · 10× speed'],
+      perks: ['🌾 Vampire Scythe: slow, but hits for 250', '🩸 Lifesteal — heal for the damage you deal (5× at night)', '☀️ Day: 5,000 hp · 2× speed · burns in sun (−100 hp/sec)', '🌙 Night: 15,000 hp · 10× speed'],
       spawnHealth: 5000, speedMult: 2, attackDmg: 250, vampire: true, scythe: true,
     },
     kawaii: {
@@ -63,6 +63,12 @@
       blurb: 'A secret cupid warrior — endless love, and enemies who just can’t fight back. 💖',
       perks: ['💘 Cupid’s Bow — unlimited heart arrows', '💫 Heart arrows STUN foes for 2s', '💗 Hearts pop overhead & drop their defense 5s'],
       kawaii: true,
+    },
+    catmaster: {
+      id: 'catmaster', stars: 5, name: 'Cat Master', emoji: '🐱', cost: 0, hidden: true,   // 🥚 secret: only appears if your name is Vivian
+      blurb: 'A secret feline commander — press K to conjure cats. Every cat makes you hit harder… but they’re fragile. 🐾',
+      perks: ['🐱 Press K to spawn a cat (5s cooldown)', '💪 The more cats you have, the stronger you hit', '💔 Cats are fragile — foes one-shot them'],
+      catmaster: true,
     },
     engineer: {
       id: 'engineer', stars: 4, name: 'Engineer', emoji: '🛠️', cost: 1000,
@@ -96,6 +102,11 @@
     const nm = (name != null ? name : (curName || (W.net && W.net.myName) || '')).toString().trim().toLowerCase();
     return nm === 'sophia';
   }
+  // 🥚 second secret: the Cat Master only exists for players named "Vivian".
+  function isVivian(name) {
+    const nm = (name != null ? name : (curName || (W.net && W.net.myName) || '')).toString().trim().toLowerCase();
+    return nm === 'vivian';
+  }
 
   // start with no coins — earn them all by killing bandits (5 kills = 1 coin)
   if (LS.getItem(KEY_COINS) == null) LS.setItem(KEY_COINS, '0');
@@ -105,9 +116,10 @@
     coins() { return OWNER ? 999999999 : num(KEY_COINS, 0); },   // owner: effectively infinite
     setCoins(n) { LS.setItem(KEY_COINS, String(Math.max(0, n | 0))); },
     addCoins(n) { const v = classes.coins() + (n | 0); classes.setCoins(v); return v; },
-    owned(id) { return id === 'villager' || (id === 'kawaii' && isSophia()) || ownedSet().has(id); },   // Kawaii is free for Sophia
+    owned(id) { return id === 'villager' || (id === 'kawaii' && isSophia()) || (id === 'catmaster' && isVivian()) || ownedSet().has(id); },   // secret classes are free for the right name
     setName(n) { curName = n || ''; },                 // lobby feeds the live name box here
-    secretUnlocked() { return isSophia(); },           // true only while the typed/play name is Sophia
+    secretUnlocked() { return isSophia() || isVivian(); },   // any secret unlocked by the current name
+    secretList() { const o = []; if (isSophia()) o.push('kawaii'); if (isVivian()) o.push('catmaster'); return o; },   // which secret ids the current name unlocks
     // --- class levels: Lv1 base, Lv2 = 2x price, Lv3 = 5x price, each way stronger ---
     level(id) { let m; try { m = JSON.parse(LS.getItem(KEY_LVLS) || '{}'); } catch (e) { m = {}; } return Math.max(1, Math.min(3, m[id] || 1)); },
     upgradeCost(id) { const d = DEFS[id]; if (!d) return null; const lv = classes.level(id); if (lv >= 3) return null; const base = d.cost || 100; return base * (lv === 1 ? 2 : 5); },
@@ -122,7 +134,7 @@
       m[id] = lv + 1; LS.setItem(KEY_LVLS, JSON.stringify(m));
       return { ok: true, level: lv + 1 };
     },
-    selected() { const s = LS.getItem(KEY_SEL); if (s === 'kawaii' && !isSophia()) return 'villager'; return s && DEFS[s] ? s : 'villager'; },
+    selected() { const s = LS.getItem(KEY_SEL); if (s === 'kawaii' && !isSophia()) return 'villager'; if (s === 'catmaster' && !isVivian()) return 'villager'; return s && DEFS[s] ? s : 'villager'; },
     select(id) { if (classes.owned(id)) { LS.setItem(KEY_SEL, id); return true; } return false; },
     // Try to buy a class. Returns {ok, reason, need}.
     buy(id) {
@@ -138,6 +150,7 @@
     applyToPlayer(p) {
       let d = DEFS[classes.selected()];
       if (d && d.kawaii && !isSophia(W.net && W.net.myName)) d = DEFS.villager;   // 🥚 never leak the secret to a non-Sophia
+      if (d && d.catmaster && !isVivian(W.net && W.net.myName)) d = DEFS.villager;   // 🥚 never leak the secret to a non-Vivian
       if (!d || !p) return null;
       p.playerClass = d.id;
       p.speedMult = d.speedMult || 1;
@@ -151,6 +164,7 @@
       if (d.scythe) { p.hasScythe = true; p.currentWeapon = 'scythe'; }  // Vampire: soul-reaping scythe
       p.isVampire = !!d.vampire;
       p.isKawaii = !!d.kawaii;
+      p.isCatMaster = !!d.catmaster;   // 🐱 secret: K spawns cats that buff you
       if (d.kawaii) {                                                     // Kawaii Fighter: Cupid's Bow + endless heart arrows
         p.hasBow = true; p.currentWeapon = 'bow'; p.arrowCount = 999999;
         p.bowColor = 0xff5aa0; p.arrowColor = 0xff4f97;

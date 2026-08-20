@@ -87,7 +87,10 @@
       if (e.code === 'KeyH') player.dropBerry();
       if (e.code === 'KeyB') player.useBandaid();
       if (e.code === 'KeyZ') player.zipTent();
-      if (e.code === 'KeyK') { if (!(W.sack && W.sack.dropFromSack && W.sack.dropFromSack())) player.sleep(); }   // drop a sacked item, else sleep
+      if (e.code === 'KeyK') {
+        if (player.isCatMaster) { player.spawnCat(); }   // 🐱 Cat Master: K conjures a cat
+        else if (!(W.sack && W.sack.dropFromSack && W.sack.dropFromSack())) player.sleep();   // drop a sacked item, else sleep
+      }
       if (e.code === 'KeyR') player.sit();
       if (e.code === 'KeyU') player.plant();
       if (e.code === 'KeyM') player.toggleMount();
@@ -259,24 +262,36 @@
   }
   function buildScythe(camera) {
     const g = new THREE.Group();
-    const wood = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 1, flatShading: true });
-    const steel = new THREE.MeshStandardMaterial({ color: 0xd2d7df, roughness: 0.22, metalness: 0.78, flatShading: true });
-    const glow = new THREE.MeshStandardMaterial({ color: 0x8a1030, emissive: 0xd0204a, emissiveIntensity: 1.1, roughness: 0.4 });
-    // long wooden snath (the shaft), running up the screen
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.042, 2.1, 8), wood); pole.position.y = 0.5; g.add(pole);
-    // the classic curved crescent blade sweeping off the TOP of the shaft (a flattened torus arc)
-    const bladeGrp = new THREE.Group(); bladeGrp.position.set(0, 1.55, 0);
-    const blade = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.045, 5, 26, Math.PI * 0.92), steel);
-    blade.scale.set(1, 1, 0.32);                       // flatten the tube into a thin blade
-    blade.rotation.set(Math.PI / 2, 0, -0.35);         // lay it flat, sweeping forward from the shaft
-    bladeGrp.add(blade);
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.34, 4), steel);   // pointed tip at the far end of the arc
-    tip.position.set(-0.52, 0, 0.34); tip.rotation.set(Math.PI / 2, 0, 1.2); bladeGrp.add(tip);
+    const wood = new THREE.MeshStandardMaterial({ color: 0x241610, roughness: 1, flatShading: true });
+    const wrap = new THREE.MeshStandardMaterial({ color: 0x120a08, roughness: 1, flatShading: true });
+    const steel = new THREE.MeshStandardMaterial({ color: 0xcbd0da, roughness: 0.18, metalness: 0.85, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d34, roughness: 0.5, metalness: 0.6, flatShading: true });
+    const glow = new THREE.MeshStandardMaterial({ color: 0xd0204a, emissive: 0xff1a44, emissiveIntensity: 1.7, roughness: 0.3 });
+    const gemMat = new THREE.MeshStandardMaterial({ color: 0x8a1030, emissive: 0xff2050, emissiveIntensity: 1.35, roughness: 0.25, metalness: 0.3 });
+
+    // long tapered snath (shaft) with dark grip wraps + a pommel spike
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.046, 2.15, 8), wood); pole.position.y = 0.5; g.add(pole);
+    for (const wy of [0.12, 0.46, 0.8]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.07, 8), wrap); w.position.y = wy; g.add(w); }
+    const pommel = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 6), dark); pommel.position.y = -0.62; pommel.rotation.x = Math.PI; g.add(pommel);
+
+    // --- layered crescent blade sweeping off the TOP: dark backing + steel edge + glowing red soul-edge ---
+    const bladeGrp = new THREE.Group(); bladeGrp.position.set(0, 1.6, 0);
+    const back = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.06, 6, 30, Math.PI * 0.95), dark);
+    back.scale.set(1, 1, 0.26); back.rotation.set(Math.PI / 2, 0, -0.35); bladeGrp.add(back);
+    const edge = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.03, 6, 30, Math.PI * 0.95), steel);
+    edge.scale.set(1, 1, 0.2); edge.rotation.set(Math.PI / 2, 0, -0.35); bladeGrp.add(edge);
+    const soul = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.015, 5, 28, Math.PI * 0.9), glow);   // glowing red soul-line
+    soul.scale.set(1, 1, 0.2); soul.rotation.set(Math.PI / 2, 0, -0.35); bladeGrp.add(soul);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.44, 4), steel);   // long wicked tip
+    tip.position.set(-0.58, 0, 0.36); tip.rotation.set(Math.PI / 2, 0, 1.25); bladeGrp.add(tip);
     g.add(bladeGrp);
-    // wrapped collar + glowing red gem where blade meets shaft
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.14, 8), wood); collar.position.y = 1.5; g.add(collar);
-    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.065, 0), glow); gem.position.y = 1.5; g.add(gem);
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 8), wood); grip.position.set(0.12, 0.55, 0); grip.rotation.z = Math.PI / 2; g.add(grip);   // hand-grip
+
+    // ornate spiked socket + glowing gem where the blade meets the shaft
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.18, 8), dark); hub.position.y = 1.5; g.add(hub);
+    for (const sx of [-1, 1]) { const spike = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.16, 4), dark); spike.position.set(sx * 0.09, 1.56, 0); spike.rotation.z = sx * 0.9; g.add(spike); }
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.075, 0), gemMat); gem.position.set(0, 1.5, 0.02); g.add(gem);
+
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 8), wrap); grip.position.set(0.12, 0.55, 0); grip.rotation.z = Math.PI / 2; g.add(grip);   // hand-grip
     g.position.set(0.42, -0.62, -0.78); g.rotation.set(-0.12, -0.45, 0.16); g.scale.setScalar(0.55); g.visible = false;
     g.userData.rest = g.rotation.clone(); g.userData.home = g.position.clone();
     camera.add(g); player.scythe = g;
@@ -304,39 +319,41 @@
   // full walnut fore-end, blued receiver, iron sights, exposed hammer, a lever loop
   // and a crescent buttplate. All wood & blued steel — no magazine, no plastic.
   function buildRifle(camera) {
+    // Roblox "Dead Rails"-style bolt-action carbine: blocky, wood + blued steel,
+    // long barrel, and a bolt handle jutting out the right side.
     const g = new THREE.Group();
-    const blued = new THREE.MeshStandardMaterial({ color: 0x23272d, roughness: 0.4, metalness: 0.75 });   // blued steel
-    const brass = new THREE.MeshStandardMaterial({ color: 0xa8842f, roughness: 0.45, metalness: 0.6 });
-    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3016, roughness: 0.75 });    // rich walnut
-    const woodLt = new THREE.MeshStandardMaterial({ color: 0x6e3d1c, roughness: 0.7 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x2b2f35, roughness: 0.45, metalness: 0.7, flatShading: true });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x7a4a24, roughness: 0.82, flatShading: true });    // western walnut
+    const woodDk = new THREE.MeshStandardMaterial({ color: 0x5f3818, roughness: 0.82, flatShading: true });
     const mk = (w, h, d, m, x, y, z, rx) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); if (rx) o.rotation.x = rx; g.add(o); return o; };
-    const cyl = (r, len, m, x, y, z, rx) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), m); o.rotation.x = (rx == null ? Math.PI / 2 : rx); o.position.set(x, y, z); g.add(o); return o; };
+    const cylZ = (r, len, m, x, y, z) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), m); o.rotation.x = Math.PI / 2; o.position.set(x, y, z); g.add(o); return o; };
 
-    // blued receiver (mid) with brass side-plate
-    mk(0.06, 0.11, 0.26, blued, 0, 0, 0.06);
-    mk(0.062, 0.07, 0.2, brass, 0.031, -0.005, 0.06);       // brass receiver plate (Savage/Winchester look)
-    // long octagonal-ish barrel + full walnut fore-end beneath it
-    cyl(0.017, 0.72, blued, 0, 0.05, -0.55);                 // barrel
-    mk(0.055, 0.06, 0.5, wood, 0, 0.0, -0.4);                // fore-end (forestock)
-    mk(0.03, 0.03, 0.03, blued, 0, 0.02, -0.62);            // barrel band
-    // iron sights + muzzle
-    mk(0.03, 0.028, 0.04, blued, 0, 0.085, -0.14);          // rear sight (ladder notch)
-    mk(0.012, 0.03, 0.012, blued, 0, 0.082, -0.86);         // front blade sight
-    cyl(0.02, 0.05, blued, 0, 0.05, -0.92);                 // muzzle crown
+    // long blued barrel + muzzle
+    cylZ(0.02, 0.98, steel, 0, 0.055, -0.5);
+    mk(0.045, 0.045, 0.05, steel, 0, 0.055, -0.98);          // muzzle block
+    // wooden fore-end under the barrel + a barrel band
+    mk(0.075, 0.085, 0.62, wood, 0, -0.005, -0.42);
+    mk(0.03, 0.02, 0.03, steel, 0, 0.03, -0.66);
+    // iron sights
+    mk(0.012, 0.03, 0.012, steel, 0, 0.095, -0.9);           // front blade
+    mk(0.032, 0.026, 0.03, steel, 0, 0.088, -0.12);          // rear sight
 
-    // exposed hammer at the rear of the receiver
-    mk(0.022, 0.06, 0.03, blued, 0, 0.08, 0.2, -0.5);
-    // trigger + guard, and the signature lever loop under the receiver
-    mk(0.02, 0.03, 0.02, blued, 0, -0.08, 0.09);            // trigger
-    mk(0.05, 0.02, 0.11, blued, 0, -0.1, 0.1);              // guard bottom
-    mk(0.02, 0.13, 0.02, blued, 0.005, -0.14, 0.02, 0.35);  // lever front strap (angled down/forward)
-    mk(0.02, 0.02, 0.14, blued, 0, -0.21, 0.11);            // lever bottom bar (the finger loop)
-    mk(0.02, 0.08, 0.02, blued, 0, -0.16, 0.19, -0.3);      // lever back strap
+    // boxy receiver (Roblox-blocky)
+    mk(0.09, 0.12, 0.32, steel, 0, 0.0, 0.06);
+    // bolt handle sticking out the right side — the Dead Rails tell
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.15, 8), steel);
+    bolt.rotation.z = Math.PI / 2; bolt.position.set(0.11, 0.03, 0.17); g.add(bolt);
+    const boltKnob = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), steel);
+    boltKnob.position.set(0.19, 0.03, 0.17); g.add(boltKnob);
 
-    // walnut wrist + straight-hand buttstock + crescent steel buttplate
-    mk(0.045, 0.07, 0.14, woodLt, 0, -0.05, 0.22);
-    mk(0.06, 0.13, 0.34, wood, 0, -0.045, 0.42);
-    mk(0.055, 0.17, 0.035, blued, 0, -0.04, 0.6);           // crescent buttplate
+    // trigger + simple guard
+    mk(0.018, 0.035, 0.02, steel, 0, -0.09, 0.1);
+    mk(0.05, 0.018, 0.1, steel, 0, -0.105, 0.11);
+
+    // straight wooden buttstock to the shoulder
+    mk(0.06, 0.1, 0.16, wood, 0, -0.04, 0.26);               // wrist
+    mk(0.075, 0.16, 0.34, wood, 0, -0.03, 0.47);             // comb/butt
+    mk(0.078, 0.18, 0.04, woodDk, 0, -0.03, 0.65);           // buttplate
 
     g.position.set(0.32, -0.38, -0.6);
     g.rotation.set(-0.04, 0, 0);
@@ -2010,6 +2027,74 @@
     }
   }
 
+  // --- Cat Master (secret, name = Vivian): K conjures cats. Each cat buffs your ---
+  // melee damage; cats bite foes (fox-strength), but a foe that reaches one one-shots it.
+  function makeCat() {
+    const g = new THREE.Group();
+    const coats = [0x3a3a40, 0xd9a24a, 0xf2f2f2, 0x8a5a2e, 0x2a2a2e];
+    const fur = new THREE.MeshStandardMaterial({ color: coats[(Math.random() * coats.length) | 0], roughness: 1, flatShading: true });
+    const pink = new THREE.MeshStandardMaterial({ color: 0xff9ab0, roughness: 1 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1a1616, roughness: 1 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.24, 0.56), fur); body.position.y = 0.3; body.castShadow = true; g.add(body);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.24, 0.24), fur); head.position.set(0, 0.44, 0.36); head.castShadow = true; g.add(head);
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.08), pink); snout.position.set(0, 0.4, 0.5); g.add(snout);
+    for (const sx of [-0.09, 0.09]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), fur); ear.position.set(sx, 0.6, 0.34); g.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 6), dark); eye.position.set(sx * 0.7, 0.47, 0.48); g.add(eye);
+    }
+    const legGeo = new THREE.BoxGeometry(0.07, 0.22, 0.07); const legs = [];
+    for (const [lx, lz] of [[-0.09, 0.18], [0.09, 0.18], [-0.09, -0.18], [0.09, -0.18]]) { const leg = new THREE.Mesh(legGeo, fur); leg.position.set(lx, 0.11, lz); leg.castShadow = true; g.add(leg); legs.push(leg); }
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.4), fur); tail.position.set(0, 0.42, -0.34); tail.rotation.x = -0.7; g.add(tail);
+    g.userData = { legs };
+    return g;
+  }
+  function recomputeCatBuff() {
+    if (player._catBaseDmg == null) player._catBaseDmg = player.attackDmg || 2;
+    const n = player.cats ? player.cats.length : 0;
+    player.attackDmg = player._catBaseDmg + n * 4;            // 🐱 more cats -> harder hits
+  }
+  player.spawnCat = function () {
+    if (!player.alive || !player.active) return;
+    if ((player._catCD || 0) > 0) { if (W.hud) W.hud.toast('🐱 Cat on cooldown… (' + Math.ceil(player._catCD) + 's)'); return; }
+    if (!player.cats) player.cats = [];
+    if (player.cats.length >= 40) { if (W.hud) W.hud.toast('🐱 Your cat army is at full strength (40)!'); return; }
+    player._catCD = 5;                                        // 5s cooldown
+    const a = Math.random() * Math.PI * 2, r = 1.2 + Math.random() * 0.8;
+    const cx = player.pos.x + Math.cos(a) * r, cz = player.pos.z + Math.sin(a) * r;
+    const g = makeCat(); g.position.set(cx, W.world.heightAt(cx, cz), cz); player.scene.add(g);
+    player.cats.push({ g, t: Math.random() * 6, lastBite: -99 });
+    recomputeCatBuff();
+    if (W.sfx && W.sfx.select) W.sfx.select();
+    if (W.hud) W.hud.toast('🐱 A cat joins you! (' + player.cats.length + ' — +' + (player.cats.length * 4) + ' dmg)');
+  };
+  player.stepCats = function (dt) {
+    if (player._catCD > 0) player._catCD -= dt;
+    const cs = player.cats; if (!cs || !cs.length) return;
+    const foes = (W.enemies && W.enemies.list) || [];
+    const host = !(W.net && W.net.role === 'client');
+    let died = false;
+    for (let i = cs.length - 1; i >= 0; i--) {
+      const c = cs[i], g = c.g; c.t += dt;
+      let foe = null, fd = 9;
+      for (const e of foes) { if (!e.alive) continue; const d = Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z); if (d < fd) { fd = d; foe = e; } }
+      if (foe && fd < 1.0) { if (g.parent) g.parent.remove(g); cs.splice(i, 1); died = true; continue; }   // a foe reached the cat -> one-shot
+      let moving = false;
+      if (foe) {
+        const ex = foe.group.position.x - g.position.x, ez = foe.group.position.z - g.position.z, ed = Math.hypot(ex, ez) || 1;
+        g.rotation.y = Math.atan2(ex, ez);
+        if (ed > 1.35) { g.position.x += (ex / ed) * 4.4 * dt; g.position.z += (ez / ed) * 4.4 * dt; moving = true; }   // close to just outside kill range
+        else if (c.t - c.lastBite > 0.7) { c.lastBite = c.t; if (host && W.enemies.damage) W.enemies.damage(foe.group, 1, g.position); }   // fox-strength bite
+      } else {
+        const dx = player.pos.x - g.position.x, dz = player.pos.z - g.position.z, d = Math.hypot(dx, dz) || 1;
+        if (d > 2.2) { g.position.x += (dx / d) * 3.8 * dt; g.position.z += (dz / d) * 3.8 * dt; g.rotation.y = Math.atan2(dx, dz); moving = true; }
+        else { g.rotation.y += dt * 0.6; }
+      }
+      g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(c.t * 11)) * 0.03;
+      const L = g.userData.legs; if (L && moving) { const sw = Math.sin(c.t * 12) * 0.5; L[0].rotation.x = sw; L[3].rotation.x = sw; L[1].rotation.x = -sw; L[2].rotation.x = -sw; }
+    }
+    if (died) { recomputeCatBuff(); if (W.hud && player._t - (player._catFellT || 0) > 1.5) { player._catFellT = player._t; W.hud.toast('💔 A cat fell! (' + cs.length + ' left)'); } }
+  };
+
   // --- Hunter: an ALPHA WOLF pack that hunts foes for you ---------------------
   function makeWolfPet() {
     const g = new THREE.Group();
@@ -2215,19 +2300,20 @@
 
   player.update = function (dt) {
     player._t += dt;
-    // Vampire: 5,000 hp / 2× speed by day (burns 5 hp/sec in DIRECT sun); 15,000 hp / 10× speed at night
+    // Vampire: 5,000 hp / 2× speed by day (burns 100 hp/sec in DIRECT sun — nerf); 15,000 hp / 10× speed at night
     if (player.isVampire && player.alive) {
       const night = W.world.isNight && W.world.isNight();
       player.maxHealth = night ? (player._vampNightHp || 15000) : (player._vampDayHp || 5000);
       if (player.health > player.maxHealth) player.health = player.maxHealth;
       player.speedMult = night ? 10 : 2;                                    // day 2×, night 10×
-      if (!night && player.active) { player._sunT = (player._sunT || 0) + dt; if (player._sunT >= 1) { player._sunT = 0; if (!vampInShade()) player.takeDamage(5); } }
+      if (!night && player.active) { player._sunT = (player._sunT || 0) + dt; if (player._sunT >= 1) { player._sunT = 0; if (!vampInShade()) player.takeDamage(100); } }
     }
     if (player.isEngineer && !player._fortified) { player._fortified = true; player.fortifyBase(); }   // build defenses once
     if (player._sentries) stepSentries(dt);
     if (player.knightSummons > 0 && !player.knights) player.summonKnights();   // rally the King's guard once
     if (player.knights) player.stepKnights(dt);
     if (player.cupids) player.stepCupids(dt);                                  // Kawaii's cupid swarm
+    if (player.cats) player.stepCats(dt);                                      // Cat Master's cat swarm
     if (player.isHunter && !player._hunterStarted) { player._hunterStarted = true; player.spawnAlphaWolf(); }   // Hunter's starting alpha wolf
     if (player.wolves) player.stepWolves(dt);                                  // Hunter's alpha-wolf pack
     if (player.falcons) player.stepFalcons(dt);                               // Hunter's falcons

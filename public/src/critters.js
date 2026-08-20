@@ -81,8 +81,11 @@
     if (W.player.heldBerry) W.player.heldBerry.visible = W.player.berries > 0;
     best.tamed = true;
     if (W.sfx && W.sfx.tame) W.sfx.tame();
-    W.hud.toast('Tamed a fox! 🦊 It follows you now');
+    const packN = critters.list.filter((c) => c.tamed).length;
+    W.hud.toast('Tamed a fox! 🦊 Your pack: ' + packN);
   };
+  // how many foxes you've tamed (for HUD / counting)
+  critters.tamedCount = function () { return critters.list.filter((c) => c.tamed).length; };
 
   function gait(c, on) {
     if (!on) return;
@@ -94,6 +97,13 @@
 
   critters.update = function (dt, playerPos, isNight) {
     critters._t += dt;
+    // give each tamed fox its own spot in a ring around the player, so a whole pack
+    // spreads out and stays countable instead of piling onto one glitchy "super fox".
+    const tamed = critters.list.filter((c) => c.tamed);
+    const packN = tamed.length;
+    const ringR = Math.max(1.8, (packN * 0.75) / (2 * Math.PI));   // ring grows to fit the pack
+    const packSpin = critters._t * 0.25;                            // gently orbit so they mill about
+    tamed.forEach((c, i) => { c._slot = i; c._slotN = packN; });
     for (const c of critters.list) {
       c.t += dt;
       const g = c.group;
@@ -116,9 +126,12 @@
           if (ed > 1.0) { g.position.x += (ex / ed) * 4.2 * dt; g.position.z += (ez / ed) * 4.2 * dt; moving = true; }
           else if (c.t - c.lastBite > 0.7) { c.lastBite = c.t; W.enemies.damage(foe.group, 1, g.position); }
         } else {
-          const dx = playerPos.x - g.position.x, dz = playerPos.z - g.position.z;
+          // walk to your own slot in the ring — keeps the pack fanned out around the player
+          const a = (c._slot / Math.max(1, c._slotN)) * Math.PI * 2 + packSpin;
+          const tx = playerPos.x + Math.cos(a) * ringR, tz = playerPos.z + Math.sin(a) * ringR;
+          const dx = tx - g.position.x, dz = tz - g.position.z;
           const d = Math.hypot(dx, dz) || 1;
-          if (d > 2.5) { g.position.x += (dx / d) * 3.6 * dt; g.position.z += (dz / d) * 3.6 * dt; g.rotation.y = Math.atan2(dx, dz); moving = true; }
+          if (d > 0.45) { g.position.x += (dx / d) * 3.6 * dt; g.position.z += (dz / d) * 3.6 * dt; g.rotation.y = Math.atan2(dx, dz); moving = true; }
         }
       } else {
         // wild: flee from the player, otherwise wander
