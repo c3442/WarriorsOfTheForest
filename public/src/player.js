@@ -300,41 +300,43 @@
   }
 
   // A rifle: long barrel, wooden stock, scope + magazine — a rare chest find.
-  // An AK-47 — the iconic 1980s assault rifle: wooden furniture, stamped steel
-  // receiver, curved "banana" magazine, front sight post and slanted muzzle.
+  // An 1899 lever-action rifle (Winchester/Savage era): a long blued barrel over a
+  // full walnut fore-end, blued receiver, iron sights, exposed hammer, a lever loop
+  // and a crescent buttplate. All wood & blued steel — no magazine, no plastic.
   function buildRifle(camera) {
     const g = new THREE.Group();
-    const steel = new THREE.MeshStandardMaterial({ color: 0x2b2f35, roughness: 0.45, metalness: 0.7 });
-    const black = new THREE.MeshStandardMaterial({ color: 0x191b1f, roughness: 0.5, metalness: 0.35 });
-    const wood = new THREE.MeshStandardMaterial({ color: 0x8a4a1e, roughness: 0.8 });      // warm AK orange-wood
-    const woodDk = new THREE.MeshStandardMaterial({ color: 0x5f3214, roughness: 0.9 });
-    const mag = new THREE.MeshStandardMaterial({ color: 0xa8531d, roughness: 0.55, metalness: 0.1 });  // bakelite magazine
+    const blued = new THREE.MeshStandardMaterial({ color: 0x23272d, roughness: 0.4, metalness: 0.75 });   // blued steel
+    const brass = new THREE.MeshStandardMaterial({ color: 0xa8842f, roughness: 0.45, metalness: 0.6 });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3016, roughness: 0.75 });    // rich walnut
+    const woodLt = new THREE.MeshStandardMaterial({ color: 0x6e3d1c, roughness: 0.7 });
     const mk = (w, h, d, m, x, y, z, rx) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); if (rx) o.rotation.x = rx; g.add(o); return o; };
+    const cyl = (r, len, m, x, y, z, rx) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), m); o.rotation.x = (rx == null ? Math.PI / 2 : rx); o.position.set(x, y, z); g.add(o); return o; };
 
-    // stamped steel receiver
-    mk(0.085, 0.13, 0.4, steel, 0, 0, 0.04);
-    mk(0.088, 0.05, 0.42, black, 0, 0.075, 0.03);          // top dust cover
-    mk(0.05, 0.03, 0.05, black, 0, 0.11, 0.16);            // rear sight block
-    mk(0.052, 0.028, 0.14, steel, 0.055, 0.0, 0.02);       // charging handle / bolt (right side)
+    // blued receiver (mid) with brass side-plate
+    mk(0.06, 0.11, 0.26, blued, 0, 0, 0.06);
+    mk(0.062, 0.07, 0.2, brass, 0.031, -0.005, 0.06);       // brass receiver plate (Savage/Winchester look)
+    // long octagonal-ish barrel + full walnut fore-end beneath it
+    cyl(0.017, 0.72, blued, 0, 0.05, -0.55);                 // barrel
+    mk(0.055, 0.06, 0.5, wood, 0, 0.0, -0.4);                // fore-end (forestock)
+    mk(0.03, 0.03, 0.03, blued, 0, 0.02, -0.62);            // barrel band
+    // iron sights + muzzle
+    mk(0.03, 0.028, 0.04, blued, 0, 0.085, -0.14);          // rear sight (ladder notch)
+    mk(0.012, 0.03, 0.012, blued, 0, 0.082, -0.86);         // front blade sight
+    cyl(0.02, 0.05, blued, 0, 0.05, -0.92);                 // muzzle crown
 
-    // wooden fore-end (lower handguard) + upper gas-tube cover
-    mk(0.072, 0.085, 0.3, wood, 0, -0.02, -0.28);
-    mk(0.05, 0.045, 0.26, woodDk, 0, 0.06, -0.28);
-    // barrel + gas block + front sight + slant muzzle
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.5, 10), steel); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.015, -0.6); g.add(barrel);
-    mk(0.05, 0.06, 0.05, steel, 0, 0.055, -0.5);           // gas block
-    mk(0.03, 0.09, 0.03, steel, 0, 0.09, -0.78);           // front sight tower
-    const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.08, 8), black); muzzle.rotation.x = Math.PI / 2 + 0.32; muzzle.position.set(0, 0.02, -0.88); g.add(muzzle);   // slanted brake
+    // exposed hammer at the rear of the receiver
+    mk(0.022, 0.06, 0.03, blued, 0, 0.08, 0.2, -0.5);
+    // trigger + guard, and the signature lever loop under the receiver
+    mk(0.02, 0.03, 0.02, blued, 0, -0.08, 0.09);            // trigger
+    mk(0.05, 0.02, 0.11, blued, 0, -0.1, 0.1);              // guard bottom
+    mk(0.02, 0.13, 0.02, blued, 0.005, -0.14, 0.02, 0.35);  // lever front strap (angled down/forward)
+    mk(0.02, 0.02, 0.14, blued, 0, -0.21, 0.11);            // lever bottom bar (the finger loop)
+    mk(0.02, 0.08, 0.02, blued, 0, -0.16, 0.19, -0.3);      // lever back strap
 
-    // curved banana magazine (three canted segments fake the AK curve)
-    mk(0.05, 0.13, 0.09, mag, 0, -0.12, -0.01, 0.22);
-    mk(0.048, 0.13, 0.085, mag, 0, -0.22, -0.05, 0.5);
-    mk(0.045, 0.11, 0.08, mag, 0, -0.31, -0.12, 0.78);
-
-    // pistol grip + wooden club stock
-    mk(0.05, 0.16, 0.07, black, 0, -0.12, 0.17, -0.38);
-    mk(0.06, 0.11, 0.34, wood, 0, -0.035, 0.44);
-    mk(0.06, 0.15, 0.05, wood, 0, -0.02, 0.6);             // buttplate/comb
+    // walnut wrist + straight-hand buttstock + crescent steel buttplate
+    mk(0.045, 0.07, 0.14, woodLt, 0, -0.05, 0.22);
+    mk(0.06, 0.13, 0.34, wood, 0, -0.045, 0.42);
+    mk(0.055, 0.17, 0.035, blued, 0, -0.04, 0.6);           // crescent buttplate
 
     g.position.set(0.32, -0.38, -0.6);
     g.rotation.set(-0.04, 0, 0);
