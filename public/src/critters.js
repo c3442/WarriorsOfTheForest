@@ -41,6 +41,7 @@
     tip.position.set(0, 0.47, -0.58); g.add(tip);
 
     g.userData = { legs };
+    if (W.util.solidify) W.util.solidify(g);   // never look hollow
     return g;
   }
 

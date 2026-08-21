@@ -2073,6 +2073,7 @@
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.7, 0.12), mane); tail.position.set(0, 1.2, -0.95); tail.rotation.x = 0.5; g.add(tail);
     const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.18, 0.7), new THREE.MeshStandardMaterial({ color: 0x4a2f1a, roughness: 1 })); saddle.position.set(0, 1.74, 0.1); g.add(saddle);
     g.userData = { type: 'horse', legs };
+    if (W.util.solidify) W.util.solidify(g);   // never look hollow
     return g;
   }
   function buildHorses(scene) {

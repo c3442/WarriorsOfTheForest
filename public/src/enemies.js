@@ -323,6 +323,7 @@
       : kind === 'buffington' ? makeBuffington()
       : kind === 'bear' ? makeBear() : makeWolf();
     g.userData.legBases = g.userData.legs.map((l) => l.rotation.x);
+    W.util.solidify(g);          // never let a foe look hollow / see-through
     return g;
   }
 
@@ -376,7 +377,7 @@
     enemies.list.push(e); enemies.boss = e;
     if (W.world.placeBanditCamp) W.world.placeBanditCamp(x, z);   // a hideout at his spawn
     for (let i = 0; i < 3; i++) enemies.spawnGuard(e);   // starts with a few bodyguards
-    if (W.hud) W.hud.banner('A BANDIT BOSS ROAMS', 'Guarded by his gang — hunt him for his shotgun 🔫', '#ffb24a');
+    if (W.hud) W.hud.banner('A BANDIT OFFICER ROAMS', 'Guarded by his gang — hunt him for his shotgun 🔫', '#ffb24a');
   };
 
   // ---- Sir Buffington: spawn, abilities & FX --------------------------------
@@ -390,10 +391,25 @@
     enemies.scene.add(g);
     const id = _nextId++; g.userData.id = id;
     const e = { id, group: g, kind: 'buffington', alive: true, hp: 100000, maxHp: 100000, speed: 2.4, dmg: 90,
-      lastAttack: -99, t: 0, isBoss: true, buffBoss: true, abilityCD: 3, abilityIdx: 0, tauntCD: U.rand(3, 6), healCD: 0, cast: null };
+      lastAttack: -99, t: 0, isBoss: true, buffBoss: true, abilityCD: 3, abilityIdx: 0, tauntCD: U.rand(3, 6), healCD: 0, cast: null,
+      minionCD: 0, minionCap: 5 };
     enemies.list.push(e); enemies.buff = e;
+    for (let i = 0; i < e.minionCap; i++) enemies.spawnBuffMinion(e);   // opening squad of gym cubs
     if (W.sfx && W.sfx.roar) W.sfx.roar();
-    if (W.hud) W.hud.banner('💪 SIR BUFFINGTON APPEARS', 'Behold his perfectly normal muscles!', '#ff9a3a');
+    if (W.hud) W.hud.banner('💪 SIR BUFFINGTON APPEARS', 'And he brought his spotters!', '#ff9a3a');
+  };
+
+  // Sir Buffington's minions: beefy little "gym cubs" that guard him and pile on.
+  enemies.spawnBuffMinion = function (boss) {
+    const a = U.rand(0, Math.PI * 2), r = U.rand(3, 6);
+    const x = boss.group.position.x + Math.cos(a) * r, z = boss.group.position.z + Math.sin(a) * r;
+    const g = buildModel('bear');
+    g.scale.set(0.7, 0.7, 0.7);                              // pint-sized next to the boss
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
+    enemies.scene.add(g);
+    const id = _nextId++; g.userData.id = id;
+    enemies.list.push({ id, group: g, kind: 'bear', alive: true, hp: 90, maxHp: 90, speed: U.rand(3.6, 4.3), dmg: 16,
+      lastAttack: -99, t: U.rand(0, 5), guard: boss, buffMinion: true });
   };
 
   function buffDamageNear(x, z, radius, amount) {
@@ -460,6 +476,15 @@
     // taunts
     e.tauntCD -= dt;
     if (e.tauntCD <= 0 && bestD < 44) { e.tauntCD = U.rand(6, 11); if (W.hud) W.hud.toast('💪 Sir Buffington: “' + BUFF_TAUNTS[U.randInt(0, BUFF_TAUNTS.length - 1)] + '”'); }
+
+    // whistle up fresh gym cubs when his pack thins out
+    e.minionCD -= dt;
+    if (e.minionCD <= 0 && bestD < 60) {
+      let alive = 0;
+      for (const m of enemies.list) if (m.buffMinion && m.guard === e && m.alive) alive++;
+      if (alive < e.minionCap) { enemies.spawnBuffMinion(e); if (W.hud) W.hud.toast('🐻 Sir Buffington whistles for another spotter!'); }
+      e.minionCD = U.rand(5, 8);
+    }
 
     // heal: retreat & eat when hurt — smarter now (heals earlier, more often)
     if (e.healCD > 0) e.healCD -= dt;
@@ -755,7 +780,7 @@
     } else if (e.isBoss) {
       enemies.boss = null; enemies.bossTimer = 120;     // a new bandit in ~2 min
       if (W.world.dropShotgun) W.world.dropShotgun(e.group.position.x, e.group.position.z);
-      if (W.hud) W.hud.banner('BANDIT DOWN', 'He dropped a sawed-off shotgun 🔫 — grab it (G)', '#8fd36a');
+      if (W.hud) W.hud.banner('BANDIT OFFICER DOWN', 'He dropped a sawed-off shotgun 🔫 — grab it (G)', '#8fd36a');
     }
   };
 
@@ -823,6 +848,7 @@
     const recv = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.5), metal); recv.position.set(0, 0.98, 0.55); g.add(recv);              // receiver
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.95, 6), metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 1.0, 1.05); g.add(barrel);   // long MG barrel
     g.userData = { type: 'sniper' }; g.scale.setScalar(1.05);
+    W.util.solidify(g);
     return g;
   }
 
@@ -1071,7 +1097,7 @@
         if (e.summonCD <= 0 && bestD < 70 && guards < 6) {
           enemies.spawnGuard(e); enemies.spawnGuard(e);
           e.summonCD = U.rand(11, 17);
-          if (W.hud) W.hud.toast('The bandit whistles up more guards! 🤠');
+          if (W.hud) W.hud.toast('The Bandit Officer whistles up more guards! 🤠');
         }
         e.shootCD -= dt;
         if (e.shootCD <= 0 && bestD > reach && bestD < 24 &&

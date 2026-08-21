@@ -1742,6 +1742,7 @@
     const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.02), cloth); crossH.position.set(-0.36, 1.0, 0.2); crossH.rotation.y = 0.18; g.add(crossH);
     const boss = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), blade); boss.position.set(-0.36, 0.98, 0.22); g.add(boss);
     g.userData.legs = legs;
+    W.util.solidify(g);
     return g;
   }
   // The President's troops: sharp secret-service agents (black suit, shades, rifle) — distinct from the village guards.
@@ -1766,6 +1767,7 @@
     const stock = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.4), metal); stock.position.set(0.22, 0.98, 0.16); g.add(stock);
     const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.55), metal); barrel.position.set(0.22, 1.0, 0.5); g.add(barrel);
     g.userData.legs = legs;
+    W.util.solidify(g);
     return g;
   }
   player.summonKnights = function () {
@@ -1970,6 +1972,7 @@
     const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.07, 6), heartM); tip.rotation.x = -Math.PI / 2; tip.position.set(0, 0.02, 0.45); g.add(tip);
 
     g.userData.wings = wings;
+    W.util.solidify(g);
     return g;
   }
   player.spawnCupid = function () {
@@ -2046,6 +2049,7 @@
     for (const [lx, lz] of [[-0.09, 0.18], [0.09, 0.18], [-0.09, -0.18], [0.09, -0.18]]) { const leg = new THREE.Mesh(legGeo, fur); leg.position.set(lx, 0.11, lz); leg.castShadow = true; g.add(leg); legs.push(leg); }
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.4), fur); tail.position.set(0, 0.42, -0.34); tail.rotation.x = -0.7; g.add(tail);
     g.userData = { legs };
+    W.util.solidify(g);
     return g;
   }
   function recomputeCatBuff() {
@@ -2111,6 +2115,7 @@
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.55, 0.13), dark); leg.position.set(lx, 0.28, lz); leg.castShadow = true; g.add(leg); legs.push(leg);
     }
     g.userData.legs = legs; g.scale.setScalar(1.35);   // alphas are big
+    W.util.solidify(g);
     return g;
   }
   player.spawnAlphaWolf = function () {
@@ -2585,13 +2590,25 @@
       player.swing += dt;
       const k = Math.min(player.swing / ATTACK_CD, 1);
       if (k >= 1) { player.swing = undefined; w.rotation.copy(rest); w.position.copy(home); return; }
-      // wind back quickly, then chop down hard, with a small forward lunge
-      const wind = k < 0.28 ? (k / 0.28) : (1 - (k - 0.28) / 0.72);   // 0..1..0 peak at the chop
-      const chop = Math.sin(Math.min(k, 1) * Math.PI);
-      w.rotation.x = rest.x + wind * 0.5 - chop * 1.8;
-      w.rotation.z = rest.z + chop * 0.55;
-      w.position.z = home.z - chop * 0.14;
-      w.position.y = home.y - chop * 0.06;
+      const gun = player.currentWeapon === 'shotgun' || player.currentWeapon === 'rifle' || player.currentWeapon === 'deagle';
+      if (gun) {
+        // guns just kick back — no swing
+        const r = Math.sin(Math.min(k, 1) * Math.PI);
+        w.rotation.copy(rest); w.rotation.x = rest.x + r * 0.3;
+        w.position.copy(home); w.position.z = home.z + r * 0.1;
+      } else {
+        // a real melee SWING: wind up to the upper-right, then sweep in a diagonal arc down to the lower-left
+        const wind = k < 0.2 ? (k / 0.2) : 1;                 // quick raise/cock
+        const sl = k < 0.2 ? 0 : (k - 0.2) / 0.8;             // then the sweep, 0..1
+        const ease = sl * sl * (3 - 2 * sl);                  // smoothstep the arc
+        const dip = Math.sin(ease * Math.PI);                 // forward lunge peaks mid-swing
+        w.rotation.y = rest.y + wind * 0.75 - ease * 1.85;    // sweep the head from right → left
+        w.rotation.z = rest.z + wind * 0.5 - ease * 1.35;     // roll the blade over through the arc
+        w.rotation.x = rest.x - wind * 0.35 + dip * 0.55;     // raise, then bite downward
+        w.position.x = home.x + wind * 0.11 - ease * 0.28;    // travel across the screen R → L
+        w.position.z = home.z - dip * 0.13;                   // lunge forward at the contact point
+        w.position.y = home.y + wind * 0.04 - dip * 0.05;
+      }
     } else {
       const sway = moving ? Math.sin(player._t * 9) * 0.05 : Math.sin(player._t * 2) * 0.015;
       w.rotation.x = rest.x;

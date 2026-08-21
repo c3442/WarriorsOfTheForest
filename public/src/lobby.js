@@ -28,6 +28,7 @@
   let bandit = null, banditPos = null, banditBaseY = 0;   // the friendly "Update Keeper" in the UPDATES house
   let nearBandit = false, updatesOpen = false, updatesPanel = null, fPrompt = null;  // his versions menu (press F)
   let wolf = null, wolfPos = null, wolfBaseY = 0, nearWolf = false, classesOpen = false, classesPanel = null;  // CLASSES house wolf shop (press F)
+  let scholar = null, scholarPos = null, scholarBaseY = 0, nearScholar = false, chaptersOpen = false, chaptersPanel = null;  // CHAPTER house — read the story (press F)
   // a class's power rating shown as gold ★ (filled) out of 5
   const classStars = (d) => { const n = Math.max(0, Math.min(5, (d && d.stars) || 0)); return '<span style="color:#ffd24a;">' + '★'.repeat(n) + '</span><span style="color:#3f5266;">' + '★'.repeat(5 - n) + '</span>'; };
   let vy = 0;                                     // vertical velocity for jumping in the lobby
@@ -156,6 +157,76 @@
   function closeUpdates() {
     updatesOpen = false;
     if (updatesPanel) updatesPanel.style.display = 'none';
+    if (hint) hint.style.display = '';
+  }
+
+  // --- the CHAPTER tree house: a boy player named "Bob" you press F to read the story ---
+  function makeBob() {
+    const g = new THREE.Group();
+    const DS = THREE.DoubleSide;
+    const shirt = new THREE.MeshStandardMaterial({ color: 0x3f78d8, roughness: 1, flatShading: true, side: DS });   // blue shirt (boy skin)
+    const pants = new THREE.MeshStandardMaterial({ color: 0x2f3d63, roughness: 1, flatShading: true, side: DS });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xf0c19a, roughness: 1, flatShading: true, side: DS });
+    const hair = new THREE.MeshStandardMaterial({ color: 0x33241a, roughness: 1, flatShading: true });
+    const boot = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 1, flatShading: true });
+    const mk = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+    mk(0.22, 0.6, 0.22, pants, -0.14, 0.42, 0); mk(0.22, 0.6, 0.22, pants, 0.14, 0.42, 0);         // legs
+    mk(0.24, 0.14, 0.26, boot, -0.14, 0.1, 0.03); mk(0.24, 0.14, 0.26, boot, 0.14, 0.1, 0.03);     // boots
+    mk(0.6, 0.7, 0.34, shirt, 0, 1.05, 0);                                                          // torso
+    mk(0.16, 0.6, 0.18, shirt, -0.4, 1.05, 0); mk(0.16, 0.6, 0.18, shirt, 0.4, 1.05, 0);           // arms
+    mk(0.16, 0.14, 0.16, skin, -0.4, 0.72, 0); mk(0.16, 0.14, 0.16, skin, 0.4, 0.72, 0);           // hands
+    mk(0.42, 0.42, 0.42, skin, 0, 1.62, 0);                                                         // head
+    mk(0.46, 0.16, 0.46, hair, 0, 1.86, 0);                                                         // hair
+    mk(0.46, 0.1, 0.08, hair, 0, 1.78, 0.22);                                                       // fringe
+    mk(0.07, 0.09, 0.05, dark, -0.1, 1.62, 0.22); mk(0.07, 0.09, 0.05, dark, 0.1, 1.62, 0.22);      // eyes
+    const cv = document.createElement('canvas'); cv.width = 300; cv.height = 76;
+    const c = cv.getContext('2d');
+    c.fillStyle = 'rgba(20,30,50,.92)'; c.fillRect(6, 8, 288, 60);
+    c.strokeStyle = '#8fbfff'; c.lineWidth = 4; c.strokeRect(6, 8, 288, 60);
+    c.font = "bold 32px 'Trebuchet MS',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#e8f0ff'; c.fillText('👦 BOB', 150, 38);
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+    tag.scale.set(3.0, 0.76, 1); tag.position.y = 2.6; g.add(tag);
+    return g;
+  }
+  const CHAPTERS = [
+    { n: 'I', t: 'The First Night', d: 'You wake in the deep woods with nothing but an axe. Chop wood by day — and keep the campfire fed, for it is all that holds back the dark.' },
+    { n: 'II', t: 'The Howling Dark', d: 'Each dusk the treeline stirs: wolves, then werewolves. Raise walls, sharpen your blade, and hold the line until dawn.' },
+    { n: 'III', t: 'Bandits at the Gate', d: 'From the eighth night the outlaws come raiding — and their King rides at their head, hungry for your camp.' },
+    { n: 'IV', t: 'The Village on the Hill', d: 'To the west stands a town of riflemen and machine-gunners. Trade with it, raid it, or burn it to the ground.' },
+    { n: 'V', t: 'Blood & Moonlight', d: 'Some warriors trade their humanity for power. The Vampire feeds, the Ninja vanishes, the President commands — the night belongs to the bold.' },
+    { n: 'VI', t: 'The Reckoning', d: 'Then Sir Buffington marches: a hundred thousand pounds of muscle and menace. Only the mightiest see the sun rise after.' },
+  ];
+  function makeChaptersPanel() {
+    const p = document.createElement('div');
+    p.id = 'lobbyChapters';
+    p.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:14;display:none;width:min(480px,92vw);max-height:82vh;overflow-y:auto;' +
+      'background:rgba(22,14,32,.96);border:2px solid #8a6ac2;border-radius:14px;padding:18px 20px;' +
+      "font-family:'Trebuchet MS',sans-serif;color:#efe4ff;box-shadow:0 16px 50px rgba(0,0,0,.6);backdrop-filter:blur(3px);";
+    let rows = '';
+    CHAPTERS.forEach((ch) => {
+      rows += '<div style="display:flex;gap:12px;align-items:flex-start;background:rgba(0,0,0,.28);border:1px solid #4a3568;border-radius:10px;padding:11px 12px;margin-bottom:10px;">' +
+        '<div style="font-size:20px;font-weight:bold;color:#c9a8ff;min-width:34px;text-align:center;">' + ch.n + '</div>' +
+        '<div><div style="font-size:15px;font-weight:bold;color:#e6d6ff;">' + ch.t + '</div>' +
+        '<div style="font-size:12px;color:#c3b3da;margin-top:3px;line-height:1.4;">' + ch.d + '</div></div></div>';
+    });
+    p.innerHTML = '<div style="font-size:18px;font-weight:bold;letter-spacing:1px;color:#8fbfff;margin-bottom:4px;">👦 BOB\'S STORY</div>' +
+      '<div style="font-size:12px;color:#a8bcd8;margin-bottom:12px;">"Hey! Wanna hear the story of these woods? Sit down…"</div>' + rows +
+      '<div style="font-size:11px;color:#a892c8;text-align:center;margin-top:2px;">press <b style="background:#2a2038;border:1px solid #56466a;border-radius:4px;padding:0 5px;">F</b> or <b style="background:#2a2038;border:1px solid #56466a;border-radius:4px;padding:0 5px;">Esc</b> to close</div>';
+    document.body.appendChild(p);
+    return p;
+  }
+  function openChapters() {
+    if (!chaptersPanel) chaptersPanel = makeChaptersPanel();
+    chaptersOpen = true; chaptersPanel.style.display = 'block';
+    if (fPrompt) fPrompt.style.display = 'none';
+    if (hint) hint.style.display = 'none';
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function closeChapters() {
+    chaptersOpen = false;
+    if (chaptersPanel) chaptersPanel.style.display = 'none';
     if (hint) hint.style.display = '';
   }
 
@@ -622,13 +693,13 @@
     inBox = false; boxCount = 0;
     group.add(makeJoinBox());
     // 4 tree houses ringing the clearing, ramps + signs facing inward
-    const labels = ['UPDATES', '', 'CLASSES', ''];   // house 0 = the version picker (VEHICLES house removed — the car is gone)
+    const labels = ['UPDATES', '', 'CLASSES', 'CHAPTER'];   // house 0 = version picker · house 2 = class shop · house 3 = the Lorekeeper's story house (old VEHICLES spot)
     lobbyPlats = [];
     for (let i = 0; i < 4; i++) {
-      if (i === 3) continue;                          // no VEHICLES tree house anymore
+      if (i === 1) continue;                          // house 1 stays an empty gap
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const tx = Math.cos(a) * 15, tz = Math.sin(a) * 15;
-      const th = makeTreehouse(labels[i], i === 0 || i === 2);   // UPDATES & CLASSES houses are hollow so the Keeper / Wolf stand INSIDE them
+      const th = makeTreehouse(labels[i], i === 0 || i === 2 || i === 3);   // UPDATES, CLASSES & CHAPTER houses are hollow so their keeper stands INSIDE
       th.position.set(tx, 0, tz);
       const ry = Math.atan2(-tx, -tz);        // ramp/front faces the centre
       th.rotation.y = ry;
@@ -651,6 +722,15 @@
         wolf.position.set(wx, TH_H, wz);
         wolf.rotation.y = Math.atan2(-wx, -wz);
         group.add(wolf);
+      }
+      if (i === 3) {                          // CHAPTER house: the Lorekeeper stands INSIDE, in the old VEHICLES spot
+        const dl = Math.hypot(tx, tz) || 1;
+        const sx2 = tx + tx / dl * 0.6, sz2 = tz + tz / dl * 0.6;
+        scholarPos = { x: sx2, z: sz2 }; scholarBaseY = TH_H;
+        scholar = makeBob();
+        scholar.position.set(sx2, TH_H, sz2);
+        scholar.rotation.y = Math.atan2(-sx2, -sz2);
+        group.add(scholar);
       }
     }
     for (let r = 13; r < 230; r += 6.5) {
@@ -785,7 +865,7 @@
       const info = (W.net && W.net.hubBoxInfo) ? W.net.hubBoxInfo(myBox) : null;
       if (info && info.hosted) { partyRunning = false; updateTimerUI(); enterJoinWait(info); }
     }
-    if (!menuOpen && !updatesOpen && !classesOpen && !countOpen && !lockedIn) {
+    if (!menuOpen && !updatesOpen && !classesOpen && !chaptersOpen && !countOpen && !lockedIn) {
       // arrow keys turn/look — works with NO mouse lock needed
       const LK = 2.0 / 60;
       if (keys.ArrowLeft) yaw += LK; if (keys.ArrowRight) yaw -= LK;
@@ -826,12 +906,20 @@
       wolf.rotation.y = Math.atan2(pos.x - wolfPos.x, pos.z - wolfPos.z);
       nearWolf = !menuOpen && pos.y > TH_H - 1 && Math.hypot(pos.x - wolfPos.x, pos.z - wolfPos.z) < 2.6;
     }
+    // the Lorekeeper: bob, face the player, near-check when up on the CHAPTER deck
+    if (scholar) {
+      scholar.position.y = scholarBaseY + Math.sin(tphase * 2 + 2) * 0.04;
+      scholar.rotation.y = Math.atan2(pos.x - scholarPos.x, pos.z - scholarPos.z);
+      nearScholar = !menuOpen && pos.y > TH_H - 1 && Math.hypot(pos.x - scholarPos.x, pos.z - scholarPos.z) < 2.6;
+    }
     // shared [F] prompt — shows for whichever NPC you're standing beside
     if (fPrompt) {
-      const show = (nearBandit && !updatesOpen) || (nearWolf && !classesOpen);
+      const show = (nearBandit && !updatesOpen) || (nearWolf && !classesOpen) || (nearScholar && !chaptersOpen);
       fPrompt.style.display = show ? 'block' : 'none';
       if (show) fPrompt.innerHTML = nearWolf
         ? 'Press <b style="background:#22303f;border:1px solid #8fbfff;border-radius:5px;padding:0 7px;">F</b> to open the 🐺 <b>Class Wolf</b> shop'
+        : nearScholar
+        ? 'Press <b style="background:#22303f;border:1px solid #8fbfff;border-radius:5px;padding:0 7px;">F</b> to read the story with 👦 <b>Bob</b>'
         : 'Press <b style="background:#2a3320;border:1px solid #8fd36a;border-radius:5px;padding:0 7px;">F</b> to talk to the 🛡️ <b>Update Keeper</b>';
     }
     // stand on / climb the ramps + decks, with jumping (Space) and gravity
@@ -858,12 +946,15 @@
     if (countOpen && /^Digit[1-5]$/.test(e.code)) { e.stopImmediatePropagation(); pickCount(+e.code.slice(5)); return; }   // pick player count
     if (e.code === 'KeyJ' && lockedIn) { e.stopImmediatePropagation(); leaveParty(); return; }                            // J = leave the party / box
     if (countOpen && (e.code === 'Escape' || e.code === 'KeyB')) { e.stopImmediatePropagation(); leaveParty(); return; }
-    if (e.code === 'KeyF' && !menuOpen) {                       // talk to the Update Keeper / the Class Wolf
+    if (e.code === 'KeyF' && !menuOpen) {                       // talk to the Update Keeper / Class Wolf / Lorekeeper
       if (updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
       else if (classesOpen) { e.stopImmediatePropagation(); closeClasses(); }
+      else if (chaptersOpen) { e.stopImmediatePropagation(); closeChapters(); }
       else if (nearBandit) { e.stopImmediatePropagation(); openUpdates(); }
       else if (nearWolf) { e.stopImmediatePropagation(); openClasses(); }
-    } else if ((e.code === 'Escape' || e.code === 'KeyB') && updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
+      else if (nearScholar) { e.stopImmediatePropagation(); openChapters(); }
+    } else if ((e.code === 'Escape' || e.code === 'KeyB') && chaptersOpen) { e.stopImmediatePropagation(); closeChapters(); }
+    else if ((e.code === 'Escape' || e.code === 'KeyB') && updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
     else if ((e.code === 'Escape' || e.code === 'KeyB') && classesOpen) { e.stopImmediatePropagation(); if (classesView) { classesView = null; refreshClasses(); } else closeClasses(); }
     else if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); confirmLook(); }   // Enter = confirm your look
     else if (e.code === 'Enter' && !menuOpen && !updatesOpen && !classesOpen && !countOpen && partyRunning) { beginParty(); }   // start now (skip the countdown)
@@ -898,6 +989,7 @@
       if (countEl) countEl.remove();
       if (updatesPanel) updatesPanel.remove();
       if (classesPanel) classesPanel.remove();
+      if (chaptersPanel) chaptersPanel.remove();
       if (partyBar) partyBar.remove();
       const tg = document.getElementById('lobbyTag'); if (tg) tg.remove();
       HUD_IDS.forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = hudPrev[id] || ''; });

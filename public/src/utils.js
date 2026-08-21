@@ -27,6 +27,17 @@
 
   W.util = {
     clamp(v, a, b) { return Math.min(b, Math.max(a, v)); },
+    // Force every material in a model to render both faces, so no entity ever looks
+    // hollow / see-through from behind. Returns the object for chaining.
+    solidify(obj) {
+      if (!obj || !obj.traverse) return obj;
+      obj.traverse((o) => {
+        if (!o.isMesh || !o.material) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) { if (m && 'side' in m && m.side !== THREE.BackSide) m.side = THREE.DoubleSide; }
+      });
+      return obj;
+    },
     lerp(a, b, t) { return a + (b - a) * t; },
     seed(n) { _state = n >>> 0; _seeded = true; },   // call before world.init for shared worlds
     random: _random,
