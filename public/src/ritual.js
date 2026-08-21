@@ -1,30 +1,31 @@
-/* The Wolf Ritual — the new way to summon Sir Buffington (the car is gone).
+/* The Wolf Ritual — the way to summon Sir Buffington (the car is gone).
    Kill wolves and they leave a CORPSE on the ground (look at it, press J to
    sack it). Haul them to a CAMPFIRE 🔥 and press F to burn them as an offering.
-   Burn 100 wolf corpses and 4 hidden altars rise across the woods; find all
-   four and a colossal door appears at the edge of the map — boom… boom…
-   BOOOOM — and Sir Buff bursts out.
-   Self-contained: own scene meshes, rAF loop, HUD pill/prompt. It only reaches
-   into other files through enemies.kill (corpse hook) and enemies.spawnBuffington. */
+   Burn 100 wolf corpses and 4 blood SEALS rise across the woods. SHOOT a seal
+   and a gym cub bursts out of it — fight it. Break all four seals and beat all
+   four cubs, and… BANG… BANG… BOOOOM — a colossal door at the edge of the map
+   splits open and Sir Buff comes hunting for YOU.
+   Self-contained: own scene meshes, rAF loop, HUD pill/prompt. It reaches into
+   other files only through enemies.kill (the onKill hook), enemies.spawnGymCub,
+   and enemies.spawnBuffington. */
 (function () {
   const W = window.WOTF;
   if (!W) return;
   const P = () => W.player;
 
-  const NEED = 100;              // wolf corpses to sacrifice (burn in a campfire)
-  const N_ALTARS = 4;           // hidden altars to find
+  const NEED = 100;             // wolf corpses to sacrifice (burn in a campfire)
+  const N_SEALS = 4;            // blood seals to shoot (each hides a gym cub)
   const FIRE_R = 3.4;           // reach to burn corpses at a campfire
-  const FIND_R = 5.0;           // how close you must get to "find" a hidden altar
   const DOOR_TRIGGER_R = 26;    // approach the door this close to start the booms
 
   let scene = null, ready = false;
-  let campCenter = { x: 0, z: 0 };   // camp origin — where altars/door are measured from
+  let campCenter = { x: 0, z: 0 };   // camp origin — where seals/door are measured from
   let sacrificed = 0;
-  let finders = [];             // the 4 hidden altars: { group, x, z, found, beamMat }
-  let foundCount = 0;
+  let seals = [];               // the 4 blood seals: { group, x, z, shot, disc, runeMat, beamMat, enemy }
+  let sealsShot = 0, cubsDown = 0;
   let door = null, doorPos = null, doorLeft = null, doorRight = null, doorBeamMat = null;
   let doorOpened = false, doorOpenT = 0;
-  let phase = 'collect';        // collect -> finding -> door -> done
+  let phase = 'collect';        // collect -> seals -> door -> done
   let boomT = -1, boomStep = 0; // boom finale timer
   let last = performance.now() / 1000;
   const now = () => performance.now() / 1000;
@@ -61,23 +62,33 @@
     return best ? { x: best.x, z: best.z, d: bd } : null;
   }
 
-  // a hidden altar out in the woods — a stone obelisk topped by a floating crystal + a sky beam
-  function makeFinderAltar(x, z) {
+  // A blood SEAL out in the woods — a stone dais holding a floating rune sigil and
+  // a red sky beam. It is registered as a shootable "enemy" so any weapon pops it.
+  function makeSeal(x, z) {
     const g = new THREE.Group();
-    const stone = new THREE.MeshStandardMaterial({ color: 0x555a66, roughness: 1, flatShading: true });
-    const stoneDk = new THREE.MeshStandardMaterial({ color: 0x33373f, roughness: 1, flatShading: true });
-    const crystalMat = new THREE.MeshStandardMaterial({ color: 0x39d6ff, emissive: 0x2bb8e6, emissiveIntensity: 1.3, roughness: 0.3, metalness: 0.2, flatShading: true });
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.5, 0.5, 6), stoneDk); base.position.y = 0.25; base.castShadow = true; g.add(base);
-    const obel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.7, 3.0, 6), stone); obel.position.y = 2.0; obel.castShadow = true; g.add(obel);
-    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.7, 6), stone); cap.position.y = 3.7; g.add(cap);
-    const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), crystalMat); crystal.position.y = 4.4; g.add(crystal);
-    g.userData.crystal = crystal; g.userData.crystalMat = crystalMat;
-    const b = makeBeam(0x39d6ff, 70); g.add(b.beam);
-    const light = new THREE.PointLight(0x49c6ff, 0.9, 10); light.position.set(0, 4.4, 0); g.add(light);
-    g.userData.light = light;
+    const stoneDk = new THREE.MeshStandardMaterial({ color: 0x33262a, roughness: 1, flatShading: true });
+    const runeMat = new THREE.MeshStandardMaterial({ color: 0xff3a3a, emissive: 0xd41f1f, emissiveIntensity: 1.4, roughness: 0.3, metalness: 0.2, flatShading: true });
+    const dais = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.9, 0.5, 8), stoneDk); dais.position.y = 0.25; dais.castShadow = true; g.add(dais);
+    // the floating sigil: a glowing ring + inner star
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.14, 8, 24), runeMat); ring.rotation.x = Math.PI / 2; ring.position.y = 2.0; g.add(ring);
+    const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), runeMat); star.position.y = 2.0; g.add(star);
+    const disc = new THREE.Group(); disc.add(ring); disc.add(star); disc.position.y = 0; g.add(disc);
+    // a fat invisible hitbox so it's easy to shoot
+    const hit = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 3.4, 8), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 1.7; g.add(hit);
+    const b = makeBeam(0xff2a2a, 90); g.add(b.beam);
+    const light = new THREE.PointLight(0xff4a4a, 1.2, 12); light.position.set(0, 2.2, 0); g.add(light);
     g.position.set(x, heightAt(x, z), z);
+    // register as a one-hit "enemy" so the existing shoot/arrow code can hit it
+    g.userData.type = 'enemy'; g.userData.kind = 'seal';
     scene.add(g);
-    return { group: g, x, z, found: false, beamMat: b.mat };
+    let enemy = null;
+    if (W.enemies && W.enemies.list) {
+      enemy = { id: (W.enemies._nextRitualId = (W.enemies._nextRitualId || 900000) + 1), group: g, kind: 'seal', isSeal: true, alive: true, hp: 1, maxHp: 1, speed: 0, dmg: 0, lastAttack: -99, t: 0 };
+      g.userData.id = enemy.id;
+      W.enemies.list.push(enemy);
+    }
+    return { group: g, x, z, shot: false, disc, runeMat, beamMat: b.mat, enemy };
   }
 
   // the colossal door at the edge of the woods — a giant stone frame with two heavy plank doors
@@ -89,13 +100,10 @@
     const iron = new THREE.MeshStandardMaterial({ color: 0x2a2d33, metalness: 0.6, roughness: 0.5 });
     const glow = new THREE.MeshBasicMaterial({ color: 0xff5a2a, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
     const H = 16, DW = 5.4;
-    // frame: two pillars + a heavy lintel
     for (const sx of [-DW - 0.6, DW + 0.6]) { const pil = new THREE.Mesh(new THREE.BoxGeometry(1.8, H, 2.2), stone); pil.position.set(sx, H / 2, 0); pil.castShadow = true; g.add(pil); }
     const lintel = new THREE.Mesh(new THREE.BoxGeometry(2 * DW + 5.2, 2.4, 2.6), stoneDk); lintel.position.set(0, H - 1.0, 0); lintel.castShadow = true; g.add(lintel);
     const key = new THREE.Mesh(new THREE.ConeGeometry(1.1, 1.6, 4), stone); key.position.set(0, H + 0.4, 0); key.rotation.y = Math.PI / 4; g.add(key);
-    // dark doorway backing (so it reads as a portal even before it opens)
     const back = new THREE.Mesh(new THREE.PlaneGeometry(2 * DW, H - 1.6), new THREE.MeshBasicMaterial({ color: 0x120a10 })); back.position.set(0, (H - 1.6) / 2, -0.3); g.add(back);
-    // two door leaves (pivot at outer edges) — plank + iron studs
     const mkLeaf = (side) => {
       const leaf = new THREE.Group();
       const slab = new THREE.Mesh(new THREE.BoxGeometry(DW, H - 1.8, 0.7), plank); slab.position.set(side * DW / 2, 0, 0); slab.castShadow = true; leaf.add(slab);
@@ -106,7 +114,6 @@
       return leaf;
     };
     doorLeft = mkLeaf(-1); doorRight = mkLeaf(1);
-    // glowing seam + a huge sky beam so it's findable from far off
     const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.5, H - 2), glow); seam.position.set(0, (H - 1.8) / 2 + 0.2, 0.65); g.add(seam);
     const b = makeBeam(0xff5a2a, 120); g.add(b.beam); doorBeamMat = b.mat;
     const light = new THREE.PointLight(0xff6a2a, 1.4, 26); light.position.set(0, 8, 3); g.add(light);
@@ -124,48 +131,62 @@
     W.sack.removeCorpses(take);
     sacrificed += take;
     if (W.sfx && W.sfx.boom) W.sfx.boom();
-    if (sacrificed >= NEED) { toast('🔥 The offering is complete… the woods tremble.'); raiseAltars(); }
+    if (sacrificed >= NEED) { toast('🔥 The offering is complete… the woods bleed.'); revealSeals(); }
     else toast('🔥 Burned ' + take + ' corpse' + (take === 1 ? '' : 's') + ' — ' + sacrificed + '/' + NEED);
     refreshPill();
   }
 
-  function raiseAltars() {
-    phase = 'finding';
-    finders = [];
+  function revealSeals() {
+    phase = 'seals';
+    seals = [];
     const c = campCenter;
-    for (let i = 0; i < N_ALTARS; i++) {
-      const a = (i / N_ALTARS) * Math.PI * 2 + rnd(-0.4, 0.4);   // spread into 4 quadrants
+    for (let i = 0; i < N_SEALS; i++) {
+      const a = (i / N_SEALS) * Math.PI * 2 + rnd(-0.4, 0.4);   // spread into 4 quadrants
       const r = rnd(140, 300);
       const s = landSpot(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, 0, 30);
-      finders.push(makeFinderAltar(s.x, s.z));
+      seals.push(makeSeal(s.x, s.z));
     }
-    foundCount = 0;
-    banner('🔮 FOUR ALTARS HAVE RISEN', 'Blue beams pierce the sky across the woods — find all four.', '#49c6ff');
+    sealsShot = 0; cubsDown = 0;
+    banner('🩸 FOUR BLOOD SEALS RISE', 'Red beams pierce the sky — SHOOT each seal to unleash what waits inside.', '#ff3a3a');
     refreshPill();
   }
 
-  function findAltar(f) {
-    f.found = true; foundCount++;
-    f.beamMat.color.setHex(0xffcf4a); f.beamMat.opacity = 0.5;
-    if (f.group.userData.crystalMat) { f.group.userData.crystalMat.color.setHex(0xffd24a); f.group.userData.crystalMat.emissive.setHex(0xffb020); }
-    if (f.group.userData.light) f.group.userData.light.color.setHex(0xffd24a);
-    if (W.sfx && W.sfx.levelup) W.sfx.levelup();
-    if (foundCount >= N_ALTARS) {
-      banner('🚪 THE COLOSSAL DOOR APPEARS', 'At the edge of the woods, something ancient stirs… go to it.', '#ff7a3a');
-      spawnDoor();
+  // a seal was shot (routed here from the enemies onKill hook) — burst it and spawn a cub
+  function onSealShot(enemy) {
+    const s = seals.find((x) => x.enemy === enemy);
+    if (!s || s.shot) return;
+    s.shot = true; sealsShot++;
+    // hide the sigil, keep a dim broken dais + fading beam
+    if (s.disc) s.disc.visible = false;
+    if (s.beamMat) { s.beamMat.color.setHex(0x662020); s.beamMat.opacity = 0.14; }
+    if (W.sfx) { if (W.sfx.boom) W.sfx.boom(); if (W.sfx.roar) W.sfx.roar(); }
+    shake(0.5);
+    if (W.enemies && W.enemies.spawnGymCub) W.enemies.spawnGymCub(s.x + rnd(-1.5, 1.5), s.z + rnd(-1.5, 1.5));
+    banner('🐻 A GYM CUB BURSTS OUT!', 'Seal ' + sealsShot + '/' + N_SEALS + ' broken — put it down.', '#ff9a3a');
+    refreshPill();
+  }
+
+  // one of the seal cubs was killed (routed from onKill)
+  function onCubDown() {
+    cubsDown++;
+    if (cubsDown >= N_SEALS && sealsShot >= N_SEALS) {
+      banner('🚪 THE EARTH SPLITS', 'A colossal door tears open at the edge of the map…', '#ff5a2a');
+      summonFinale();
     } else {
-      toast('🔮 Altar found! ' + foundCount + '/' + N_ALTARS + ' — follow the other beams');
+      toast('🐻 Gym cub down — ' + cubsDown + '/' + N_SEALS);
     }
     refreshPill();
   }
 
-  function spawnDoor() {
+  // all four cubs are dead: raise the door at the map edge and start the booms at once
+  function summonFinale() {
     phase = 'door';
     const c = campCenter;
     const a = rnd(0, 6.283), r = 340;                 // out at the edge of the woods
     const s = landSpot(c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, 0, 60);
     doorPos = s;
     door = makeGiantDoor(s.x, s.z);
+    startBooms();                                     // no need to walk to it — he's coming NOW
     refreshPill();
   }
 
@@ -186,12 +207,11 @@
 
   function openDoorAndSummon() {
     doorOpened = true; boomT = -1;
-    banner('💪 SIR BUFF EMERGES!', 'The doors burst open — IT IS SWOLE O’CLOCK.', '#ff5a2a');
+    banner('💪 SIR BUFF EMERGES!', 'The doors burst open — HE IS HUNTING YOU.', '#ff5a2a');
     if (W.sfx) { if (W.sfx.boom) W.sfx.boom(); if (W.sfx.roar) setTimeout(() => W.sfx.roar(), 250); }
     shake(1.4);
     const dp = doorPos || { x: 0, z: 0 };
     if (W.enemies && W.enemies.spawnBuffington) {
-      // spawn just in front of the doorway, then let his own AI take over
       const fwd = door ? door.rotation.y : 0;
       const bx = dp.x + Math.sin(fwd) * 4, bz = dp.z + Math.cos(fwd) * 4;
       W.enemies.buffTimer = 1e9;   // keep the timed spawner off; this is THE Buff
@@ -217,18 +237,13 @@
       "font:bold 15px 'Trebuchet MS',sans-serif;color:#ffe0da;text-shadow:0 1px 2px #000;white-space:nowrap;pointer-events:none;";
     document.body.appendChild(prompt);
   }
-  function nearestFinderDist(p) {
-    let best = Infinity;
-    for (const f of finders) { if (f.found) continue; best = Math.min(best, dist(p.pos.x, p.pos.z, f.x, f.z)); }
-    return best;
-  }
   function refreshPill() {
     if (!pill) return;
     let html = '';
     if (phase === 'collect') html = '🐺 Wolf Ritual — <b style="color:#ff8a8a">' + sacrificed + ' / ' + NEED + '</b> corpses burned · burn them at a 🔥 campfire';
-    else if (phase === 'finding') html = '🔮 Altars found <b style="color:#ffcf4a">' + foundCount + ' / ' + N_ALTARS + '</b> · follow the blue beams';
-    else if (phase === 'door') html = '🚪 The colossal door awaits at the edge of the woods — reach the orange beam';
-    else html = '💪 Sir Buff has been summoned!';
+    else if (phase === 'seals') html = '🩸 Seals broken <b style="color:#ff6a6a">' + sealsShot + ' / ' + N_SEALS + '</b> · cubs beaten <b style="color:#ffcf4a">' + cubsDown + ' / ' + N_SEALS + '</b> — shoot the red beams';
+    else if (phase === 'door') html = '🚪 A colossal door splits open at the edge of the map…';
+    else html = '💪 Sir Buff is hunting you!';
     pill.innerHTML = html;
     pill.style.display = 'block';
   }
@@ -255,14 +270,13 @@
     if (!doorOpened && W.enemies) W.enemies.buffTimer = 1e9;
     applyShake();
 
-    // gentle idle animation on the found-altar crystals
-    for (const f of finders) { const c = f.group.userData.crystal; if (c) { c.rotation.y += dt * 1.2; c.position.y = 4.4 + Math.sin(t * 2 + f.x) * 0.12; } }
+    // spin the seal sigils
+    for (const s of seals) { if (s.shot) continue; const d = s.disc; if (d) { d.rotation.y += dt * 1.6; d.position.y = Math.sin(t * 2 + s.x) * 0.12; } }
 
     if (!p || !p.active || !p.alive) { if (prompt) prompt.style.display = 'none'; return; }
 
-    if (phase === 'finding') {
-      for (const f of finders) { if (!f.found && dist(p.pos.x, p.pos.z, f.x, f.z) < FIND_R) findAltar(f); }
-    } else if (phase === 'door' && doorPos) {
+    // fallback: if the player walks up to the door before the auto-booms, that's fine too
+    if (phase === 'door' && doorPos && boomT < 0 && !doorOpened) {
       if (dist(p.pos.x, p.pos.z, doorPos.x, doorPos.z) < DOOR_TRIGGER_R) startBooms();
     }
 
@@ -309,7 +323,7 @@
     scene = W.player.scene;
     if (W.enemies) W.enemies.buffTimer = 1e9;   // Buff no longer roams in on a timer — only the ritual summons him
     const camp = (W.world.campfires && W.world.campfires[0]) ? W.world.campfires[0] : { x: 0, z: 0 };
-    campCenter = { x: camp.x, z: camp.z };      // measure altars/door from the spawn camp
+    campCenter = { x: camp.x, z: camp.z };      // measure seals/door from the spawn camp
     buildHud(); refreshPill();
     requestAnimationFrame(loop);
     setTimeout(() => toast('🔥 Burn ' + NEED + ' wolf corpses in a campfire to summon something ancient…'), 2600);
@@ -317,19 +331,22 @@
     // public hook + owner/debug helpers
     W.ritual = {
       onKill: function (e) {
-        if (!e || !e.group || e.buffBoss) return false;
+        if (!e || !e.group) return false;
+        if (e.isSeal) { onSealShot(e); return true; }          // seal popped -> spawn a cub (don't shrink the sigil)
+        if (e.ritualCub) { onCubDown(e); return false; }        // a seal cub fell -> advance; let it shrink normally
+        if (e.buffBoss) return false;
         if (e.kind !== 'wolf' && e.kind !== 'werewolf') return false;
         const pos = e.group.position;
         if (W.enemies && W.enemies.scene) W.enemies.scene.remove(e.group);   // take the standing body away
         if (W.sack && W.sack.dropCorpseAt) W.sack.dropCorpseAt(pos.x, pos.z); // …and leave a lootable carcass
         return true;                                                          // handled: skip the shrink animation
       },
-      progress: () => ({ sacrificed, need: NEED, foundCount, phase }),
+      progress: () => ({ sacrificed, need: NEED, sealsShot, cubsDown, phase }),
       // debug (owner console): jump the ritual forward
-      _sacrifice: (n) => { sacrificed = Math.min(NEED, sacrificed + (n || 0)); if (sacrificed >= NEED && phase === 'collect') raiseAltars(); refreshPill(); },
-      _raise: () => { sacrificed = NEED; raiseAltars(); },
-      _findAll: () => { for (const f of finders) if (!f.found) findAltar(f); },
-      _door: () => { if (phase === 'finding' || phase === 'collect') { sacrificed = NEED; if (!finders.length) raiseAltars(); for (const f of finders) f.found = true; foundCount = N_ALTARS; spawnDoor(); } },
+      _sacrifice: (n) => { sacrificed = Math.min(NEED, sacrificed + (n || 0)); if (sacrificed >= NEED && phase === 'collect') revealSeals(); refreshPill(); },
+      _reveal: () => { sacrificed = NEED; if (phase === 'collect') revealSeals(); },
+      _popSeals: () => { for (const s of seals) if (!s.shot && s.enemy && s.enemy.alive) { s.enemy.alive = false; const i = W.enemies.list.indexOf(s.enemy); if (i >= 0) W.enemies.list.splice(i, 1); onSealShot(s.enemy); } },
+      _finale: () => { sealsShot = N_SEALS; cubsDown = N_SEALS; summonFinale(); },
     };
   }, 400);
 })();

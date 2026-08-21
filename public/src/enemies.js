@@ -399,17 +399,30 @@
     if (W.hud) W.hud.banner('💪 SIR BUFFINGTON APPEARS', 'And he brought his spotters!', '#ff9a3a');
   };
 
+  // Build one "gym cub" (a pint-sized bear) at (x,z). `extra` is merged onto the
+  // enemy record so callers can tag it (guard: boss for the pack, ritualCub for the ritual).
+  enemies.makeGymCub = function (x, z, hp, extra) {
+    const g = buildModel('bear');
+    g.scale.set(0.7, 0.7, 0.7);                              // pint-sized next to the boss
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = U.rand(0, Math.PI * 2);
+    enemies.scene.add(g);
+    const id = _nextId++; g.userData.id = id;
+    const e = Object.assign({ id, group: g, kind: 'bear', alive: true, hp: hp, maxHp: hp, speed: U.rand(3.6, 4.3), dmg: 16,
+      lastAttack: -99, t: U.rand(0, 5) }, extra || {});
+    enemies.list.push(e);
+    return e;
+  };
+
   // Sir Buffington's minions: beefy little "gym cubs" that guard him and pile on.
   enemies.spawnBuffMinion = function (boss) {
     const a = U.rand(0, Math.PI * 2), r = U.rand(3, 6);
     const x = boss.group.position.x + Math.cos(a) * r, z = boss.group.position.z + Math.sin(a) * r;
-    const g = buildModel('bear');
-    g.scale.set(0.7, 0.7, 0.7);                              // pint-sized next to the boss
-    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a;
-    enemies.scene.add(g);
-    const id = _nextId++; g.userData.id = id;
-    enemies.list.push({ id, group: g, kind: 'bear', alive: true, hp: 90, maxHp: 90, speed: U.rand(3.6, 4.3), dmg: 16,
-      lastAttack: -99, t: U.rand(0, 5), guard: boss, buffMinion: true });
+    return enemies.makeGymCub(x, z, 90, { guard: boss, buffMinion: true });
+  };
+
+  // A lone, tougher gym cub summoned by a ritual seal — hunts the player directly.
+  enemies.spawnGymCub = function (x, z) {
+    return enemies.makeGymCub(x, z, 260, { ritualCub: true });
   };
 
   function buffDamageNear(x, z, radius, amount) {
@@ -777,12 +790,95 @@
     if (e.buffBoss) {
       enemies.buff = null; enemies.buffTimer = 150;     // Sir Buffington returns in ~2.5 min
       if (W.hud) W.hud.banner('💪 SIR BUFFINGTON DOWN', 'IMPOSSIBLE! I did 12 push-ups this morning!', '#ff9a3a');
+      enemies.finishChapterOne();                       // beating the champion ends Chapter One
     } else if (e.isBoss) {
       enemies.boss = null; enemies.bossTimer = 120;     // a new bandit in ~2 min
+      enemies._officerKilled = true;                    // remembered by the Bandit King's taunt
       if (W.world.dropShotgun) W.world.dropShotgun(e.group.position.x, e.group.position.z);
       if (W.hud) W.hud.banner('BANDIT OFFICER DOWN', 'He dropped a sawed-off shotgun 🔫 — grab it (G)', '#8fd36a');
     }
   };
+
+  // Beating Sir Buffington (the champion) completes Chapter One — then the Bandit King
+  // appears to threaten you, naming the officer too if you killed him.
+  enemies.finishChapterOne = function () {
+    if (enemies._chapterOneDone) return;
+    enemies._chapterOneDone = true;
+    const officer = !!enemies._officerKilled;
+    const tgt = (enemies._lastTargets && enemies._lastTargets[0] && enemies._lastTargets[0].pos) || { x: 0, z: 0 };
+    setTimeout(() => {
+      if (W.hud && W.hud.banner) W.hud.banner('📖 CHAPTER ONE — COMPLETE', 'Sir Buffington, the bandits’ champion, has fallen.', '#ffe08a');
+    }, 3400);
+    setTimeout(() => { enemies.spawnKingCutscene(tgt.x, tgt.z); }, 5200);   // his flying chariot swoops in
+    setTimeout(() => {
+      if (W.hud && W.hud.banner) {
+        const slain = officer ? 'my champion AND my officer' : 'my champion';
+        W.hud.banner('👑 THE BANDIT KING', 'You killed ' + slain + '?! …I WILL MAKE YOU PAY. You’ll find out how soon enough.', '#ff4a4a');
+      }
+      if (W.sfx && W.sfx.roar) W.sfx.roar();          // the King’s furious growl
+    }, 7600);
+  };
+
+  // The Bandit King arrives on a golden flying chariot, hovers to threaten you, then rockets off.
+  function makeBanditKing() {
+    const g = new THREE.Group();
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd4a83a, roughness: 0.4, metalness: 0.7, flatShading: true });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x3a2416, roughness: 1, flatShading: true });
+    const red = new THREE.MeshStandardMaterial({ color: 0x7a1f1f, roughness: 1, flatShading: true });
+    const glow = new THREE.MeshStandardMaterial({ color: 0x9a2b2b, emissive: 0xff3418, emissiveIntensity: 1.5, roughness: 0.4 });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xd6a878, roughness: 1, flatShading: true });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 1, flatShading: true });
+    // chariot tub
+    const base = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 1.5), wood); base.castShadow = true; g.add(base);
+    const front = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 0.16), gold); front.position.set(0, 0.45, 0.75); g.add(front);
+    for (const sx of [-1.2, 1.2]) { const side = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.8, 1.5), gold); side.position.set(sx, 0.45, 0); g.add(side); }
+    const rear = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 0.16), red); rear.position.set(0, 0.5, -0.75); g.add(rear);
+    const thruster = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.22, 1.3), glow); thruster.position.y = -0.32; g.add(thruster);   // anti-grav glow
+    const spin = [];
+    for (const sx of [-1, 1]) { const wing = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.06, 0.7), gold); wing.position.set(sx * 2.0, 0.2, -0.1); wing.rotation.z = sx * -0.35; g.add(wing); }
+    for (const sx of [-1.3, 1.3]) { const wl = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.08, 6, 14), gold); wl.position.set(sx, -0.15, -0.35); g.add(wl); spin.push(wl); }   // spinning wheels
+    // the King himself, standing in the chariot
+    const mk = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+    mk(0.22, 0.75, 0.22, dark, -0.34, 0.55, -0.05); mk(0.22, 0.75, 0.22, dark, 0.34, 0.55, -0.05);   // legs
+    mk(0.9, 1.0, 0.5, red, 0, 1.15, -0.05);                                                          // royal coat
+    mk(0.22, 0.8, 0.22, red, -0.6, 1.15, -0.05); mk(0.22, 0.8, 0.22, red, 0.6, 1.15, -0.05);         // arms
+    mk(0.5, 0.5, 0.5, skin, 0, 1.95, -0.05);                                                         // head
+    mk(0.5, 0.16, 0.5, dark, 0, 1.76, -0.05);                                                        // bandana mask
+    mk(0.1, 0.1, 0.06, dark, -0.13, 2.02, 0.2); mk(0.1, 0.1, 0.06, dark, 0.13, 2.02, 0.2);           // eyes
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.16, 8), gold); crown.position.set(0, 2.28, -0.05); g.add(crown);
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const spk = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.22, 4), gold); spk.position.set(Math.cos(a) * 0.28, 2.44, -0.05 + Math.sin(a) * 0.28); g.add(spk); }
+    g.userData.spin = spin; g.scale.setScalar(1.15);
+    return g;
+  }
+  enemies.spawnKingCutscene = function (px, pz) {
+    if (enemies._king || !enemies.scene) return;
+    const g = makeBanditKing();
+    const gy = W.world.heightAt(px, pz);
+    g.position.set(px + 28, gy + 24, pz - 28);   // start high & far, then swoop in
+    enemies.scene.add(g);
+    enemies._king = { g, t: 0, mode: 'arrive', px, pz, gy, spin: g.userData.spin || [] };
+  };
+  function stepKing(dt) {
+    const k = enemies._king; if (!k) return;
+    k.t += dt;
+    const g = k.g;
+    for (const w of k.spin) w.rotation.x += dt * 7;
+    const hx = k.px + 6, hy = k.gy + 6.5, hz = k.pz + 6;   // hover point, up and in front of the player
+    if (k.mode === 'arrive') {
+      const dx = hx - g.position.x, dy = hy - g.position.y, dz = hz - g.position.z, d = Math.hypot(dx, dy, dz) || 1;
+      const sp = 16 * dt; g.position.x += (dx / d) * sp; g.position.y += (dy / d) * sp; g.position.z += (dz / d) * sp;
+      g.rotation.y = Math.atan2(k.px - g.position.x, k.pz - g.position.z);
+      if (d < 1.4) { k.mode = 'hover'; k.t = 0; }
+    } else if (k.mode === 'hover') {
+      g.position.y = hy + Math.sin(k.t * 2) * 0.35;
+      g.rotation.y = Math.atan2(k.px - g.position.x, k.pz - g.position.z);
+      if (k.t > 6) k.mode = 'leave';
+    } else {                                       // leave: rocket up and away
+      g.position.y += 13 * dt; g.position.x += 9 * dt; g.position.z -= 9 * dt;
+      g.rotation.y += dt * 0.6;
+      if (g.position.y > k.gy + 44) { if (g.parent) g.parent.remove(g); enemies._king = null; }
+    }
+  }
 
   function animateDying(dt) {
     for (let i = enemies._dying.length - 1; i >= 0; i--) {
@@ -830,6 +926,7 @@
     const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.7), metal); barrel.position.set(0.26, 1.18, 0.58); g.add(barrel);   // rifle points +Z
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.15), uniform); arm.position.set(0.3, 1.22, 0.12); g.add(arm);
     g.userData = { type: 'archer' };   // keep the type so the rest of the code is unchanged
+    W.util.solidify(g);
     return g;
   }
 
@@ -1071,6 +1168,7 @@
     for (const e of enemies.list) {
       if (!e.alive) continue;
       if (e.buffBoss) { enemies.updateBuffington(e, dt, targets); continue; }   // Sir Buffington runs his own brain
+      if (e.isSeal) continue;                                                    // ritual seals just sit there waiting to be shot
       e.t += dt;
       const g = e.group;
       if ((e._defT || 0) > 0) e._defT -= dt;                 // love-struck: defense stays down
@@ -1172,6 +1270,7 @@
     animateDying(dt);
     stepBuffFx(dt);
     stepKawaiiFx(dt);
+    stepKing(dt);            // the Bandit King's flying-chariot cutscene
   };
 
   // --- Networking (host serialize / client mirror) ---------------------------
