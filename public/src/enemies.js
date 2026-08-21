@@ -490,13 +490,12 @@
     e.tauntCD -= dt;
     if (e.tauntCD <= 0 && bestD < 44) { e.tauntCD = U.rand(6, 11); if (W.hud) W.hud.toast('💪 Sir Buffington: “' + BUFF_TAUNTS[U.randInt(0, BUFF_TAUNTS.length - 1)] + '”'); }
 
-    // whistle up fresh gym cubs when his pack thins out
+    // endlessly whistle up fresh gym cubs — Sir Buffington has INFINITE spotters
     e.minionCD -= dt;
     if (e.minionCD <= 0 && bestD < 60) {
-      let alive = 0;
-      for (const m of enemies.list) if (m.buffMinion && m.guard === e && m.alive) alive++;
-      if (alive < e.minionCap) { enemies.spawnBuffMinion(e); if (W.hud) W.hud.toast('🐻 Sir Buffington whistles for another spotter!'); }
-      e.minionCD = U.rand(5, 8);
+      enemies.spawnBuffMinion(e);
+      if (W.hud) W.hud.toast('🐻 Sir Buffington whistles for another spotter!');
+      e.minionCD = U.rand(2.5, 4.5);
     }
 
     // heal: retreat & eat when hurt — smarter now (heals earlier, more often)
@@ -817,6 +816,10 @@
       }
       if (W.sfx && W.sfx.roar) W.sfx.roar();          // the King’s furious growl
     }, 7600);
+    setTimeout(() => {
+      if (W.hud && W.hud.banner) W.hud.banner('👑 THE BANDIT KING', 'Let’s see if you grunts can survive long enough…', '#ff4a4a');
+      enemies.startKingWaves(tgt);                     // unleash the 3 waves
+    }, 11000);
   };
 
   // The Bandit King arrives on a golden flying chariot, hovers to threaten you, then rockets off.
@@ -877,6 +880,45 @@
       g.position.y += 13 * dt; g.position.x += 9 * dt; g.position.z -= 9 * dt;
       g.rotation.y += dt * 0.6;
       if (g.position.y > k.gy + 44) { if (g.parent) g.parent.remove(g); enemies._king = null; }
+    }
+  }
+
+  // --- The Bandit King's 3 waves of bandits (Chapter One finale) ---------------
+  function spawnKingBandit(center, gun) {
+    const a = U.rand(0, Math.PI * 2), r = U.rand(22, 44);
+    const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+    const g = buildModel('outlaw');
+    if (gun) giveRifle(g); else giveSword(g);
+    g.position.set(x, W.world.heightAt(x, z), z); g.rotation.y = a + Math.PI;
+    enemies.scene.add(g);
+    const id = _nextId++; g.userData.id = id;
+    enemies.list.push({ id, group: g, kind: 'outlaw', alive: true, hp: 14, speed: 3.2, dmg: gun ? 9 : 13,
+      lastAttack: -99, t: U.rand(0, 5), raider: true, rifle: gun, sword: !gun, shootCD: U.rand(1.5, 3), kingArmy: true });
+  }
+  const KING_WAVES = { 1: [10, 5], 2: [25, 25], 3: [100, 50] };   // [sword, gun] per wave
+  function spawnKingWave(n, t) {
+    const w = KING_WAVES[n]; if (!w) return;
+    if (W.hud && W.hud.banner) W.hud.banner('⚔ WAVE ' + n + ' / 3', w[0] + ' sword bandits · ' + w[1] + ' gunmen — SURVIVE!', '#ff5a2a');
+    for (let i = 0; i < w[0]; i++) spawnKingBandit(t, false);
+    for (let i = 0; i < w[1]; i++) spawnKingBandit(t, true);
+  }
+  function kingArmyCount() { let n = 0; for (const e of enemies.list) if (e.alive && e.kingArmy) n++; return n; }
+  enemies.startKingWaves = function (target) {
+    if (enemies._kingWave) return;
+    const t = { x: (target && target.x) || 0, z: (target && target.z) || 0 };
+    enemies._kingWave = { stage: 1, t, gapT: 0 };
+    spawnKingWave(1, t);
+  };
+  function stepKingWaves(dt) {
+    const kw = enemies._kingWave; if (!kw) return;
+    if (kingArmyCount() > 3) { kw.gapT = 0; return; }   // hold until the wave is nearly wiped out
+    kw.gapT += dt;
+    if (kw.gapT < 2.5) return;                            // a short breather between waves
+    kw.gapT = 0;
+    if (kw.stage < 3) { kw.stage++; spawnKingWave(kw.stage, kw.t); }
+    else {
+      enemies._kingWave = null;
+      if (W.hud && W.hud.banner) W.hud.banner('👑 THE KING RETREATS', 'You survived his onslaught… but he’ll be back. (End of Chapter One)', '#8fd36a');
     }
   }
 
@@ -1271,6 +1313,7 @@
     stepBuffFx(dt);
     stepKawaiiFx(dt);
     stepKing(dt);            // the Bandit King's flying-chariot cutscene
+    stepKingWaves(dt);       // ...and his 3 waves of bandits
   };
 
   // --- Networking (host serialize / client mirror) ---------------------------
