@@ -182,6 +182,7 @@
     started = true; paused = false;
     W.player.active = true;
     if (W.classes) { const d = W.classes.applyToPlayer(W.player); if (W.player.equipCurrent) W.player.equipCurrent(); if (d && d.id !== 'villager' && W.hud) W.hud.banner(d.emoji + ' ' + d.name.toUpperCase(), d.blurb, '#8fbfff'); }
+    if (W.talents) W.talents.applyToPlayer(W.player);   // stack bought talents (Gunslinger, …)
     if (W.player.spawnStarterBox) {                                     // personal starter box (press F: Deagle + axe + 5 wolf meat)
       const ni = document.getElementById('nameInput');
       const nm = ((ni && ni.value.trim()) || 'Player').slice(0, 12);

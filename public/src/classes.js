@@ -207,3 +207,40 @@
     },
   });
 })();
+
+/* Talents — permanent perks bought from the Talented Werewolf (TALENTS tree house).
+   They stack on top of your class and persist in localStorage, paid for with the
+   same Treeling Coins. */
+(function () {
+  const W = (window.WOTF = window.WOTF || {});
+  const LS = window.localStorage;
+  const KEY = 'wotf_talents';
+  const TDEFS = {
+    gunslinger: {
+      id: 'gunslinger', name: 'Gunslinger', emoji: '🔫', cost: 1000,
+      blurb: 'A deadeye with firearms — every gun hits far harder and you almost never waste a bullet.',
+      perks: ['🔫 Guns deal 3× damage', '🎯 99% chance to recover the bullet on a hit'],
+    },
+  };
+  const TORDER = ['gunslinger'];
+  function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY) || '[]')); } catch (e) { return new Set(); } }
+  function save(s) { LS.setItem(KEY, JSON.stringify([...s])); }
+  const talents = (W.talents = {
+    TDEFS, TORDER,
+    owned(id) { return ownedSet().has(id); },
+    buy(id) {
+      const d = TDEFS[id]; if (!d) return { ok: false, reason: 'unknown' };
+      if (talents.owned(id)) return { ok: true, already: true };
+      const c = W.classes.coins();
+      if (c < d.cost) return { ok: false, reason: 'poor', need: d.cost - c };
+      W.classes.setCoins(c - d.cost);
+      const s = ownedSet(); s.add(id); save(s);
+      return { ok: true };
+    },
+    // Stack owned talents onto the player at game start.
+    applyToPlayer(p) {
+      if (!p) return;
+      if (talents.owned('gunslinger')) { p.gunDmgMult = 3; p.bulletRefund = 0.99; }
+    },
+  });
+})();

@@ -786,10 +786,10 @@
     W.enemies.list.forEach((e) => { if (e.alive) targets.push(e.group); });
     if (W.world.villagerGroups) W.world.villagerGroups().forEach((g) => targets.push(g));   // villagers are targetable too
     const hits = ray.intersectObjects(targets, true);
-    const dmg = 9;
+    const dmg = 9 * (player.gunDmgMult || 1);
     let hitPos = null, hitRoot = null;
     if (hits.length) { hitRoot = findRoot(hits[0].object); hitPos = hits[0].point; }
-    if (hitRoot && hitRoot.userData.type === 'enemy') applyShot(hitRoot, dmg);
+    if (hitRoot && hitRoot.userData.type === 'enemy') { applyShot(hitRoot, dmg); if (player.bulletRefund && Math.random() < player.bulletRefund) player.shells += 1; }
     else if (hitRoot && hitRoot.userData.type === 'villager') hitVillager(hitRoot, dmg);
     if (hitPos) {                              // buckshot splash to nearby foes
       for (const e of W.enemies.list) {
@@ -818,12 +818,13 @@
         const e = W.enemies.list.find((x) => x.group === root);
         const headY = root.position.y + (W.enemies.headY ? W.enemies.headY(e) : 1.7);
         const head = Math.abs(hits[0].point.y - headY) < 0.5;
-        let dmg = 18; if (head) dmg = Math.round(dmg * 2.2);
+        let dmg = 18 * (player.gunDmgMult || 1); if (head) dmg = Math.round(dmg * 2.2);
         if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
         else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
         player.popDamage(root.position, dmg, head);
         if (head && W.hud) W.hud.toast('🎯 HEADSHOT! ' + dmg);
-        if (player.isHunter && (player.classLevel || 1) >= 2 && Math.random() < 0.5) { player.rounds += 1; if (W.hud) W.hud.toast('🎯 Bullet recovered! (' + player.rounds + ')'); }   // Hunter Lv2 perk
+        const _rifleRefund = Math.max(player.bulletRefund || 0, (player.isHunter && (player.classLevel || 1) >= 2) ? 0.5 : 0);   // Hunter Lv2 or Gunslinger talent
+        if (_rifleRefund && Math.random() < _rifleRefund) { player.rounds += 1; if (W.hud) W.hud.toast('🎯 Bullet recovered! (' + player.rounds + ')'); }
       } else if (root && root.userData.type === 'villager') { hitVillager(root, 18); }
     }
     // muzzle tracer down the barrel line
@@ -856,12 +857,13 @@
         const e = W.enemies.list.find((x) => x.group === root);
         const headY = root.position.y + (W.enemies.headY ? W.enemies.headY(e) : 1.7);
         const head = Math.abs(hits[0].point.y - headY) < 0.5;
-        let dmg = 150; if (head) dmg = Math.round(dmg * 1.5);
+        let dmg = 150 * (player.gunDmgMult || 1); if (head) dmg = Math.round(dmg * 1.5);
         if (W.net && W.net.role === 'client') W.net.sendHit(root.userData.id, dmg);
         else { const killed = W.enemies.damage(root, dmg, player.pos); if (killed) player.creditKill(root.userData.kind); }
         player.popDamage(root.position, dmg, head);
         if (head && W.hud) W.hud.toast('🎯 HEADSHOT! ' + dmg);
-      } else if (root && root.userData.type === 'villager') { hitVillager(root, 150); }
+        if (player.bulletRefund && Math.random() < player.bulletRefund) player.deagleRounds += 1;   // Gunslinger refund
+      } else if (root && root.userData.type === 'villager') { hitVillager(root, Math.round(150 * (player.gunDmgMult || 1))); }
     }
     const dir = player.camera.getWorldDirection(new THREE.Vector3());
     const start = player.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(dir, 0.6);

@@ -29,6 +29,7 @@
   let nearBandit = false, updatesOpen = false, updatesPanel = null, fPrompt = null;  // his versions menu (press F)
   let wolf = null, wolfPos = null, wolfBaseY = 0, nearWolf = false, classesOpen = false, classesPanel = null;  // CLASSES house wolf shop (press F)
   let scholar = null, scholarPos = null, scholarBaseY = 0, nearScholar = false, chaptersOpen = false, chaptersPanel = null;  // CHAPTER house — read the story (press F)
+  let were = null, werePos = null, wereBaseY = 0, nearWere = false, talentsOpen = false, talentsPanel = null, talentsView = null;  // TALENTS house — the Talented Werewolf (press F)
   // a class's power rating shown as gold ★ (filled) out of 5
   const classStars = (d) => { const n = Math.max(0, Math.min(5, (d && d.stars) || 0)); return '<span style="color:#ffd24a;">' + '★'.repeat(n) + '</span><span style="color:#3f5266;">' + '★'.repeat(5 - n) + '</span>'; };
   let vy = 0;                                     // vertical velocity for jumping in the lobby
@@ -227,6 +228,95 @@
   function closeChapters() {
     chaptersOpen = false;
     if (chaptersPanel) chaptersPanel.style.display = 'none';
+    if (hint) hint.style.display = '';
+  }
+
+  // --- the TALENTS tree house: the Talented Werewolf sells permanent perks ------
+  function makeWerewolf() {
+    const g = new THREE.Group();
+    const DS = THREE.DoubleSide;
+    const fur = new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 1, flatShading: true, side: DS });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x33281c, roughness: 1, flatShading: true, side: DS });
+    const claw = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.6, flatShading: true });
+    const eye = new THREE.MeshStandardMaterial({ color: 0xffd23a, emissive: 0xffb020, emissiveIntensity: 1.2, roughness: 0.4 });
+    const mk = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+    mk(0.28, 0.8, 0.28, dark, -0.22, 0.42, 0); mk(0.28, 0.8, 0.28, dark, 0.22, 0.42, 0);          // digitigrade legs
+    mk(0.32, 0.24, 0.4, dark, -0.22, 0.12, 0.08); mk(0.32, 0.24, 0.4, dark, 0.22, 0.12, 0.08);    // big paws
+    mk(0.82, 0.95, 0.5, fur, 0, 1.25, 0);                                                          // hulking torso
+    mk(0.22, 0.9, 0.24, fur, -0.56, 1.2, 0.02); mk(0.22, 0.9, 0.24, fur, 0.56, 1.2, 0.02);         // long arms
+    for (const sx of [-0.56, 0.56]) for (const cx of [-0.06, 0, 0.06]) { const c = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.12, 4), claw); c.position.set(sx + cx, 0.74, 0.06); c.rotation.x = Math.PI; g.add(c); }   // claws
+    mk(0.46, 0.42, 0.46, fur, 0, 1.95, 0.02);                                                      // head
+    mk(0.26, 0.2, 0.3, dark, 0, 1.88, 0.28);                                                       // snout
+    mk(0.1, 0.06, 0.06, claw, 0, 1.84, 0.44);                                                      // fangs
+    for (const sx of [-0.16, 0.16]) { const ear = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.26, 4), fur); ear.position.set(sx, 2.22, 0); g.add(ear); }   // pointed ears
+    mk(0.09, 0.09, 0.05, eye, -0.12, 2.0, 0.24); mk(0.09, 0.09, 0.05, eye, 0.12, 2.0, 0.24);       // glowing eyes
+    // nametag
+    const cv = document.createElement('canvas'); cv.width = 360; cv.height = 76;
+    const c = cv.getContext('2d');
+    c.fillStyle = 'rgba(30,22,12,.92)'; c.fillRect(6, 8, 348, 60);
+    c.strokeStyle = '#ffce6a'; c.lineWidth = 4; c.strokeRect(6, 8, 348, 60);
+    c.font = "bold 27px 'Trebuchet MS',sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#ffe6a8'; c.fillText('🐺 THE TALENTED WEREWOLF', 180, 38);
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false }));
+    tag.scale.set(3.7, 0.78, 1); tag.position.y = 2.9; g.add(tag);
+    return g;
+  }
+  function talentAction(id) {
+    const T = W.talents, K = W.classes, d = T.TDEFS[id], owned = T.owned(id), afford = K.coins() >= d.cost;
+    if (owned) return '<div style="text-align:center;padding:11px;background:rgba(60,140,80,.18);border:2px solid #8fd36a;border-radius:10px;color:#8fd36a;font-weight:bold;font-size:15px;">✓ LEARNED</div>';
+    return '<button data-tbuy="' + id + '" ' + (afford ? '' : 'disabled') + ' style="width:100%;background:' + (afford ? '#a06a1a' : '#33383f') + ';border:2px solid ' + (afford ? '#ffd873' : '#556') + ';color:' + (afford ? '#fff' : '#9aa') + ';font:bold 15px sans-serif;border-radius:10px;padding:11px;cursor:' + (afford ? 'pointer' : 'not-allowed') + ';">' + (afford ? '🪙 Learn for ' + d.cost : '🔒 Need ' + (d.cost - K.coins()) + ' more 🪙') + '</button>';
+  }
+  function renderTalentsPanel() {
+    const T = W.talents, coins = W.classes.coins();
+    let rows = '';
+    T.TORDER.forEach((id) => {
+      const d = T.TDEFS[id], owned = T.owned(id);
+      const perks = d.perks.map((x) => '<li style="margin-bottom:4px;">' + x + '</li>').join('');
+      rows += '<div style="background:rgba(0,0,0,.28);border:1px solid ' + (owned ? '#8fd36a' : '#5a4a2a') + ';border-radius:11px;padding:12px 14px;margin-bottom:10px;">' +
+        '<div style="display:flex;gap:12px;align-items:center;"><div style="font-size:30px;">' + d.emoji + '</div>' +
+        '<div style="flex:1;"><div style="font-size:17px;font-weight:bold;color:#ffe6a8;">' + d.name + (owned ? ' <span style="font-size:11px;color:#8fd36a;border:1px solid #8fd36a;border-radius:5px;padding:0 6px;">LEARNED</span>' : '') + '</div>' +
+        '<div style="font-size:12px;color:#c9b98a;margin-top:2px;line-height:1.35;">' + d.blurb + '</div></div></div>' +
+        '<ul style="margin:8px 0 10px;padding-left:20px;font-size:13px;color:#e8dcbf;line-height:1.4;">' + perks + '</ul>' +
+        talentAction(id) + '</div>';
+    });
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+      '<div style="font-size:19px;font-weight:bold;letter-spacing:1px;color:#ffce6a;">🐺 THE TALENTED WEREWOLF</div>' +
+      '<div style="font-size:15px;font-weight:bold;color:#ffd873;">🪙 ' + coins + '</div></div>' +
+      '<div style="font-size:12px;color:#c9b98a;margin-bottom:12px;">"Learn a talent, pup. It sticks with you forever."</div>' + rows +
+      '<div style="font-size:11px;color:#b9a878;text-align:center;margin-top:2px;">press <b style="background:#2a2418;border:1px solid #56492a;border-radius:4px;padding:0 5px;">F</b> or <b style="background:#2a2418;border:1px solid #56492a;border-radius:4px;padding:0 5px;">Esc</b> to close</div>';
+  }
+  function makeTalentsPanel() {
+    const p = document.createElement('div');
+    p.id = 'lobbyTalents';
+    p.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:14;display:none;width:min(460px,92vw);max-height:82vh;overflow-y:auto;' +
+      'background:rgba(24,18,10,.96);border:2px solid #a6842f;border-radius:14px;padding:18px 20px;' +
+      "font-family:'Trebuchet MS',sans-serif;color:#f0e6cf;box-shadow:0 16px 50px rgba(0,0,0,.6);backdrop-filter:blur(3px);";
+    document.body.appendChild(p);
+    return p;
+  }
+  function refreshTalents() {
+    if (!talentsPanel || !W.talents) return;
+    talentsPanel.innerHTML = renderTalentsPanel();
+    talentsPanel.querySelectorAll('button[data-tbuy]').forEach((b) => {
+      b.onclick = () => {
+        const r = W.talents.buy(b.dataset.tbuy);
+        if (!r.ok && r.reason === 'poor') { if (W.hud && W.hud.toast) W.hud.toast('Need ' + r.need + ' more 🪙'); }
+        else if (r.ok && !r.already && W.hud && W.hud.toast) W.hud.toast('🐺 Learned ' + W.talents.TDEFS[b.dataset.tbuy].name + '!');
+        refreshTalents();
+      };
+    });
+  }
+  function openTalents() {
+    if (!talentsPanel) talentsPanel = makeTalentsPanel();
+    refreshTalents();
+    talentsOpen = true; talentsPanel.style.display = 'block';
+    if (fPrompt) fPrompt.style.display = 'none';
+    if (hint) hint.style.display = 'none';
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function closeTalents() {
+    talentsOpen = false;
+    if (talentsPanel) talentsPanel.style.display = 'none';
     if (hint) hint.style.display = '';
   }
 
@@ -699,7 +789,7 @@
       // (all 4 slots now hold a tree house)
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const tx = Math.cos(a) * 15, tz = Math.sin(a) * 15;
-      const th = makeTreehouse(labels[i], i === 0 || i === 2 || i === 3);   // UPDATES, CLASSES & CHAPTER houses are hollow so their keeper stands INSIDE
+      const th = makeTreehouse(labels[i], true);   // all houses are hollow so their keeper stands INSIDE
       th.position.set(tx, 0, tz);
       const ry = Math.atan2(-tx, -tz);        // ramp/front faces the centre
       th.rotation.y = ry;
@@ -713,6 +803,15 @@
         bandit.position.set(bx, TH_H, bz);
         bandit.rotation.y = Math.atan2(-bx, -bz);   // face the centre (where the player climbs up)
         group.add(bandit);
+      }
+      if (i === 1) {                          // TALENTS house: the Talented Werewolf stands INSIDE
+        const dl = Math.hypot(tx, tz) || 1;
+        const rx = tx + tx / dl * 0.6, rz = tz + tz / dl * 0.6;
+        werePos = { x: rx, z: rz }; wereBaseY = TH_H;
+        were = makeWerewolf();
+        were.position.set(rx, TH_H, rz);
+        were.rotation.y = Math.atan2(-rx, -rz);
+        group.add(were);
       }
       if (i === 2) {                          // CLASSES house: the class-shop wolf stands INSIDE the cabin
         const dl = Math.hypot(tx, tz) || 1;
@@ -865,7 +964,7 @@
       const info = (W.net && W.net.hubBoxInfo) ? W.net.hubBoxInfo(myBox) : null;
       if (info && info.hosted) { partyRunning = false; updateTimerUI(); enterJoinWait(info); }
     }
-    if (!menuOpen && !updatesOpen && !classesOpen && !chaptersOpen && !countOpen && !lockedIn) {
+    if (!menuOpen && !updatesOpen && !classesOpen && !chaptersOpen && !talentsOpen && !countOpen && !lockedIn) {
       // arrow keys turn/look — works with NO mouse lock needed
       const LK = 2.0 / 60;
       if (keys.ArrowLeft) yaw += LK; if (keys.ArrowRight) yaw -= LK;
@@ -912,12 +1011,20 @@
       scholar.rotation.y = Math.atan2(pos.x - scholarPos.x, pos.z - scholarPos.z);
       nearScholar = !menuOpen && pos.y > TH_H - 1 && Math.hypot(pos.x - scholarPos.x, pos.z - scholarPos.z) < 2.6;
     }
+    // the Talented Werewolf: bob, face the player, near-check on the TALENTS deck
+    if (were) {
+      were.position.y = wereBaseY + Math.sin(tphase * 2 + 3) * 0.05;
+      were.rotation.y = Math.atan2(pos.x - werePos.x, pos.z - werePos.z);
+      nearWere = !menuOpen && pos.y > TH_H - 1 && Math.hypot(pos.x - werePos.x, pos.z - werePos.z) < 2.6;
+    }
     // shared [F] prompt — shows for whichever NPC you're standing beside
     if (fPrompt) {
-      const show = (nearBandit && !updatesOpen) || (nearWolf && !classesOpen) || (nearScholar && !chaptersOpen);
+      const show = (nearBandit && !updatesOpen) || (nearWolf && !classesOpen) || (nearScholar && !chaptersOpen) || (nearWere && !talentsOpen);
       fPrompt.style.display = show ? 'block' : 'none';
       if (show) fPrompt.innerHTML = nearWolf
         ? 'Press <b style="background:#22303f;border:1px solid #8fbfff;border-radius:5px;padding:0 7px;">F</b> to open the 🐺 <b>Class Wolf</b> shop'
+        : nearWere
+        ? 'Press <b style="background:#2a2418;border:1px solid #ffce6a;border-radius:5px;padding:0 7px;">F</b> to learn a <b>Talent</b> from the 🐺 Werewolf'
         : nearScholar
         ? 'Press <b style="background:#22303f;border:1px solid #8fbfff;border-radius:5px;padding:0 7px;">F</b> to read the story with 👦 <b>Bob</b>'
         : 'Press <b style="background:#2a3320;border:1px solid #8fd36a;border-radius:5px;padding:0 7px;">F</b> to talk to the 🛡️ <b>Update Keeper</b>';
@@ -950,10 +1057,13 @@
       if (updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
       else if (classesOpen) { e.stopImmediatePropagation(); closeClasses(); }
       else if (chaptersOpen) { e.stopImmediatePropagation(); closeChapters(); }
+      else if (talentsOpen) { e.stopImmediatePropagation(); closeTalents(); }
       else if (nearBandit) { e.stopImmediatePropagation(); openUpdates(); }
       else if (nearWolf) { e.stopImmediatePropagation(); openClasses(); }
       else if (nearScholar) { e.stopImmediatePropagation(); openChapters(); }
-    } else if ((e.code === 'Escape' || e.code === 'KeyB') && chaptersOpen) { e.stopImmediatePropagation(); closeChapters(); }
+      else if (nearWere) { e.stopImmediatePropagation(); openTalents(); }
+    } else if ((e.code === 'Escape' || e.code === 'KeyB') && talentsOpen) { e.stopImmediatePropagation(); closeTalents(); }
+    else if ((e.code === 'Escape' || e.code === 'KeyB') && chaptersOpen) { e.stopImmediatePropagation(); closeChapters(); }
     else if ((e.code === 'Escape' || e.code === 'KeyB') && updatesOpen) { e.stopImmediatePropagation(); closeUpdates(); }
     else if ((e.code === 'Escape' || e.code === 'KeyB') && classesOpen) { e.stopImmediatePropagation(); if (classesView) { classesView = null; refreshClasses(); } else closeClasses(); }
     else if (e.code === 'Enter' && menuOpen) { e.stopImmediatePropagation(); confirmLook(); }   // Enter = confirm your look
@@ -990,6 +1100,7 @@
       if (updatesPanel) updatesPanel.remove();
       if (classesPanel) classesPanel.remove();
       if (chaptersPanel) chaptersPanel.remove();
+      if (talentsPanel) talentsPanel.remove();
       if (partyBar) partyBar.remove();
       const tg = document.getElementById('lobbyTag'); if (tg) tg.remove();
       HUD_IDS.forEach((id) => { const el = document.getElementById(id); if (el) el.style.display = hudPrev[id] || ''; });
