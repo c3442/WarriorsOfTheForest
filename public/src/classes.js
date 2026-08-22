@@ -82,6 +82,12 @@
       perks: ['🪖 50 soldiers march & fight for you', '🏰 Base loads in fully fortified — barbed wire, spikes & auto-sentries', 'Press 0 to command your troops'],
       knights: 50, engineer: true,
     },
+    ares: {
+      id: 'ares', stars: 5, name: 'Ares', emoji: '⚔️', cost: 5000,
+      blurb: 'The God of War — 10,000 health, grows stronger with every kill, and marshals an endless Spartan phalanx that fights, shields and knocks foes flying.',
+      perks: ['⚔️ 10,000 health', '💪 Every kill makes your strikes stronger', '🛡️ Spartans: 150 hp · 50 spear dmg · shield · knockback ✨', '🔺 +1 Spartan per kill — up to 500 strong'],
+      spawnHealth: 10000, ares: true, spartans: 500, attackDmg: 120,
+    },
     lumberjack: {
       id: 'lumberjack', stars: 3, name: 'Lumberjack', emoji: '🪓', cost: 250,
       blurb: 'A burly woodsman whose axe is an absolute monster — it one-shots most foes and fells trees in a single swing.',
@@ -89,7 +95,7 @@
       axe: true, attackDmg: 500, axeLevel: 40,
     },
   };
-  const ORDER = ['lumberjack', 'vampire', 'scout', 'ninja', 'ranger', 'juggernaut', 'engineer', 'king', 'hunter', 'president'];   // the shop list (villager is the free default)
+  const ORDER = ['lumberjack', 'vampire', 'scout', 'ninja', 'ranger', 'juggernaut', 'engineer', 'king', 'hunter', 'president', 'ares'];   // the shop list (villager is the free default)
 
   function num(k, d) { const v = parseInt(LS.getItem(k), 10); return isNaN(v) ? d : v; }
   function ownedSet() { try { return new Set(JSON.parse(LS.getItem(KEY_OWNED) || '[]')); } catch (e) { return new Set(); } }
@@ -181,6 +187,8 @@
       if (OWNER) p.wood = 999999999999999999999999999999999999;   // maker perk: effectively infinite wood
       p.reviveChance = d.reviveChance || 0;         // Survivor: chance to cheat death
       p.isEngineer = !!d.engineer;                  // Engineer: fortify the base on spawn
+      p.isAres = !!d.ares;                          // Ares: war-god who grows per kill + Spartan phalanx
+      p.spartanCap = d.spartans || 0;              // max Spartans Ares can field
       // --- level scaling: Lv2/Lv3 make the class way better ---
       const lvl = classes.level(d.id); p.classLevel = lvl;
       if (lvl > 1) {
@@ -189,6 +197,7 @@
         p.maxHealth = Math.round(p.maxHealth * hb); p.health = p.maxHealth;
         if (p.speedMult) p.speedMult *= sb;
         if (p.knightSummons) p.knightSummons = Math.round(p.knightSummons * hb);
+        if (p.spartanCap) p.spartanCap = Math.round(p.spartanCap * hb);
         if (p.rounds) p.rounds = Math.round(p.rounds * hb);
         if (p.reviveChance) p.reviveChance = Math.min(1, p.reviveChance + (lvl - 1) * 0.22);
         if (p.attackDmg) p.attackDmg = Math.round(p.attackDmg * (lvl === 2 ? 1.6 : 2.5));

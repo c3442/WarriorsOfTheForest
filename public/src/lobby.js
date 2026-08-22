@@ -693,10 +693,10 @@
     inBox = false; boxCount = 0;
     group.add(makeJoinBox());
     // 4 tree houses ringing the clearing, ramps + signs facing inward
-    const labels = ['UPDATES', '', 'CLASSES', 'CHAPTER'];   // house 0 = version picker · house 2 = class shop · house 3 = the Lorekeeper's story house (old VEHICLES spot)
+    const labels = ['UPDATES', 'TALENTS', 'CLASSES', 'CHAPTER'];   // house 0 = version picker · 1 = talents · 2 = class shop · 3 = the story house
     lobbyPlats = [];
     for (let i = 0; i < 4; i++) {
-      if (i === 1) continue;                          // house 1 stays an empty gap
+      // (all 4 slots now hold a tree house)
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const tx = Math.cos(a) * 15, tz = Math.sin(a) * 15;
       const th = makeTreehouse(labels[i], i === 0 || i === 2 || i === 3);   // UPDATES, CLASSES & CHAPTER houses are hollow so their keeper stands INSIDE

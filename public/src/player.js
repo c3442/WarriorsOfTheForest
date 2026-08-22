@@ -1008,6 +1008,11 @@
     // wolves & their kin drop RAW meat into your sack — cook it at a fire before it feeds you
     const meat = { wolf: 1, werewolf: 2, bear: 3 }[kind] || 0;
     if (meat) { player.wolfMeat += meat; W.hud.toast('🥩 +' + meat + ' raw wolf meat — cook it at a fire'); }
+    // Ares: the God of War grows stronger with every kill, and each kill rallies +1 Spartan
+    if (player.isAres) {
+      player.attackDmg = (player.attackDmg || 120) + 4;          // war-god rage: stronger strikes
+      if (player.spawnSpartan) player.spawnSpartan();            // +1 Spartan (capped)
+    }
     // Hunter: every 5 wolves killed rallies another alpha wolf to the pack
     if (player.isHunter && kind === 'wolf') {
       player._wolfKills = (player._wolfKills || 0) + 1;
@@ -1922,6 +1927,123 @@
     }
   };
 
+  // --- Ares: a Spartan phalanx that grows with every kill (up to 500) ----------
+  function makeSpartan() {
+    const g = new THREE.Group();
+    const bronze = new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: 0.6, roughness: 0.45, flatShading: true });
+    const bronzeD = new THREE.MeshStandardMaterial({ color: 0x7a4a1e, metalness: 0.5, roughness: 0.55, flatShading: true });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xd6a878, roughness: 1 });
+    const crimson = new THREE.MeshStandardMaterial({ color: 0xb01515, roughness: 1, flatShading: true });   // Spartan red
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a1e, roughness: 1, flatShading: true });
+    const steel = new THREE.MeshStandardMaterial({ color: 0xd8dde6, metalness: 0.6, roughness: 0.3 });
+    const legs = [];
+    for (const sx of [-0.11, 0.11]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.16), bronzeD); l.position.set(sx, 0.3, 0); l.castShadow = true; g.add(l); legs.push(l); }
+    const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.24, 0.3), crimson); skirt.position.y = 0.62; g.add(skirt);   // pteruges
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.56, 0.28), bronze); torso.position.y = 0.98; torso.castShadow = true; g.add(torso);
+    const cape = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.7, 0.05), crimson); cape.position.set(0, 0.92, -0.17); g.add(cape);   // crimson cloak
+    // right arm holds the spear (a pivot group we can thrust)
+    const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.13), skin); rArm.position.set(0.3, 0.98, 0.02); g.add(rArm); legs.push(rArm);
+    const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.13), skin); lArm.position.set(-0.3, 0.98, 0.02); g.add(lArm); legs.push(lArm);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), skin); head.position.y = 1.42; g.add(head);
+    const helm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.26, 0.28), bronze); helm.position.y = 1.5; g.add(helm);       // Corinthian helm
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.06), bronzeD); face.position.set(0, 1.42, 0.15); g.add(face);   // nose guard
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.34), crimson); crest.position.set(0, 1.68, 0); g.add(crest);   // transverse crest
+    // spear (dory) — long, in a pivot so it can jab
+    const arm = new THREE.Group(); arm.position.set(0.34, 1.0, 0.14);
+    const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 2.2), wood); shaft.position.set(0, 0, 0.9); arm.add(shaft);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 4), steel); tip.rotation.x = Math.PI / 2; tip.position.set(0, 0, 2.06); arm.add(tip);
+    g.add(arm); g.userData.arm = arm;
+    // round hoplite shield (aspis) on the left
+    const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.07, 16), bronze); shield.rotation.x = Math.PI / 2; shield.position.set(-0.34, 0.98, 0.16); shield.castShadow = true; g.add(shield);
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), bronzeD); boss.position.set(-0.34, 0.98, 0.22); g.add(boss);
+    const lam = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.02), crimson); lam.position.set(-0.34, 0.98, 0.21); g.add(lam);   // lambda emblem-ish
+    g.userData.legs = legs;
+    W.util.solidify(g);
+    return g;
+  }
+  // lightweight ⭐ pop when a Spartan's spear lands (bounded so 500 of them stays cheap)
+  const spartanStars = [];
+  let _starCanvas = null;
+  function starSprite() {
+    if (!_starCanvas) { _starCanvas = document.createElement('canvas'); _starCanvas.width = 64; _starCanvas.height = 64; const c = _starCanvas.getContext('2d'); c.font = '52px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('⭐', 32, 36); }
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(_starCanvas), depthTest: false, transparent: true }));
+    spr.renderOrder = 998; return spr;
+  }
+  function spartanStar(x, y, z) {
+    if (spartanStars.length > 20 || !player.scene) return;   // cap active stars for perf
+    const s = starSprite(); s.position.set(x, y, z); s.scale.set(0.6, 0.6, 1); player.scene.add(s);
+    spartanStars.push({ spr: s, t: 0 });
+  }
+  function stepSpartanStars(dt) {
+    for (let i = spartanStars.length - 1; i >= 0; i--) {
+      const f = spartanStars[i]; f.t += dt; f.spr.position.y += dt * 1.4;
+      f.spr.material.opacity = Math.max(0, 1 - f.t / 0.5); const sc = 0.6 + f.t; f.spr.scale.set(sc, sc, 1);
+      if (f.t >= 0.5) { player.scene.remove(f.spr); if (f.spr.material.map) f.spr.material.map.dispose(); f.spr.material.dispose(); spartanStars.splice(i, 1); }
+    }
+  }
+  player._addSpartan = function () {
+    const list = player.spartans; if (!list || !player.scene) return;
+    if (list.length >= (player.spartanCap || 0)) return;
+    const a = Math.random() * Math.PI * 2, r = 2.6 + (list.length % 8) * 0.8;
+    const sx = player.pos.x + Math.cos(a) * r, sz = player.pos.z + Math.sin(a) * r;
+    const g = makeSpartan(); g.position.set(sx, W.world.heightAt(sx, sz), sz); player.scene.add(g);
+    list.push({ g, t: U.rand(0, 6), atk: U.rand(0, 0.8), a, r, hp: 150, maxHp: 150 });
+  };
+  player.summonSpartans = function () {
+    if (!player.scene) return;
+    player.spartans = [];
+    const start = Math.min(24, player.spartanCap || 0);
+    for (let i = 0; i < start; i++) player._addSpartan();
+    if (W.hud && W.hud.banner) W.hud.banner('⚔️ THE SPARTAN PHALANX', start + ' Spartans answer Ares — MORE rally with every kill (up to ' + (player.spartanCap || 0) + ')', '#ffcf7a');
+  };
+  player.spawnSpartan = function () { if (player.spartans) player._addSpartan(); };
+  player.stepSpartans = function (dt) {
+    stepSpartanStars(dt);
+    const ks = player.spartans; if (!ks || !ks.length) return;
+    const foes = (W.enemies && W.enemies.list) || [];
+    const host = !(W.net && W.net.role === 'client');
+    const n = ks.length;
+    for (let i = 0; i < n; i++) {
+      const k = ks[i]; k.t += dt; const g = k.g;
+      let tgt = null, bd = 40;
+      for (const e of foes) { if (!e.alive || e.isSeal) continue; const d = Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z); if (d < bd) { bd = d; tgt = e; } }
+      let tx, tz;
+      if (tgt) { tx = tgt.group.position.x; tz = tgt.group.position.z; }
+      else { tx = player.pos.x + Math.cos(k.a + player._t * 0.15) * k.r; tz = player.pos.z + Math.sin(k.a + player._t * 0.15) * k.r; }   // follow: gentle orbit
+      const dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz) || 1;
+      const reach = tgt ? 2.3 : 0.4;                        // spear outreaches a sword
+      if (d > reach) {
+        const sp = (tgt ? 9.5 : 5.0) * dt; g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp;
+        g.rotation.y = Math.atan2(dx, dz);
+        const sw = Math.sin(k.t * 11) * 0.5, lg = g.userData.legs;
+        if (lg) { lg[0].rotation.x = sw; lg[1].rotation.x = -sw; }
+        if (g.userData.arm) g.userData.arm.rotation.x = -0.15;   // spear at the ready
+      } else if (tgt) {
+        g.rotation.y = Math.atan2(dx, dz);
+        k.atk -= dt;
+        if (g.userData.arm) g.userData.arm.rotation.x = -0.15 + Math.max(0, Math.sin(k.t * 16)) * -0.5;   // jab
+        if (k.atk <= 0) {
+          k.atk = 0.7;
+          if (host && W.enemies.damage) {
+            const killed = W.enemies.damage(tgt.group, 50, { x: g.position.x, z: g.position.z });   // 50 spear damage
+            const kx = tgt.group.position.x - g.position.x, kz = tgt.group.position.z - g.position.z, kd = Math.hypot(kx, kz) || 1;
+            if (!tgt.buffBoss && !tgt.isBoss) { tgt.group.position.x += (kx / kd) * 2.4; tgt.group.position.z += (kz / kd) * 2.4; }   // strong knockback
+            spartanStar(tgt.group.position.x, tgt.group.position.y + 1.2, tgt.group.position.z);
+            if (killed && player.creditKill) player.creditKill(tgt.group.userData.kind);
+          }
+          if (W.sfx) { if (W.sfx.star) W.sfx.star(); else if (W.sfx.hit) W.sfx.hit(); }
+        }
+      }
+      // a foe next to a Spartan chips its health — the shield soaks most of it
+      if (tgt && d < 2.0) { k.hp -= (tgt.dmg || 8) * dt * 0.2; if (k.hp <= 0) k.dead = true; }
+      g.position.y = W.world.heightAt(g.position.x, g.position.z) + Math.abs(Math.sin(k.t * 8)) * 0.04;
+    }
+    if (ks.some((k) => k.dead)) {
+      for (const k of ks) { if (k.dead && k.g.parent) k.g.parent.remove(k.g); }
+      player.spartans = ks.filter((k) => !k.dead);
+    }
+  };
+
   // --- Kawaii Fighter: every BOW KILL summons a flying cupid that shoots foes for 60s ---
   const cupidShots = [];
   function makeCupid() {
@@ -2318,6 +2440,8 @@
     if (player.knightSummons > 0 && !player.knights) player.summonKnights();   // rally the King's guard once
     if (player.knights) player.stepKnights(dt);
     if (player.cupids) player.stepCupids(dt);                                  // Kawaii's cupid swarm
+    if (player.spartanCap > 0 && !player.spartans) player.summonSpartans();     // Ares: rally the phalanx once
+    if (player.spartans) player.stepSpartans(dt);                              // Ares' Spartan phalanx
     if (player.cats) player.stepCats(dt);                                      // Cat Master's cat swarm
     if (player.isHunter && !player._hunterStarted) { player._hunterStarted = true; player.spawnAlphaWolf(); }   // Hunter's starting alpha wolf
     if (player.wolves) player.stepWolves(dt);                                  // Hunter's alpha-wolf pack
