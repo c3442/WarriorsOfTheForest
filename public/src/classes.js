@@ -85,8 +85,8 @@
     ares: {
       id: 'ares', stars: 5, name: 'Ares', emoji: '⚔️', cost: 5000,
       blurb: 'The God of War — 10,000 health, grows stronger with every kill, and marshals an endless Spartan phalanx that fights, shields and knocks foes flying.',
-      perks: ['⚔️ 10,000 health', '💪 Every kill makes your strikes stronger', '🛡️ Spartans: 150 hp · 50 spear dmg · shield · knockback ✨', '🔺 +1 Spartan per kill — up to 500 strong'],
-      spawnHealth: 10000, ares: true, spartans: 500, attackDmg: 120,
+      perks: ['⚔️ 10,000 health', '🏃 5× move speed', '💪 Every kill makes your strikes stronger', '🛡️ Spartans: 150 hp · 50 spear dmg · shield · knockback ✨', '🔺 +1 Spartan per kill — up to 500 strong'],
+      spawnHealth: 10000, ares: true, spartans: 500, attackDmg: 120, speedMult: 5,
     },
     lumberjack: {
       id: 'lumberjack', stars: 3, name: 'Lumberjack', emoji: '🪓', cost: 250,
