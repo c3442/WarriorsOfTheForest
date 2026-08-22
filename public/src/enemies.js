@@ -908,6 +908,7 @@
     const t = { x: (target && target.x) || 0, z: (target && target.z) || 0 };
     enemies._kingWave = { stage: 1, t, gapT: 0 };
     spawnKingWave(1, t);
+    enemies.spawnEliteGuards(t.x, t.z);   // the village sends 10 elites to fight at your side
   };
   function stepKingWaves(dt) {
     const kw = enemies._kingWave; if (!kw) return;
@@ -919,6 +920,76 @@
     else {
       enemies._kingWave = null;
       if (W.hud && W.hud.banner) W.hud.banner('👑 THE KING RETREATS', 'You survived his onslaught… but he’ll be back. (End of Chapter One)', '#8fd36a');
+    }
+  }
+
+  // --- Village Guard ELITES: 10 crack riflemen who fight at YOUR side ----------
+  enemies.elites = [];
+  function makeElite() {
+    const g = new THREE.Group();
+    const navy = new THREE.MeshStandardMaterial({ color: 0x24314f, roughness: 1, flatShading: true });
+    const gold = new THREE.MeshStandardMaterial({ color: 0xd4a83a, roughness: 0.5, metalness: 0.6, flatShading: true });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xe2b48c, roughness: 1 });
+    const metal = new THREE.MeshStandardMaterial({ color: 0x2c3036, roughness: 0.5, metalness: 0.5, flatShading: true });
+    const wood = new THREE.MeshStandardMaterial({ color: 0x5a3a1e, roughness: 1, flatShading: true });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.82, 0.34), navy); torso.position.y = 1.12; torso.castShadow = true; g.add(torso);
+    const sash = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.36), gold); sash.position.set(0, 1.2, 0.02); sash.rotation.z = 0.35; g.add(sash);   // gold sash
+    const medal = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.04), gold); medal.position.set(-0.16, 1.3, 0.18); g.add(medal);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), skin); head.position.y = 1.72; head.castShadow = true; g.add(head);
+    const beret = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.12, 8), navy); beret.position.set(0.04, 1.94, 0); beret.rotation.z = 0.15; g.add(beret);
+    const badge = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.04), gold); badge.position.set(0, 1.96, 0.2); g.add(badge);
+    for (const sx of [-0.15, 0.15]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.78, 0.2), navy); leg.position.set(sx, 0.39, 0); leg.castShadow = true; g.add(leg); }
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.44), wood); stock.position.set(0.26, 1.16, 0.18); g.add(stock);
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.85), metal); barrel.position.set(0.26, 1.18, 0.66); g.add(barrel);   // long precision barrel
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.5, 0.15), navy); arm.position.set(0.3, 1.22, 0.12); g.add(arm);
+    return g;
+  }
+  enemies.spawnEliteGuards = function (px, pz) {
+    if (enemies.elites.length || !enemies.scene) return;   // one elite squad
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2, r = 4 + (i % 3) * 1.2;
+      const x = px + Math.cos(a) * r, z = pz + Math.sin(a) * r;
+      const g = makeElite(); g.position.set(x, W.world.heightAt(x, z), z); enemies.scene.add(g);
+      enemies.elites.push({ group: g, hp: 1000, maxHp: 1000, cd: U.rand(0, 0.7), mag: 10, reload: 0, t: U.rand(0, 6) });
+    }
+    if (W.hud && W.hud.banner) W.hud.banner('🎖️ ELITE GUARDS', '10 village elites arrive to fight at your side!', '#8fe6ff');
+  };
+  function stepElites(dt) {
+    const es = enemies.elites; if (!es.length) return;
+    const p = W.player;
+    for (let i = es.length - 1; i >= 0; i--) {
+      const el = es[i], g = el.group; el.t += dt;
+      // pick the nearest foe
+      let tgt = null, bd = 44 * 44;
+      for (const e of enemies.list) { if (!e.alive) continue; const dx = e.group.position.x - g.position.x, dz = e.group.position.z - g.position.z; const d = dx * dx + dz * dz; if (d < bd) { bd = d; tgt = e; } }
+      // regroup with the player if we drift too far, else face the foe
+      const pdist = (p && p.pos) ? Math.hypot(p.pos.x - g.position.x, p.pos.z - g.position.z) : 0;
+      if (p && p.pos && pdist > 14) {
+        const dx = p.pos.x - g.position.x, dz = p.pos.z - g.position.z, d = Math.hypot(dx, dz) || 1, sp = 6.5 * dt;
+        g.position.x += (dx / d) * sp; g.position.z += (dz / d) * sp; g.rotation.y = Math.atan2(dx, dz);
+      } else if (tgt) {
+        g.rotation.y = Math.atan2(tgt.group.position.x - g.position.x, tgt.group.position.z - g.position.z);
+      }
+      g.position.y = W.world.heightAt(g.position.x, g.position.z);
+      // fire: 250 dmg, 90% accuracy, 10-round mag then a reload
+      if (el.reload > 0) { el.reload -= dt; }
+      else if (tgt && bd < 42 * 42) {
+        el.cd -= dt;
+        if (el.cd <= 0) {
+          el.cd = U.rand(0.5, 0.9);
+          el.mag -= 1;
+          guardShoot(g.position.x, g.position.y + 1.5, g.position.z, tgt, 0.001, 140);   // visual tracer
+          if (U.chance(0.9)) enemies.damage(tgt.group, 250, { x: g.position.x, z: g.position.z });   // 90% accuracy · 250 dmg
+          if (el.mag <= 0) { el.mag = 10; el.reload = 2.0; }
+        }
+      }
+      // foes swarming an elite chip its (big) health
+      let swarm = 0;
+      for (const e of enemies.list) { if (!e.alive) continue; if (Math.hypot(e.group.position.x - g.position.x, e.group.position.z - g.position.z) < 2.2) swarm += (e.dmg || 8); }
+      if (swarm > 0) {
+        el.hp -= swarm * 0.5 * dt;
+        if (el.hp <= 0) { if (g.parent) g.parent.remove(g); es.splice(i, 1); if (W.hud && W.hud.toast) W.hud.toast('🎖️ An elite guard has fallen! (' + es.length + ' left)'); }
+      }
     }
   }
 
@@ -1314,6 +1385,7 @@
     stepKawaiiFx(dt);
     stepKing(dt);            // the Bandit King's flying-chariot cutscene
     stepKingWaves(dt);       // ...and his 3 waves of bandits
+    stepElites(dt);          // your Village Guard elites fight back
   };
 
   // --- Networking (host serialize / client mirror) ---------------------------
